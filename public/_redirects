@@ -1,0 +1,9 @@
+# Cloudflare Pages: SPA fallback – a kliensoldali útvonalak (/pro, /dashboard, /meccsek, …) az index.html-t kapják.
+#
+# Az /api/* NEM ezen a hoszton fut. Két lehetőség:
+#   1) AJÁNLOTT: állítsd be a VITE_API_URL környezeti változót a Pages buildhez (pl. https://tippmix-api.onrender.com)
+#      – ekkor a frontend közvetlenül az API-hosztot hívja, és itt nem kell semmit felvenni.
+#   2) Proxy a Pages-en keresztül (VITE_API_URL nélkül): vedd ki a kommentet az alábbi sorból.
+# /api/*  https://AZ-API-DOMAINED/api/:splat  200
+
+/*    /index.html   200

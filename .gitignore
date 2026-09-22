@@ -1,0 +1,45 @@
+# Függőségek
+node_modules/
+.pnp/
+.pnp.js
+
+# Build kimenet
+dist/
+.vite/
+*.tsbuildinfo
+
+# Környezeti változók – TITKOK, soha ne kerüljenek a repóba
+.env
+.env.*
+!.env.example
+
+# Helyi adatbázis és adatok
+data/*.db
+data/*.db-*
+data/*.sqlite*
+
+# Naplók
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Tesztek / lefedettség
+coverage/
+.nyc_output/
+
+# Szerkesztő és OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Eszköz-specifikus, helyi beállítások
+.claude/
+scratch/
+tmp/
+temp/
+*.bak

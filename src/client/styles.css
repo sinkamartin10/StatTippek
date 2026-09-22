@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0e13;
+  --color-bg-2: #0f141b;
+  --color-card: #131a23;
+  --color-card-2: #18212c;
+  --color-border: #223041;
+  --color-text: #e6edf3;
+  --color-muted: #8b9bb0;
+  --color-accent: #22c55e;
+  --color-accent-2: #16a34a;
+  --color-warn: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #38bdf8;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { min-height: 100%; }
+body { min-height: 100vh; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(34, 197, 94, 0.35); }
+* { scrollbar-width: thin; scrollbar-color: #2a3a4d transparent; }
+
+@layer components {
+.card { @apply rounded-xl border border-border bg-card shadow-[0_1px_0_rgba(255,255,255,0.02)_inset]; }
+.card-head { @apply flex items-center justify-between gap-3 border-b border-border px-4 py-3; }
+.card-title { @apply text-sm font-semibold tracking-wide text-text; }
+.card-body { @apply p-4; }
+.btn { @apply inline-flex items-center gap-2 rounded-lg border border-border bg-card-2 px-3 py-2 text-sm font-medium text-text transition hover:border-accent/60 hover:bg-card focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50; }
+.btn-primary { @apply border-accent-2 bg-accent text-black hover:bg-accent-2 hover:text-white; }
+.btn-sm { @apply px-2.5 py-1.5 text-xs; }
+.input { @apply w-full rounded-lg border border-border bg-bg-2 px-3 py-2 text-sm text-text placeholder:text-muted/70 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30; }
+.badge { @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider; }
+.badge-demo { @apply border-warn/50 bg-warn/10 text-warn; }
+.badge-live { @apply border-info/50 bg-info/10 text-info; }
+.badge-green { @apply border-accent/50 bg-accent/10 text-accent; }
+.badge-yellow { @apply border-warn/50 bg-warn/10 text-warn; }
+.badge-red { @apply border-danger/50 bg-danger/10 text-danger; }
+.badge-muted { @apply border-border bg-card-2 text-muted; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.kpi { @apply text-2xl font-bold tracking-tight; }
+.table { @apply w-full text-sm; }
+.table th { @apply px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted; }
+.table td { @apply border-t border-border/70 px-3 py-2 align-middle; }
+.table tr:hover td { @apply bg-card-2/60; }
+.nav-link { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted transition hover:bg-card-2 hover:text-text; }
+.nav-link.active { @apply bg-accent/10 text-accent; }
+.section-title { @apply mb-3 flex items-center gap-2 text-base font-semibold; }
+.pill { @apply inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold; }
+.pill-W { @apply bg-accent/20 text-accent; }
+.pill-D { @apply bg-muted/20 text-muted; }
+.pill-L { @apply bg-danger/20 text-danger; }
+}
+.recharts-default-tooltip { background: #131a23 !important; border: 1px solid #223041 !important; border-radius: 8px; color: #e6edf3 !important; }
+.recharts-tooltip-label, .recharts-tooltip-item { color: #e6edf3 !important; }
