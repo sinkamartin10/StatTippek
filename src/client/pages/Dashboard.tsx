@@ -1,12 +1,13 @@
 /** Áttekintés: üdvözlés, a nap legfontosabb mutatói, kiemelt tipp-kártyák és a mai mérkőzések. */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Crown } from 'lucide-react';
+import { ArrowRight, Crown, Trophy } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync, pct, signed } from '../lib/format';
 import { applyClientFilters, defaultFilters, MatchFilters, MatchGrid } from '../components/MatchList';
 import { Card, Disclaimer, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { TipCard } from '../components/TipCard';
+import { CompetitionStatusBadge, remainingText } from './Competitions';
 import { useAuth } from '../auth/AuthContext';
 import { FREE_DAILY_TIPS, useFreeDay, usePlan } from '../auth/PlanContext';
 
@@ -19,6 +20,8 @@ export default function Dashboard() {
   const { pro } = usePlan();
   // Az előzmény-végpont PRO-védett a szerveren – FREE esetén nem hívjuk (a mutatók „–” értéket mutatnak)
   const history = useAsync(() => (pro ? api.history({}) : Promise.resolve(null)), [pro]);
+  // Tippverseny belépési pont – külön modul, a többi lekéréstől függetlenül hibatűrő
+  const competitions = useAsync(() => api.competitions().catch(() => []), []);
   const free = useFreeDay(f.date);
 
   const list = matches.data ? applyClientFilters(matches.data, f) : [];
@@ -51,6 +54,28 @@ export default function Dashboard() {
           <b>FREE csomag:</b> naponta {FREE_DAILY_TIPS} tipp és a nap első néhány mérkőzésének elemzése látható. A teljes lista, a modell indoklásai, az előzmények és a szelvényépítő PRO-val nyílik.
           <Link to="/pro" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0"><Crown className="h-3.5 w-3.5" /> PRO kipróbálása</Link>
         </Note>
+      )}
+
+      {/* Tippverseny – belépési pont */}
+      {!!competitions.data?.length && (
+        <Card
+          title={<span className="flex items-center gap-2"><Trophy className="h-5 w-5 text-warning" /> Tippverseny</span>}
+          right={<Link to="/tippverseny" className="btn btn-sm">Összes <ArrowRight className="h-3.5 w-3.5" /></Link>}
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {competitions.data.slice(0, 3).map((c) => (
+              <div key={c.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card-2 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-bold text-text-muted">{c.leagueName}</span>
+                  <CompetitionStatusBadge status={c.status} />
+                </div>
+                <div className="truncate text-base font-extrabold">{c.name}</div>
+                {c.status === 'active' && <div className="text-xs font-semibold text-text-muted">Hátralévő idő: {remainingText(c.endsAt)}</div>}
+                <Link to={`/tippverseny/${c.id}`} className="btn btn-sm btn-primary mt-auto">Megnyitás</Link>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {/* Kiemelt tippek */}

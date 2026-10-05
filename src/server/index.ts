@@ -8,12 +8,16 @@ import fs from 'node:fs';
 import { buildContainer } from './container';
 import { AnalysisService } from './services/analysisService';
 import { apiRouter } from './routes/api';
+import { adminCompetitionRouter, competitionRouter } from './routes/competition';
+import { CompetitionService } from './competition/service';
+import { profileRouter } from './routes/profile';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseConfigured } from './billing/supabaseAdmin';
 
 const container = buildContainer();
 const service = new AnalysisService(container);
+const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames);
 const app = express();
 app.disable('x-powered-by');
 
@@ -76,6 +80,12 @@ app.post('/api/matches/:id/predictions', requirePro);
 app.post('/api/settings', requireAdmin);
 app.post('/api/matches/:id/odds', requireAdmin);
 app.delete('/api/matches/:id/odds', requireAdmin);
+// Tippverseny: a nyilvános rész olvasható (a tippbeküldés a routeren belül requirePro),
+// az admin rész teljes egészében a meglévő ADMIN_EMAILS alapú ellenőrzés mögött van
+app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competitionService));
+app.use('/api/competition', competitionRouter(competitionService));
+// Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
+app.use('/api/profile', profileRouter(container.displayNames));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -117,6 +127,11 @@ app.listen(port, async () => {
         console.error('!!! Futtasd le a Supabase SQL Editorban: supabase/migrations/0003_app_data.sql');
       } else {
         console.log('Supabase séma ellenőrzés: minden tábla elérhető ✓');
+      }
+      const missingCompetition = await container.competitions.healthCheck();
+      if (missingCompetition.length) {
+        console.warn('Tippverseny táblák hiányoznak:', missingCompetition.join(', '));
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0004_prediction_league.sql');
       }
     }
     const pruned = container.db.pruneCache();

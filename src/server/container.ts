@@ -19,6 +19,8 @@ import { CombinedRssBackend } from './research/rssSearch';
 import type { ResearchProvider } from './research/provider';
 import { Database } from './db/database';
 import { TheOddsApiProvider } from './odds/theOddsApi';
+import { PostgresCompetitionStore, SqliteCompetitionStore, type CompetitionStore } from './competition/store';
+import { InMemoryDisplayNameDirectory, SupabaseDisplayNameDirectory, type DisplayNameDirectory } from './profile/displayNameDirectory';
 
 export interface Container {
   data: MatchDataProvider;
@@ -26,6 +28,10 @@ export interface Container {
   /** opcionális, több-irodás odds forrás (ODDS_API_KEY) */
   oddsApi: TheOddsApiProvider | null;
   db: Database;
+  /** Tippverseny modul tárolója – külön táblák, a meglévő AppStore-tól függetlenül */
+  competitions: CompetitionStore;
+  /** Megjelenítési nevek a meglévő profiles táblából */
+  displayNames: DisplayNameDirectory;
   status(): AppStatus;
 }
 
@@ -62,11 +68,22 @@ export function buildContainer(): Container {
 
   const oddsApi = requestedMode !== 'demo' && oddsKey ? new TheOddsApiProvider(oddsKey, db.httpCache()) : null;
 
+  // Tippverseny tároló: élesben Supabase PostgreSQL, kulcs nélkül helyi SQLite (a meglévő tárolót nem érinti)
+  const competitions: CompetitionStore = supabaseUrl && serviceRoleKey
+    ? new PostgresCompetitionStore(supabaseUrl, serviceRoleKey)
+    : new SqliteCompetitionStore(db.sqliteHandle());
+  // A megjelenítési név a MEGLÉVŐ profiles táblában él; Supabase nélkül memóriában (helyi mód)
+  const displayNames: DisplayNameDirectory = supabaseUrl && serviceRoleKey
+    ? new SupabaseDisplayNameDirectory()
+    : new InMemoryDisplayNameDirectory();
+
   return {
     data,
     research,
     oddsApi,
     db,
+    competitions,
+    displayNames,
     status: () => ({
       dataMode: data.origin,
       requestedMode,

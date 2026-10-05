@@ -8,6 +8,9 @@ import Tips from './pages/Tips';
 import Slips from './pages/Slips';
 import Pro from './pages/Pro';
 import Profile from './pages/Profile';
+import Competitions from './pages/Competitions';
+import CompetitionDetail from './pages/CompetitionDetail';
+import AdminCompetitions from './pages/AdminCompetitions';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Sources from './pages/Sources';
@@ -43,6 +46,10 @@ export default function App() {
         <Route path="/szelvenyek" element={<Slips />} />
         <Route path="/pro" element={<Pro />} />
         <Route path="/profil" element={<Profile />} />
+        <Route path="/tippverseny" element={<Competitions />} />
+        <Route path="/tippverseny/:id" element={<CompetitionDetail />} />
+        {/* A felületi védelem csak kényelmi – a jogosultságot a szerver ellenőrzi (ADMIN_EMAILS) */}
+        <Route path="/admin/tippverseny" element={<RequireAuth><AdminCompetitions /></RequireAuth>} />
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
         <Route path="/forrasok" element={<Sources />} />

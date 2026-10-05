@@ -1,5 +1,7 @@
 /**
  * A bejelentkezett felhasználó profilja (public.profiles) – csak olvasás.
+ * A megjelenítési nevet szándékosan NEM innen kérjük le, hanem a /api/profile/me végpontról:
+ * így ez a lekérdezés akkor sem törik el, ha a 0005 migráció még nem futott le.
  * Az előfizetési mezőket a frontend nem módosíthatja (RLS + trigger), a Stripe-integráció szerveroldalon fogja írni.
  */
 import { useCallback, useEffect, useState } from 'react';

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, BookOpen, CalendarDays, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu,
+  BarChart3, BookOpen, CalendarDays, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
   Search, Settings, Sparkles, Ticket, UserCircle2, UserPlus, X,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
@@ -17,6 +17,7 @@ const MAIN = [
   { to: '/tippek', label: 'Tippek', icon: Lightbulb },
   { to: '/elozmenyek', label: 'Előzmények', icon: History },
   { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
+  { to: '/tippverseny', label: 'Tippverseny', icon: Trophy },
   { to: '/pro', label: 'PRO', icon: Crown },
 ];
 

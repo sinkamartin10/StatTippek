@@ -1,7 +1,7 @@
 /** Profil: fiók, csomag (FREE/PRO), előfizetés kezelése, kijelentkezés. */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Crown, LogOut, Mail, ShieldCheck } from 'lucide-react';
+import { Crown, LogOut, Mail, ShieldCheck, Trophy } from 'lucide-react';
 import { Card, Disclaimer, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
 import { usePlan } from '../auth/PlanContext';
@@ -9,6 +9,8 @@ import { PlanBadge } from '../auth/ProfileCard';
 import { STATUS_LABEL, daysUntilEnd, expiryText } from '../auth/useProfile';
 import { fmtDateTime } from '../lib/format';
 import { api } from '../lib/api';
+import { useAsync } from '../lib/format';
+import { DisplayNameEditor } from '../components/DisplayNameEditor';
 
 export default function Profile() {
   const auth = useAuth();
@@ -16,6 +18,8 @@ export default function Profile() {
   const nav = useNavigate();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
+  // A megjelenítési nevet a szerver adja vissza (a meglévő profiles táblából)
+  const me = useAsync(() => api.profileMe().catch(() => null), []);
 
   const openPortal = async () => {
     setBusy(true); setMsg(null);
@@ -90,6 +94,16 @@ export default function Profile() {
               </div>
             </div>
           </div>
+        )}
+      </Card>
+
+      <Card title={<span className="flex items-center gap-2"><Trophy className="h-5 w-5 text-warning" /> Megjelenítési név</span>}>
+        <p className="mb-3 text-sm font-semibold text-text-muted">
+          Ezt a nevet látják a többiek a <b className="text-text">Tippverseny ranglistáján</b>. Az e-mail-címed és a valódi neved sosem jelenik meg.
+          A Tippversenyben való részvételhez kötelező beállítani.
+        </p>
+        {me.loading ? <Loading text="Név betöltése…" /> : (
+          <DisplayNameEditor current={me.data?.displayName ?? null} onSaved={() => me.reload()} />
         )}
       </Card>
 

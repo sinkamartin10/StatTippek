@@ -5,6 +5,10 @@ import type {
   AppStatus, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
   FormSummary, StandingRow, LeagueAverages, MatchResult,
 } from '@shared/types';
+import type {
+  AdminLeaderboardRow, Competition, CompetitionMatch, CompetitionMatchView, CompetitionReward,
+  LeaderboardRow, RewardStatus, UserPrediction,
+} from '@shared/competition';
 import { supabase } from './supabase';
 
 export interface MatchWithTeams extends Match {
@@ -31,6 +35,15 @@ export interface TeamResponse {
   recent: (MatchResult & { homeTeam?: Team; awayTeam?: Team; league?: League })[];
 }
 
+export interface ProfileMe { displayName: string | null; hasDisplayName: boolean; rules: string[]; min: number; max: number }
+
+export interface CompetitionDetail { competition: Competition; scoring: { label: string; points: number; text: string }[]; tieBreak: string[] }
+export interface CompetitionMyStats { rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean }
+export interface CompetitionLeague { leagueKey: string; leagueName: string; country: string; provider: string }
+export interface CompetitionSyncResult { inserted: number; updated: number; total: number; scoredPredictions: number }
+export interface CompetitionFinishResult { competition: Competition; rewards: CompetitionReward[]; createdRewards: number; warnings: string[] }
+export interface AdminCompetitionDetail { competition: Competition; matches: CompetitionMatch[]; rewards: CompetitionReward[] }
+
 export interface SearchResponse { teams: Team[]; leagues: League[]; matches: MatchWithTeams[] }
 export interface HistoryResponse { predictions: PredictionRecord[]; summary: HistorySummary; origin: 'demo' | 'live' }
 
@@ -53,9 +66,9 @@ async function authHeader(): Promise<Record<string, string>> {
  */
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/+$/, '') ?? '';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, prefix = '/api'): Promise<T> {
   const auth = await authHeader();
-  const res = await fetch(`${API_BASE}/api${path}`, { ...init, headers: { 'content-type': 'application/json', ...auth, ...(init?.headers ?? {}) } });
+  const res = await fetch(`${API_BASE}${prefix}${path}`, { ...init, headers: { 'content-type': 'application/json', ...auth, ...(init?.headers ?? {}) } });
   const text = await res.text();
   let body: unknown = null;
   try { body = text ? JSON.parse(text) : null; } catch { /* nem JSON */ }
@@ -97,6 +110,44 @@ export const api = {
   checkout: () => request<{ url: string }>('/billing/checkout', { method: 'POST', body: '{}' }),
   billingPortal: () => request<{ url: string }>('/billing/portal', { method: 'POST', body: '{}' }),
   billingSync: () => request<{ synced: boolean; pro?: boolean; status?: string; reason?: string }>('/billing/sync', { method: 'POST', body: '{}' }),
+  // ---------- Profil: megjelenítési név (a meglévő profiles táblán) ----------
+  profileMe: () => request<ProfileMe>('/me', {}, '/api/profile'),
+  /** A nevet mindig a hitelesített felhasználóhoz menti; a törzsben user_id-t nem küldünk. */
+  saveDisplayName: (displayName: string) =>
+    request<{ displayName: string; hasDisplayName: boolean }>('/display-name', { method: 'PUT', body: JSON.stringify({ displayName }) }, '/api/profile'),
+
+  // ---------- Tippverseny (külön modul; a meglévő végpontokat nem érinti) ----------
+  // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, a path pedig csak az azon belüli rész –
+  // a '/competition' szegmens ezért itt NEM ismételhető meg (lásd tests/apiUrls.test.ts).
+  competitions: () => request<Competition[]>('', {}, '/api/competition'),
+  competition: (id: string) => request<CompetitionDetail>(`/${encodeURIComponent(id)}`, {}, '/api/competition'),
+  competitionMatches: (id: string) => request<CompetitionMatchView[]>(`/${encodeURIComponent(id)}/matches`, {}, '/api/competition'),
+  competitionLeaderboard: (id: string) => request<LeaderboardRow[]>(`/${encodeURIComponent(id)}/leaderboard`, {}, '/api/competition'),
+  competitionMyPredictions: (id: string) => request<UserPrediction[]>(`/${encodeURIComponent(id)}/my-predictions`, {}, '/api/competition'),
+  competitionMyStats: (id: string) => request<CompetitionMyStats>(`/${encodeURIComponent(id)}/me`, {}, '/api/competition'),
+  /** Tipp leadása/módosítása – a pontot mindig a szerver számolja. */
+  submitCompetitionPrediction: (id: string, competitionMatchId: string, predictedHomeScore: number, predictedAwayScore: number) =>
+    request<UserPrediction>(`/${encodeURIComponent(id)}/predictions`, {
+      method: 'POST', body: JSON.stringify({ competitionMatchId, predictedHomeScore, predictedAwayScore }),
+    }, '/api/competition'),
+
+  // ---------- Tippverseny – admin (a szerver ADMIN_EMAILS alapján engedi) ----------
+  adminCompetitions: () => request<Competition[]>('', {}, '/api/admin/competition'),
+  adminCompetitionLeagues: () => request<CompetitionLeague[]>('/leagues', {}, '/api/admin/competition'),
+  adminCompetition: (id: string) => request<AdminCompetitionDetail>(`/${encodeURIComponent(id)}`, {}, '/api/admin/competition'),
+  adminCreateCompetition: (body: { name: string; leagueKey: string; startsAt: string; endsAt: string }) =>
+    request<Competition>('', { method: 'POST', body: JSON.stringify(body) }, '/api/admin/competition'),
+  adminCompetitionAction: (id: string, action: 'activate' | 'schedule' | 'cancel') =>
+    request<Competition>(`/${encodeURIComponent(id)}/${action}`, { method: 'POST' }, '/api/admin/competition'),
+  adminCompetitionSync: (id: string) => request<CompetitionSyncResult>(`/${encodeURIComponent(id)}/sync`, { method: 'POST' }, '/api/admin/competition'),
+  adminCompetitionFinish: (id: string) => request<CompetitionFinishResult>(`/${encodeURIComponent(id)}/finish`, { method: 'POST' }, '/api/admin/competition'),
+  adminCompetitionLeaderboard: (id: string) => request<AdminLeaderboardRow[]>(`/${encodeURIComponent(id)}/leaderboard`, {}, '/api/admin/competition'),
+  adminCompetitionRewards: (id: string) => request<CompetitionReward[]>(`/${encodeURIComponent(id)}/rewards`, {}, '/api/admin/competition'),
+  adminSetRewardStatus: (id: string, rewardId: string, status: RewardStatus) =>
+    request<CompetitionReward>(`/${encodeURIComponent(id)}/rewards/${encodeURIComponent(rewardId)}`, {
+      method: 'PATCH', body: JSON.stringify({ status }),
+    }, '/api/admin/competition'),
+
   settings: () => request<{ shrinkageK: number; status: AppStatus }>('/settings'),
   saveSettings: (shrinkageK: number) => request<{ shrinkageK: number }>('/settings', { method: 'POST', body: JSON.stringify({ shrinkageK }) }),
 };

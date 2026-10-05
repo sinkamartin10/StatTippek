@@ -39,6 +39,9 @@ export class Database {
   /** 'postgres' (éles) vagy 'sqlite' (helyi tartalék) */
   get storeKind(): 'postgres' | 'sqlite' { return this.store.kind; }
 
+  /** A nyers SQLite kapcsolat – a különálló Tippverseny-tároló használja helyi módban. */
+  sqliteHandle(): import('node:sqlite').DatabaseSync { return this.cacheDb.handle(); }
+
   /** Indítási ellenőrzés: mely tartós táblák hiányoznak (pl. nem futott le a migráció). */
   healthCheck(): Promise<string[]> { return this.store.healthCheck(); }
 
