@@ -44,7 +44,8 @@ if (allowedOrigins.size) {
     if (origin && allowedOrigins.has(origin.replace(/\/+$/, ''))) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+      // PUT: profil megjelenítési név · PATCH: jutalom-státusz (admin) – enélkül a böngésző blokkolja a preflightot
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'content-type,authorization');
       res.setHeader('Access-Control-Max-Age', '86400');
     }
