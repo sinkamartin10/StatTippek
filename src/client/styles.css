@@ -1,62 +1,165 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   TippStats – design tokenek
+   Világos, friss, barátságos („modern cartoon SaaS”) megjelenés.
+   Minden szín és árnyék innen jön – a komponensek nem használnak nyers hexát.
+   =========================================================================== */
 @theme {
-  --color-bg: #0a0e13;
-  --color-bg-2: #0f141b;
-  --color-card: #131a23;
-  --color-card-2: #18212c;
-  --color-border: #223041;
-  --color-text: #e6edf3;
-  --color-muted: #8b9bb0;
-  --color-accent: #22c55e;
-  --color-accent-2: #16a34a;
-  --color-warn: #f59e0b;
-  --color-danger: #ef4444;
-  --color-info: #38bdf8;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* --- Alap felületek --- */
+  --color-background: #f4f6fc;
+  --color-surface: #eef1fa;
+  --color-card: #ffffff;
+  --color-card-2: #f7f9fe;
+  --color-border: #e2e7f3;
+  --color-border-strong: #cdd5ea;
+
+  /* --- Szöveg --- */
+  --color-text: #1d2539;
+  --color-text-muted: #6d7894;
+
+  /* --- Márka --- */
+  --color-primary: #4f6ef7;
+  --color-primary-strong: #3b57df;
+  --color-primary-soft: #e8edfe;
+  --color-secondary: #ffb648;
+  --color-secondary-soft: #fff3e0;
+
+  /* --- Állapotok --- */
+  --color-success: #17b877;
+  --color-success-soft: #e3f8ef;
+  --color-danger: #f2546a;
+  --color-danger-soft: #fee8ec;
+  --color-warning: #f5a524;
+  --color-warning-soft: #fff4e2;
+
+  /* --- Visszafelé kompatibilis aliasok (a meglévő osztályok ne törjenek el) --- */
+  --color-bg: var(--color-background);
+  --color-bg-2: var(--color-surface);
+  --color-muted: var(--color-text-muted);
+  --color-accent: var(--color-primary);
+  --color-accent-2: var(--color-primary-strong);
+  --color-warn: var(--color-warning);
+  --color-info: var(--color-primary);
+
+  /* --- Tipográfia --- */
+  --font-sans: "Nunito", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Nunito", ui-sans-serif, system-ui, sans-serif;
+
+  /* --- Lekerekítés és árnyékok (játékos, de visszafogott) --- */
+  --radius-card: 1.25rem;
+  --shadow-soft: 0 1px 2px rgba(29, 37, 57, 0.04), 0 6px 18px -8px rgba(29, 37, 57, 0.12);
+  --shadow-lift: 0 2px 4px rgba(29, 37, 57, 0.05), 0 14px 28px -12px rgba(29, 37, 57, 0.18);
+  --shadow-pop: 0 2px 0 var(--color-primary-strong);
 }
 
 html, body, #root { min-height: 100%; }
-body { min-height: 100vh; }
 body {
-  background: var(--color-bg);
+  min-height: 100vh;
+  background: var(--color-background);
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
-::selection { background: rgba(34, 197, 94, 0.35); }
-* { scrollbar-width: thin; scrollbar-color: #2a3a4d transparent; }
+::selection { background: rgba(79, 110, 247, 0.22); }
+* { scrollbar-width: thin; scrollbar-color: #c6cfe4 transparent; }
+
+/* Csak visszafogott animációk; akit zavar, annak kikapcsol */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
 
 @layer components {
-.card { @apply rounded-xl border border-border bg-card shadow-[0_1px_0_rgba(255,255,255,0.02)_inset]; }
-.card-head { @apply flex items-center justify-between gap-3 border-b border-border px-4 py-3; }
-.card-title { @apply text-sm font-semibold tracking-wide text-text; }
-.card-body { @apply p-4; }
-.btn { @apply inline-flex items-center gap-2 rounded-lg border border-border bg-card-2 px-3 py-2 text-sm font-medium text-text transition hover:border-accent/60 hover:bg-card focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50; }
-.btn-primary { @apply border-accent-2 bg-accent text-black hover:bg-accent-2 hover:text-white; }
-.btn-sm { @apply px-2.5 py-1.5 text-xs; }
-.input { @apply w-full rounded-lg border border-border bg-bg-2 px-3 py-2 text-sm text-text placeholder:text-muted/70 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30; }
-.badge { @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider; }
-.badge-demo { @apply border-warn/50 bg-warn/10 text-warn; }
-.badge-live { @apply border-info/50 bg-info/10 text-info; }
-.badge-green { @apply border-accent/50 bg-accent/10 text-accent; }
-.badge-yellow { @apply border-warn/50 bg-warn/10 text-warn; }
-.badge-red { @apply border-danger/50 bg-danger/10 text-danger; }
-.badge-muted { @apply border-border bg-card-2 text-muted; }
-.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.kpi { @apply text-2xl font-bold tracking-tight; }
-.table { @apply w-full text-sm; }
-.table th { @apply px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted; }
-.table td { @apply border-t border-border/70 px-3 py-2 align-middle; }
-.table tr:hover td { @apply bg-card-2/60; }
-.nav-link { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted transition hover:bg-card-2 hover:text-text; }
-.nav-link.active { @apply bg-accent/10 text-accent; }
-.section-title { @apply mb-3 flex items-center gap-2 text-base font-semibold; }
-.pill { @apply inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold; }
-.pill-W { @apply bg-accent/20 text-accent; }
-.pill-D { @apply bg-muted/20 text-muted; }
-.pill-L { @apply bg-danger/20 text-danger; }
+/* ----------------------------- Kártyák ----------------------------- */
+.card { @apply rounded-[var(--radius-card)] border border-border bg-card shadow-soft; }
+.card-head { @apply flex items-center justify-between gap-3 border-b border-border px-5 py-4; }
+.card-title { @apply text-base font-extrabold tracking-tight text-text; }
+.card-body { @apply p-5; }
+/* Kártya, ami kattintható / kiemelt – finom megemelkedés hoverre */
+.card-lift { @apply transition duration-200 hover:-translate-y-0.5 hover:shadow-lift; }
+
+/* ----------------------------- Gombok ----------------------------- */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5
+         text-sm font-bold text-text shadow-soft transition duration-150
+         hover:border-border-strong hover:bg-card-2 active:translate-y-px
+         focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/25
+         disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0;
 }
-.recharts-default-tooltip { background: #131a23 !important; border: 1px solid #223041 !important; border-radius: 8px; color: #e6edf3 !important; }
-.recharts-tooltip-label, .recharts-tooltip-item { color: #e6edf3 !important; }
+.btn-primary { @apply border-primary-strong bg-primary text-white hover:border-primary-strong hover:bg-primary-strong; }
+.btn-secondary { @apply border-secondary bg-secondary text-[#5a3c00] hover:bg-[#f7a93a]; }
+.btn-ghost { @apply border-transparent bg-transparent shadow-none hover:bg-surface; }
+.btn-sm { @apply gap-1.5 rounded-lg px-3 py-1.5 text-xs; }
+.btn-lg { @apply rounded-2xl px-6 py-3.5 text-base; }
+
+/* ----------------------------- Űrlapok ----------------------------- */
+.input {
+  @apply w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-text
+         transition placeholder:font-normal placeholder:text-text-muted/70
+         focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20;
+}
+.input-lg { @apply rounded-2xl px-4 py-3.5 text-base; }
+/* A .field-label nagybetűsítése ne öröklődjön az űrlapelemekre */
+.input, .chip, .btn { text-transform: none; }
+.field-label { @apply block text-xs font-bold uppercase tracking-wide text-text-muted; }
+
+/* ----------------------------- Jelvények ----------------------------- */
+.badge { @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-extrabold tracking-wide; }
+.badge-green { @apply border-success/25 bg-success-soft text-success; }
+.badge-yellow { @apply border-warning/30 bg-warning-soft text-[#a96b00]; }
+.badge-red { @apply border-danger/25 bg-danger-soft text-danger; }
+.badge-blue { @apply border-primary/25 bg-primary-soft text-primary-strong; }
+.badge-muted { @apply border-border bg-surface text-text-muted; }
+.badge-demo { @apply border-warning/30 bg-warning-soft text-[#a96b00]; }
+.badge-live { @apply border-primary/25 bg-primary-soft text-primary-strong; }
+
+/* ----------------------------- Szűrő-csipeszek ----------------------------- */
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5
+         text-xs font-bold text-text-muted transition hover:border-border-strong hover:text-text
+         focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/25;
+}
+.chip-active { @apply border-primary bg-primary text-white hover:border-primary-strong hover:text-white; }
+
+/* ----------------------------- Navigáció ----------------------------- */
+.nav-link {
+  @apply inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-bold text-text-muted
+         transition hover:bg-surface hover:text-text;
+}
+.nav-link.active { @apply bg-primary-soft text-primary-strong; }
+.nav-link-mobile { @apply flex items-center gap-3 rounded-xl px-3 py-3 text-base font-bold text-text-muted transition hover:bg-surface hover:text-text; }
+.nav-link-mobile.active { @apply bg-primary-soft text-primary-strong; }
+
+/* ----------------------------- Táblázat ----------------------------- */
+.table { @apply w-full text-sm; }
+.table th { @apply px-3 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wide text-text-muted; }
+.table td { @apply border-t border-border px-3 py-3 align-middle; }
+.table tr:hover td { @apply bg-card-2; }
+
+/* ----------------------------- Apróságok ----------------------------- */
+.mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.kpi { @apply text-2xl font-extrabold tracking-tight; }
+.section-title { @apply mb-3 flex items-center gap-2 text-lg font-extrabold tracking-tight; }
+.pill { @apply inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-extrabold; }
+.pill-W { @apply bg-success-soft text-success; }
+.pill-D { @apply bg-surface text-text-muted; }
+.pill-L { @apply bg-danger-soft text-danger; }
+
+/* Ikonbuborék: egységes, felismerhető ikonkeret a statisztika-kártyákhoz */
+.icon-bubble { @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg; }
+
+/* Mérő (konfidencia / valószínűség) */
+.meter { @apply h-2.5 w-full overflow-hidden rounded-full bg-surface; }
+.meter-fill { @apply h-full rounded-full transition-[width] duration-500 ease-out; }
+}
+
+/* Recharts – világos téma */
+.recharts-default-tooltip {
+  background: #ffffff !important;
+  border: 1px solid #e2e7f3 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 24px -12px rgba(29, 37, 57, 0.25);
+  color: #1d2539 !important;
+  font-weight: 700;
+}
+.recharts-tooltip-label, .recharts-tooltip-item { color: #1d2539 !important; }

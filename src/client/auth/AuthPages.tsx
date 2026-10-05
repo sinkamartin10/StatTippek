@@ -1,14 +1,17 @@
-/** Bejelentkezés, regisztráció, elfelejtett jelszó, új jelszó – a meglévő kártya/űrlap stílusokkal. */
+/** Bejelentkezés, regisztráció, elfelejtett jelszó, új jelszó – nagy, könnyen használható űrlapok mobilon is. */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LogIn, UserPlus, KeyRound } from 'lucide-react';
 import { Card, Loading, Note } from '../components/ui';
 import { useAuth } from './AuthContext';
 
-function AuthShell({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+function AuthShell({ title, emoji, text, children }: { title: string; emoji: string; text?: string; children: ReactNode }) {
   return (
-    <div className="mx-auto max-w-md space-y-4 py-6">
-      <div className="flex items-center gap-2"><span className="text-accent">{icon}</span><h1 className="text-2xl font-extrabold tracking-tight">{title}</h1></div>
+    <div className="mx-auto max-w-md space-y-5 py-4 sm:py-8">
+      <div className="text-center">
+        <span aria-hidden className="inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-primary-soft text-3xl shadow-soft">{emoji}</span>
+        <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{title}</h1>
+        {text && <p className="mt-1.5 text-sm font-semibold text-text-muted">{text}</p>}
+      </div>
       {children}
     </div>
   );
@@ -42,18 +45,18 @@ export function LoginPage() {
   };
 
   return (
-    <AuthShell title="Bejelentkezés" icon={<LogIn className="h-6 w-6" />}>
+    <AuthShell title="Üdv újra! 👋" emoji="⚽" text="Jelentkezz be, és nézd meg a mai elemzéseket.">
       {!auth.configured ? <NotConfigured /> : (
         <Card>
-          <form onSubmit={submit} className="space-y-3">
-            <label className="block text-xs text-muted">E-mail-cím<input type="email" required autoComplete="email" className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-            <label className="block text-xs text-muted">Jelszó<input type="password" required autoComplete="current-password" className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-            {error && <div className="text-sm text-danger">{error}</div>}
-            <button type="submit" className="btn btn-primary w-full justify-center" disabled={busy}>{busy ? 'Bejelentkezés…' : 'Bejelentkezés'}</button>
+          <form onSubmit={submit} className="space-y-4">
+            <label className="field-label">E-mail-cím<input type="email" required autoComplete="email" className="input input-lg mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+            <label className="field-label">Jelszó<input type="password" required autoComplete="current-password" className="input input-lg mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            {error && <div className="rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-bold text-danger">{error}</div>}
+            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>{busy ? 'Bejelentkezés…' : 'Bejelentkezés'}</button>
           </form>
-          <div className="mt-4 flex flex-wrap justify-between gap-2 text-xs text-muted">
-            <Link to="/elfelejtett-jelszo" className="hover:text-accent">Elfelejtett jelszó</Link>
-            <span>Nincs fiókod? <Link to="/regisztracio" className="text-accent">Regisztráció</Link></span>
+          <div className="mt-5 flex flex-wrap justify-between gap-2 text-xs font-bold text-text-muted">
+            <Link to="/elfelejtett-jelszo" className="transition hover:text-primary">Elfelejtett jelszó</Link>
+            <span>Nincs fiókod? <Link to="/regisztracio" className="text-primary">Regisztráció</Link></span>
           </div>
         </Card>
       )}
@@ -86,19 +89,19 @@ export function RegisterPage() {
   };
 
   return (
-    <AuthShell title="Regisztráció" icon={<UserPlus className="h-6 w-6" />}>
+    <AuthShell title="Hozz létre fiókot 🎯" emoji="📈" text="Ingyenes, és azonnal láthatod a napi tippeket.">
       {!auth.configured ? <NotConfigured /> : done ? (
-        <Card><Note>{done}</Note><Link to="/bejelentkezes" className="btn btn-primary mt-4">Bejelentkezés</Link></Card>
+        <Card><Note>{done}</Note><Link to="/bejelentkezes" className="btn btn-primary mt-4 w-full">Bejelentkezés</Link></Card>
       ) : (
         <Card>
-          <form onSubmit={submit} className="space-y-3">
-            <label className="block text-xs text-muted">E-mail-cím<input type="email" required autoComplete="email" className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-            <label className="block text-xs text-muted">Jelszó (legalább 6 karakter)<input type="password" required minLength={6} autoComplete="new-password" className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-            <label className="block text-xs text-muted">Jelszó újra<input type="password" required autoComplete="new-password" className="input mt-1" value={password2} onChange={(e) => setPassword2(e.target.value)} /></label>
-            {error && <div className="text-sm text-danger">{error}</div>}
-            <button type="submit" className="btn btn-primary w-full justify-center" disabled={busy}>{busy ? 'Regisztráció…' : 'Fiók létrehozása'}</button>
+          <form onSubmit={submit} className="space-y-4">
+            <label className="field-label">E-mail-cím<input type="email" required autoComplete="email" className="input input-lg mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+            <label className="field-label">Jelszó (legalább 6 karakter)<input type="password" required minLength={6} autoComplete="new-password" className="input input-lg mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <label className="field-label">Jelszó újra<input type="password" required autoComplete="new-password" className="input input-lg mt-1.5" value={password2} onChange={(e) => setPassword2(e.target.value)} /></label>
+            {error && <div className="rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-bold text-danger">{error}</div>}
+            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>{busy ? 'Regisztráció…' : 'Fiók létrehozása'}</button>
           </form>
-          <div className="mt-4 text-xs text-muted">Van már fiókod? <Link to="/bejelentkezes" className="text-accent">Bejelentkezés</Link></div>
+          <div className="mt-5 text-xs font-bold text-text-muted">Van már fiókod? <Link to="/bejelentkezes" className="text-primary">Bejelentkezés</Link></div>
         </Card>
       )}
     </AuthShell>
@@ -120,17 +123,17 @@ export function ForgotPasswordPage() {
   };
 
   return (
-    <AuthShell title="Elfelejtett jelszó" icon={<KeyRound className="h-6 w-6" />}>
+    <AuthShell title="Elfelejtett jelszó 🔑" emoji="🔑" text="Megküldjük a visszaállító linket e-mailben.">
       {!auth.configured ? <NotConfigured /> : sent ? (
-        <Card><Note>Ha létezik fiók ezzel az e-mail-címmel, elküldtük a jelszó-visszaállító linket. Nyisd meg a levelet, és kattints a linkre.</Note><Link to="/bejelentkezes" className="btn mt-4">Vissza a bejelentkezéshez</Link></Card>
+        <Card><Note>Ha létezik fiók ezzel az e-mail-címmel, elküldtük a jelszó-visszaállító linket. Nyisd meg a levelet, és kattints a linkre.</Note><Link to="/bejelentkezes" className="btn mt-4 w-full">Vissza a bejelentkezéshez</Link></Card>
       ) : (
         <Card>
-          <form onSubmit={submit} className="space-y-3">
-            <label className="block text-xs text-muted">E-mail-cím<input type="email" required autoComplete="email" className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-            {error && <div className="text-sm text-danger">{error}</div>}
-            <button type="submit" className="btn btn-primary w-full justify-center" disabled={busy}>{busy ? 'Küldés…' : 'Visszaállító link küldése'}</button>
+          <form onSubmit={submit} className="space-y-4">
+            <label className="field-label">E-mail-cím<input type="email" required autoComplete="email" className="input input-lg mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+            {error && <div className="rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-bold text-danger">{error}</div>}
+            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>{busy ? 'Küldés…' : 'Visszaállító link küldése'}</button>
           </form>
-          <div className="mt-4 text-xs text-muted"><Link to="/bejelentkezes" className="hover:text-accent">Vissza a bejelentkezéshez</Link></div>
+          <div className="mt-5 text-xs font-bold text-text-muted"><Link to="/bejelentkezes" className="transition hover:text-primary">Vissza a bejelentkezéshez</Link></div>
         </Card>
       )}
     </AuthShell>
@@ -162,18 +165,18 @@ export function NewPasswordPage() {
   };
 
   return (
-    <AuthShell title="Új jelszó" icon={<KeyRound className="h-6 w-6" />}>
+    <AuthShell title="Új jelszó 🔒" emoji="🔒" text="Adj meg egy új jelszót a fiókodhoz.">
       {!auth.configured ? <NotConfigured /> : !auth.user ? (
-        <Card><Note tone="warn">A visszaállító link érvénytelen vagy lejárt. Kérj újat az „Elfelejtett jelszó” oldalon.</Note><Link to="/elfelejtett-jelszo" className="btn mt-4">Új link kérése</Link></Card>
+        <Card><Note tone="warn">A visszaállító link érvénytelen vagy lejárt. Kérj újat az „Elfelejtett jelszó” oldalon.</Note><Link to="/elfelejtett-jelszo" className="btn mt-4 w-full">Új link kérése</Link></Card>
       ) : ok ? (
         <Card><Note>A jelszó frissítve. Átirányítás a dashboardra…</Note></Card>
       ) : (
         <Card>
-          <form onSubmit={submit} className="space-y-3">
-            <label className="block text-xs text-muted">Új jelszó<input type="password" required minLength={6} autoComplete="new-password" className="input mt-1" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-            <label className="block text-xs text-muted">Új jelszó újra<input type="password" required autoComplete="new-password" className="input mt-1" value={password2} onChange={(e) => setPassword2(e.target.value)} /></label>
-            {error && <div className="text-sm text-danger">{error}</div>}
-            <button type="submit" className="btn btn-primary w-full justify-center" disabled={busy}>{busy ? 'Mentés…' : 'Jelszó mentése'}</button>
+          <form onSubmit={submit} className="space-y-4">
+            <label className="field-label">Új jelszó<input type="password" required minLength={6} autoComplete="new-password" className="input input-lg mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <label className="field-label">Új jelszó újra<input type="password" required autoComplete="new-password" className="input input-lg mt-1.5" value={password2} onChange={(e) => setPassword2(e.target.value)} /></label>
+            {error && <div className="rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-bold text-danger">{error}</div>}
+            <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>{busy ? 'Mentés…' : 'Jelszó mentése'}</button>
           </form>
         </Card>
       )}

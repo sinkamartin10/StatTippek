@@ -29,7 +29,7 @@ export default function MatchDetail() {
     return (
       <div className="space-y-6">
         <div className="card p-5">
-          <div className="text-xs text-muted">{match.league?.name} · {match.league?.country} · {fmtDateTime(match.kickoff)}</div>
+          <div className="field-label">{match.league?.name} · {match.league?.country} · {fmtDateTime(match.kickoff)}</div>
           <div className="mt-2 text-2xl font-extrabold tracking-tight">{match.homeTeam?.name} <span className="text-muted">vs</span> {match.awayTeam?.name}</div>
         </div>
         <LockedBlock title="Ez a mérkőzés PRO előfizetéssel elemezhető" text={`A FREE csomagban ezen a napon ${free.total} mérkőzésből ${free.quota} elemzése ingyenes (a kezdési idő szerinti első ${free.quota}). PRO előfizetéssel minden mérkőzés teljes elemzése, a modell indoklásai és a részletes statisztikák is elérhetők.`} />
@@ -61,9 +61,9 @@ function MatchDetailInner({ id, pro }: { id: string; pro: boolean }) {
   return (
     <div className="space-y-6">
       <Header an={an} onRefresh={refresh} refreshing={refreshing} />
-      <nav className="sticky top-16 z-10 -mx-4 overflow-x-auto border-b border-border bg-bg px-4 py-2 lg:-mx-8 lg:px-8">
+      <nav className="sticky top-16 z-10 -mx-4 overflow-x-auto border-y border-border bg-card px-4 py-2 lg:-mx-8 lg:px-8">
         <div className="flex gap-1 whitespace-nowrap">
-          {SECTIONS.map(([k, l]) => <a key={k} href={`#${k}`} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-card-2 hover:text-text">{l}</a>)}
+          {SECTIONS.map(([k, l]) => <a key={k} href={`#${k}`} className="rounded-full px-3 py-1.5 text-xs font-bold text-text-muted transition hover:bg-surface hover:text-text">{l}</a>)}
         </div>
       </nav>
 
@@ -94,7 +94,7 @@ function Header({ an, onRefresh, refreshing }: { an: MatchAnalysis; onRefresh: (
   const m = an.match;
   return (
     <div className="card overflow-hidden">
-      <div className="bg-gradient-to-r from-accent/10 via-transparent to-info/10 p-5">
+      <div className="bg-primary-soft p-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <span className="font-semibold text-text/90">{an.league.name}</span><span>· {an.league.country}</span>{m.round && <span>· {m.round}</span>}
           <ImportanceBadge importance={m.importance} /><OriginBadge origin={an.origin} /><QualityBadge q={an.dataQuality} showScore />
@@ -123,7 +123,7 @@ function Overview({ an }: { an: MatchAnalysis }) {
   return (
     <Card id="attekintes" title="Gyors áttekintés">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-lg border border-border bg-bg-2/60 p-3">
+        <div className="rounded-lg border border-border bg-card-2 p-3.5">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Forma (utolsó 5)</div>
           <div className="mt-2 space-y-1.5 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2"><span className="truncate text-xs">{an.homeTeam.shortName}</span><FormPills form={homeLast5.formString} /></div>
@@ -158,12 +158,12 @@ function Overview({ an }: { an: MatchAnalysis }) {
 
 function FormTable({ f, name }: { f: FormSummary; name: string }) {
   return (
-    <div className="rounded-lg border border-border bg-bg-2/60 p-3">
+    <div className="rounded-lg border border-border bg-card-2 p-3.5">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm font-semibold">{name} <span className="text-xs font-normal text-muted">({f.venue}, {f.sampleSize} meccs)</span></div>
         <FormPills form={f.formString} />
       </div>
-      {f.sampleSize === 0 ? <div className="text-xs text-muted">Nincs elérhető mérkőzés.</div> : (
+      {f.sampleSize === 0 ? <div className="field-label">Nincs elérhető mérkőzés.</div> : (
         <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs sm:grid-cols-4">
           <div><span className="text-muted">Gy–D–V:</span> <b className="mono">{f.wins}–{f.draws}–{f.losses}</b></div>
           <div><span className="text-muted">Pont/meccs:</span> <b className="mono">{num(f.points / f.sampleSize)}</b></div>
@@ -202,7 +202,7 @@ function Statistics({ an, pro }: { an: MatchAnalysis; pro: boolean }) {
         <FormTable f={homeAtHome} name={`${an.homeTeam.shortName} – hazai forma`} />
         <FormTable f={awayAtAway} name={`${an.awayTeam.shortName} – idegenbeli forma`} />
       </div>
-      <div className="mt-4 rounded-lg border border-border bg-bg-2/60 p-3 text-sm">
+      <div className="mt-4 rounded-lg border border-border bg-card-2 p-3 text-sm">
         <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Mit jelent ez statisztikailag?</div>
         <ul className="list-disc space-y-1 pl-5">{interpretation.map((t) => <li key={t}>{t}</li>)}</ul>
       </div>
@@ -226,7 +226,7 @@ function Statistics({ an, pro }: { an: MatchAnalysis; pro: boolean }) {
       </div>
 
       <h4 className="mt-6 text-sm font-semibold">Egymás elleni mérkőzések</h4>
-      {an.h2h.sampleSize === 0 ? <div className="text-sm text-muted">Nincs elérhető egymás elleni mérkőzés az adatkészletben.</div> : (
+      {an.h2h.sampleSize === 0 ? <div className="mt-1.5 text-sm font-semibold text-text-muted">Nincs elérhető egymás elleni mérkőzés az adatkészletben.</div> : (
         <>
           <div className="my-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Stat label={`${an.homeTeam.shortName} győzelem`} value={an.h2h.homeTeamWins} />
@@ -282,9 +282,9 @@ function Comparison({ an, pro }: { an: MatchAnalysis; pro: boolean }) {
 function News({ an }: { an: MatchAnalysis }) {
   const r = an.research;
   const Avail = ({ teamName, av }: { teamName: string; av: MatchAnalysis['research']['availability']['home'] }) => (
-    <div className="rounded-lg border border-border bg-bg-2/60 p-3 text-sm">
+    <div className="rounded-lg border border-border bg-card-2 p-3 text-sm">
       <div className="mb-1 font-semibold">{teamName} – hiányzók és felállás</div>
-      <div className="text-xs text-muted">Kezdőcsapat: <b className="text-text">{av.lineupStatus}</b>{av.lineupNote && ` – ${av.lineupNote}`}{av.restDays != null && ` · pihenőnapok: ${av.restDays}`}{av.midweekEuropeanMatch && ' · hét közbeni nemzetközi meccs'}</div>
+      <div className="field-label">Kezdőcsapat: <b className="text-text">{av.lineupStatus}</b>{av.lineupNote && ` – ${av.lineupNote}`}{av.restDays != null && ` · pihenőnapok: ${av.restDays}`}{av.midweekEuropeanMatch && ' · hét közbeni nemzetközi meccs'}</div>
       {av.injuries.length + av.suspensions.length === 0 ? <div className="mt-1 text-xs text-muted">Nincs ismert sérült vagy eltiltott játékos az elérhető forrásokban.</div> : (
         <ul className="mt-1 list-disc pl-5 text-xs">
           {av.injuries.map((i, k) => <li key={'i' + k}><b>Sérülés:</b> {i.player} – {i.detail}</li>)}
@@ -306,7 +306,7 @@ function News({ an }: { an: MatchAnalysis }) {
             <li key={n.id} className="py-3">
               <div className="flex flex-wrap items-center gap-2"><span className="badge badge-muted">{n.category}</span><span className="font-semibold">{n.title}</span></div>
               <div className="mt-1 text-sm text-text/85">{n.summary}</div>
-              <div className="mt-1 text-xs text-muted">Forrás: {n.sourceName}{n.publishedAt && ` · ${fmtDateTime(n.publishedAt)}`} · {n.url ? <a href={n.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-accent">megnyitás <ExternalLink className="h-3 w-3" /></a> : <span className="text-warn">nincs ellenőrizhető URL</span>}</div>
+              <div className="mt-1 text-xs text-muted">Forrás: {n.sourceName}{n.publishedAt && ` · ${fmtDateTime(n.publishedAt)}`} · {n.url ? <a href={n.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-primary">megnyitás <ExternalLink className="h-3 w-3" /></a> : <span className="text-warn">nincs ellenőrizhető URL</span>}</div>
             </li>
           ))}
         </ul>
@@ -333,15 +333,15 @@ function External({ an }: { an: MatchAnalysis }) {
                     <td className="max-w-md text-xs">{p.originalText}</td>
                     <td>{p.market ? <span className="badge badge-green">{c.byMarket.find((b) => b.market === p.market)?.label ?? p.market}</span> : <span className="badge badge-muted">nem felismerhető</span>}{p.autoExtracted && <div className="text-[10px] text-muted">automatikus szövegelemzés</div>}</td>
                     <td className="mono">{p.confidence ?? '–'}</td>
-                    <td className="text-xs text-muted">{p.publishedAt ? fmtDateTime(p.publishedAt) : '–'}</td>
-                    <td>{p.url ? <a href={p.url} target="_blank" rel="noreferrer noopener" className="text-accent"><ExternalLink className="h-4 w-4" /></a> : <span className="text-xs text-warn">nincs</span>}</td>
+                    <td className="field-label">{p.publishedAt ? fmtDateTime(p.publishedAt) : '–'}</td>
+                    <td>{p.url ? <a href={p.url} target="_blank" rel="noreferrer noopener" className="text-primary"><ExternalLink className="h-4 w-4" /></a> : <span className="text-xs text-warn">nincs</span>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <div className="rounded-lg border border-border bg-bg-2/60 p-3 text-sm">
+            <div className="rounded-lg border border-border bg-card-2 p-3 text-sm">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Egyetértő források piaconként</div>
               {c.byMarket.map((b) => <div key={b.market} className="flex justify-between py-0.5"><span>{b.label}</span><span className="mono">{b.count}/{c.totalSources} forrás</span></div>)}
             </div>
@@ -350,7 +350,7 @@ function External({ an }: { an: MatchAnalysis }) {
               {c.disagreementNote && <Note tone="warn">{c.disagreementNote}</Note>}
               {!c.agreementNote && !c.disagreementNote && <Note>Nincs kimutatható egyetértés a források között.</Note>}
               {an.poisson && c.byMarket[0] && (
-                <div className="text-xs text-muted">Összevetés a saját modellel: a leggyakoribb külső piac ({c.byMarket[0].label}) modell-becslése {pct(an.value.find((v) => v.market === c.byMarket[0].market)?.modelProb ?? null)}.</div>
+                <div className="field-label">Összevetés a saját modellel: a leggyakoribb külső piac ({c.byMarket[0].label}) modell-becslése {pct(an.value.find((v) => v.market === c.byMarket[0].market)?.modelProb ?? null)}.</div>
               )}
             </div>
           </div>
@@ -379,11 +379,11 @@ function Model({ an }: { an: MatchAnalysis }) {
           <h4 className="mb-1 text-sm font-semibold">1X2 valószínűség-eloszlás</h4>
           <OneXTwoChart p={p} home={an.homeTeam.shortName} away={an.awayTeam.shortName} />
           <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-md bg-bg-2 p-2"><div className="text-muted">Dupla esély 1X</div><div className="mono font-semibold">{pct(p.doubleChance['1X'], 1)}</div></div>
-            <div className="rounded-md bg-bg-2 p-2"><div className="text-muted">Dupla esély 12</div><div className="mono font-semibold">{pct(p.doubleChance['12'], 1)}</div></div>
-            <div className="rounded-md bg-bg-2 p-2"><div className="text-muted">Dupla esély X2</div><div className="mono font-semibold">{pct(p.doubleChance.X2, 1)}</div></div>
+            <div className="rounded-md bg-card-2 p-2"><div className="text-muted">Dupla esély 1X</div><div className="mono font-semibold">{pct(p.doubleChance['1X'], 1)}</div></div>
+            <div className="rounded-md bg-card-2 p-2"><div className="text-muted">Dupla esély 12</div><div className="mono font-semibold">{pct(p.doubleChance['12'], 1)}</div></div>
+            <div className="rounded-md bg-card-2 p-2"><div className="text-muted">Dupla esély X2</div><div className="mono font-semibold">{pct(p.doubleChance.X2, 1)}</div></div>
           </div>
-          <div className="mt-3 rounded-lg border border-border bg-bg-2/60 p-3 text-sm">
+          <div className="mt-3 rounded-lg border border-border bg-card-2 p-3 text-sm">
             <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted">A becslés fő tényezői {!pro && <ProLock />}</div>
             {pro ? <ul className="list-disc space-y-1 pl-5">{an.oneXtwoFactors.map((t) => <li key={t}>{t}</li>)}</ul> : <LockedBlock title="A modell indoklása – PRO" compact />}
           </div>
@@ -398,8 +398,8 @@ function Model({ an }: { an: MatchAnalysis }) {
             </table>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2 text-center text-xs">
-            <div className="rounded-md bg-bg-2 p-2"><div className="text-muted">BTTS igen</div><div className="mono font-semibold">{pct(p.bttsYes, 1)}</div></div>
-            <div className="rounded-md bg-bg-2 p-2"><div className="text-muted">BTTS nem</div><div className="mono font-semibold">{pct(p.bttsNo, 1)}</div></div>
+            <div className="rounded-md bg-card-2 p-2"><div className="text-muted">BTTS igen</div><div className="mono font-semibold">{pct(p.bttsYes, 1)}</div></div>
+            <div className="rounded-md bg-card-2 p-2"><div className="text-muted">BTTS nem</div><div className="mono font-semibold">{pct(p.bttsNo, 1)}</div></div>
           </div>
         </div>
         <div>
@@ -410,7 +410,7 @@ function Model({ an }: { an: MatchAnalysis }) {
           <h4 className="mb-1 text-sm font-semibold">Legvalószínűbb pontos eredmények</h4>
           <CorrectScoreChart p={p} />
           <div className="mt-2 grid grid-cols-4 gap-2 text-center text-xs">
-            {p.correctScores.map((c) => <div key={c.score} className="rounded-md bg-bg-2 p-2"><div className="mono text-base font-bold">{c.score}</div><div className="mono text-muted">{pct(c.prob, 1)}</div></div>)}
+            {p.correctScores.map((c) => <div key={c.score} className="rounded-md bg-card-2 p-2"><div className="mono text-base font-bold">{c.score}</div><div className="mono text-muted">{pct(c.prob, 1)}</div></div>)}
           </div>
         </div>
       </div>
@@ -453,8 +453,8 @@ function OddsValue({ an, onSaved }: { an: MatchAnalysis; onSaved: () => void }) 
                   <td className="mono font-semibold">{pct(v.modelProb, 1)}</td>
                   <td className="mono">{fo(v.odds)}{an.odds?.bookmakers?.[v.market] && <div className="text-[10px] text-muted">{an.odds.bookmakers[v.market]}</div>}</td>
                   <td className="mono">{v.impliedProb != null ? pct(v.impliedProb, 2) : '–'}</td>
-                  <td className={`mono font-semibold ${v.diffPoints == null ? '' : v.diffPoints >= 3 ? 'text-accent' : v.diffPoints <= -3 ? 'text-danger' : ''}`}>{v.diffPoints != null ? `${signed(v.diffPoints)} pp` : '–'}</td>
-                  <td>{v.verdict ? <span className={`badge ${v.verdict.startsWith('Pozitív') ? 'badge-green' : v.verdict.startsWith('Negatív') ? 'badge-red' : 'badge-muted'}`}>{v.verdict}</span> : <span className="text-xs text-muted">nincs odds</span>}</td>
+                  <td className={`mono font-semibold ${v.diffPoints == null ? '' : v.diffPoints >= 3 ? 'text-primary' : v.diffPoints <= -3 ? 'text-danger' : ''}`}>{v.diffPoints != null ? `${signed(v.diffPoints)} pp` : '–'}</td>
+                  <td>{v.verdict ? <span className={`badge ${v.verdict.startsWith('Pozitív') ? 'badge-green' : v.verdict.startsWith('Negatív') ? 'badge-red' : 'badge-muted'}`}>{v.verdict}</span> : <span className="field-label">nincs odds</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -463,12 +463,12 @@ function OddsValue({ an, onSaved }: { an: MatchAnalysis; onSaved: () => void }) 
       )}
       <p className="mt-2 text-xs text-muted">Az implikált valószínűség 1 ÷ odds, a fogadóiroda árrésével együtt. A „pozitív modellkülönbség” azt jelenti, hogy a modell magasabb esélyt becsül, mint amit az odds tükröz – nem azt, hogy a fogadás nyereséges.</p>
 
-      <details className="mt-4 rounded-lg border border-border bg-bg-2/60 p-3">
+      <details className="mt-4 rounded-lg border border-border bg-card-2 p-3.5">
         <summary className="cursor-pointer text-sm font-semibold">Odds kézi megadása / felülírása</summary>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
           {ODDS_INPUTS.map((m) => (
             <label key={m} className="text-[11px] text-muted">{labels[m] ?? m}
-              <input className="input mt-1" inputMode="decimal" placeholder={an.odds?.markets[m] ? fo(an.odds.markets[m]) : '1,90'} value={form[m] ?? ''} onChange={(e) => setForm({ ...form, [m]: e.target.value })} />
+              <input className="input mt-1.5" inputMode="decimal" placeholder={an.odds?.markets[m] ? fo(an.odds.markets[m]) : '1,90'} value={form[m] ?? ''} onChange={(e) => setForm({ ...form, [m]: e.target.value })} />
             </label>
           ))}
         </div>
@@ -490,13 +490,13 @@ function TipCard({ t, matchId }: { t: TipSuggestion; matchId: string }) {
     try { await api.savePrediction(matchId, t.market); setSaved('Mentve az előzményekbe.'); } catch (e) { setSaved((e as Error).message); }
   };
   return (
-    <div className="rounded-lg border border-border bg-bg-2/60 p-3">
+    <div className="rounded-lg border border-border bg-card-2 p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">{t.label}</div>
         <div className="flex items-center gap-2 text-xs">
-          <span className="mono rounded-md bg-accent/15 px-2 py-0.5 font-bold text-accent">{pct(t.modelProb, 1)}</span>
+          <span className="mono rounded-md bg-accent/15 px-2 py-0.5 font-bold text-primary">{pct(t.modelProb, 1)}</span>
           {t.odds != null && <span className="mono rounded-md bg-card px-2 py-0.5">odds {fo(t.odds)}</span>}
-          {t.diffPoints != null && <span className={`mono rounded-md px-2 py-0.5 ${t.diffPoints >= 3 ? 'bg-accent/15 text-accent' : t.diffPoints <= -3 ? 'bg-danger/15 text-danger' : 'bg-card'}`}>{signed(t.diffPoints)} pp</span>}
+          {t.diffPoints != null && <span className={`mono rounded-md px-2 py-0.5 ${t.diffPoints >= 3 ? 'bg-accent/15 text-primary' : t.diffPoints <= -3 ? 'bg-danger/15 text-danger' : 'bg-card'}`}>{signed(t.diffPoints)} pp</span>}
           <span className="badge badge-muted">{t.supportingIndicators}/{t.supportingStats.length} mutató</span>
         </div>
       </div>
@@ -507,10 +507,10 @@ function TipCard({ t, matchId }: { t: TipSuggestion; matchId: string }) {
       </div>
       {pro && open && (
         <div className="mt-3 grid gap-3 text-sm">
-          <div><div className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-accent"><CheckCircle2 className="h-3.5 w-3.5" /> Mellette</div><ul className="list-disc space-y-1 pl-4 text-xs">{t.reasonsFor.map((r) => <li key={r}>{r}</li>)}</ul></div>
-          <div><div className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-danger"><XCircle className="h-3.5 w-3.5" /> Ellene</div>{t.reasonsAgainst.length ? <ul className="list-disc space-y-1 pl-4 text-xs">{t.reasonsAgainst.map((r) => <li key={r}>{r}</li>)}</ul> : <div className="text-xs text-muted">Nincs ellenérv a vizsgált mutatók között.</div>}</div>
+          <div><div className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-primary"><CheckCircle2 className="h-3.5 w-3.5" /> Mellette</div><ul className="list-disc space-y-1 pl-4 text-xs">{t.reasonsFor.map((r) => <li key={r}>{r}</li>)}</ul></div>
+          <div><div className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-danger"><XCircle className="h-3.5 w-3.5" /> Ellene</div>{t.reasonsAgainst.length ? <ul className="list-disc space-y-1 pl-4 text-xs">{t.reasonsAgainst.map((r) => <li key={r}>{r}</li>)}</ul> : <div className="field-label">Nincs ellenérv a vizsgált mutatók között.</div>}</div>
           <div><div className="mb-1 text-xs font-semibold uppercase tracking-wider text-warn">Bizonytalansági tényezők</div><ul className="list-disc space-y-1 pl-4 text-xs">{t.risks.map((r) => <li key={r}>{r}</li>)}</ul></div>
-          <div><div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Támogató statisztikák</div><ul className="space-y-0.5 text-xs">{t.supportingStats.map((s) => <li key={s} className={s.startsWith('✔') ? 'text-accent' : 'text-muted'}>{s}</li>)}</ul><div className="mt-1 text-[11px] text-muted">Minta: {t.sampleSize} meccs.</div></div>
+          <div><div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Támogató statisztikák</div><ul className="space-y-0.5 text-xs">{t.supportingStats.map((s) => <li key={s} className={s.startsWith('✔') ? 'text-primary' : 'text-muted'}>{s}</li>)}</ul><div className="mt-1 text-[11px] text-muted">Minta: {t.sampleSize} meccs.</div></div>
         </div>
       )}
     </div>
@@ -544,7 +544,7 @@ function Risks({ an }: { an: MatchAnalysis }) {
         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Adatminőség részletei ({an.dataQuality.score}/100 – nem nyerési esély)</div>
         <div className="grid gap-1 sm:grid-cols-2">
           {an.dataQuality.factors.map((f) => (
-            <div key={f.label} className="flex items-start gap-2 text-sm">{f.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-accent" /> : <XCircle className="mt-0.5 h-4 w-4 text-danger" />}<span><b>{f.label}:</b> <span className="text-muted">{f.detail}</span></span></div>
+            <div key={f.label} className="flex items-start gap-2 text-sm">{f.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" /> : <XCircle className="mt-0.5 h-4 w-4 text-danger" />}<span><b>{f.label}:</b> <span className="text-muted">{f.detail}</span></span></div>
           ))}
         </div>
       </div>
@@ -566,9 +566,9 @@ function Sources({ an }: { an: MatchAnalysis }) {
                   <td className="font-semibold">{x.sourceName}</td>
                   <td><span className="badge badge-muted">{x.type}</span></td>
                   <td className="max-w-lg text-xs">„{x.extracted}”</td>
-                  <td className="text-xs text-muted">{fmtDateTime(x.retrievedAt)}</td>
-                  <td className="text-xs text-muted">{x.method}</td>
-                  <td>{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs text-accent">link <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-warn">nincs ellenőrizhető URL</span>}</td>
+                  <td className="field-label">{fmtDateTime(x.retrievedAt)}</td>
+                  <td className="field-label">{x.method}</td>
+                  <td>{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs text-primary">link <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-warn">nincs ellenőrizhető URL</span>}</td>
                 </tr>
               ))}
             </tbody>

@@ -16,8 +16,8 @@ export default function Stats() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Statisztikák</h1>
-          <p className="text-sm text-muted">Tabella, forma és gólstatisztikák bajnokságonként az elérhető lejátszott mérkőzésekből.</p>
+          <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Statisztikák</h1>
+          <p className="mt-1.5 text-sm font-semibold text-text-muted">Tabella, forma és gólstatisztikák bajnokságonként az elérhető lejátszott mérkőzésekből.</p>
         </div>
         <select className="input max-w-xs" value={leagueId} onChange={(e) => setLeagueId(e.target.value)}>
           {leagues.data?.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.country})</option>)}
@@ -35,7 +35,7 @@ export default function Stats() {
           </div>
           {!pro ? <Card title={`${st.data.league.name} – tabella és gólstatisztikák`} right={<ProLock />}><LockedBlock title="Részletes statisztikák – PRO" text="Tabella, forma, lőtt/kapott gól diagramok PRO előfizetéssel. A liga-átlagok fent ingyenesek." /></Card> : <>
           <Card title={`${st.data.league.name} – tabella`} right={<OriginBadge origin={st.data.origin} small />}>
-            {st.data.standings.length === 0 ? <div className="text-sm text-muted">Nincs lejátszott mérkőzés ebben a bajnokságban.</div> : (
+            {st.data.standings.length === 0 ? <div className="mt-1.5 text-sm font-semibold text-text-muted">Nincs lejátszott mérkőzés ebben a bajnokságban.</div> : (
               <div className="overflow-x-auto">
                 <table className="table">
                   <thead><tr><th>#</th><th>Csapat</th><th>M</th><th>Gy</th><th>D</th><th>V</th><th>LG</th><th>KG</th><th>GK</th><th>P</th><th>Forma</th></tr></thead>
@@ -56,7 +56,7 @@ export default function Stats() {
           </Card>
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Lőtt gólok csapatonként"><SimpleBarChart data={st.data.standings.map((s) => ({ name: s.team?.shortName ?? s.teamId, v: s.gf }))} height={260} /></Card>
-            <Card title="Kapott gólok csapatonként"><SimpleBarChart data={st.data.standings.map((s) => ({ name: s.team?.shortName ?? s.teamId, v: s.ga }))} color="#ef4444" height={260} /></Card>
+            <Card title="Kapott gólok csapatonként"><SimpleBarChart data={st.data.standings.map((s) => ({ name: s.team?.shortName ?? s.teamId, v: s.ga }))} color="#f2546a" height={260} /></Card>
           </div>
           </>}
         </>

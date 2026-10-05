@@ -18,8 +18,8 @@ export default function Sources() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Források</h1>
-        <p className="text-sm text-muted">Minden külső információ forrással, URL-lel és lekérési idővel. URL nélküli tétel nem tekinthető ellenőrzöttnek.</p>
+        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Források</h1>
+        <p className="mt-1.5 text-sm font-semibold text-text-muted">Minden külső információ forrással, URL-lel és lekérési idővel. URL nélküli tétel nem tekinthető ellenőrzöttnek.</p>
       </div>
       <Note>A forrásnapló az eddig elemzett mérkőzésekhez tartozó bejegyzéseket tartalmazza (legfeljebb 500 legfrissebb). Új mérkőzés elemzésekor bővül.</Note>
       <Card title="Szűrők">
@@ -40,11 +40,11 @@ export default function Sources() {
                     <td className="mono whitespace-nowrap text-xs">{fmtDateTime(x.retrievedAt)}</td>
                     <td className="font-semibold">{x.sourceName}</td>
                     <td><span className="badge badge-muted">{x.type}</span></td>
-                    <td className="text-xs text-muted">{x.matchId}</td>
+                    <td className="field-label">{x.matchId}</td>
                     <td className="max-w-md text-xs">„{x.extracted}”</td>
-                    <td className="text-xs text-muted">{x.method}</td>
+                    <td className="field-label">{x.method}</td>
                     <td><OriginBadge origin={x.origin} small /></td>
-                    <td>{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs text-accent">link <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-warn">nincs</span>}</td>
+                    <td>{x.url ? <a href={x.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs text-primary">link <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-warn">nincs</span>}</td>
                   </tr>
                 ))}
               </tbody>

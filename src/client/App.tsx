@@ -7,6 +7,7 @@ import Analysis from './pages/Analysis';
 import Tips from './pages/Tips';
 import Slips from './pages/Slips';
 import Pro from './pages/Pro';
+import Profile from './pages/Profile';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Sources from './pages/Sources';
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/tippek" element={<Tips />} />
         <Route path="/szelvenyek" element={<Slips />} />
         <Route path="/pro" element={<Pro />} />
+        <Route path="/profil" element={<Profile />} />
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
         <Route path="/forrasok" element={<Sources />} />
@@ -48,7 +50,7 @@ export default function App() {
         <Route path="/meccs/:id" element={<MatchDetail />} />
         <Route path="/csapat/:id" element={<Team />} />
         <Route path="/kereses" element={<Search />} />
-        <Route path="*" element={<EmptyState title="Az oldal nem található" text="Ellenőrizd a címet, vagy válassz a menüből." />} />
+        <Route path="*" element={<EmptyState emoji="🧭" title="Az oldal nem található" text="Ellenőrizd a címet, vagy válassz a menüből." />} />
       </Route>
     </Routes>
   );

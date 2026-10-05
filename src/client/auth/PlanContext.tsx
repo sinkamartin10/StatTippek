@@ -75,20 +75,20 @@ export function usePlan(): PlanState {
 /** Lakat-jelvény PRO funkciókhoz (feliratokhoz, gombokhoz). */
 export function ProLock({ label = 'PRO' }: { label?: string }) {
   return (
-    <Link to="/pro" className="badge badge-yellow hover:border-warn" title="PRO előfizetéssel elérhető">
+    <Link to="/pro" className="badge badge-yellow transition hover:border-warning" title="PRO előfizetéssel elérhető">
       <Lock className="h-3 w-3" /> {label}
     </Link>
   );
 }
 
-/** Lezárt tartalom helyőrzője: cím, rövid magyarázat, PRO gomb. */
+/** Lezárt tartalom helyőrzője: cím, rövid magyarázat, PRO gomb. Láthatóan, de nem agresszíven zárt. */
 export function LockedBlock({ title, text, compact }: { title: string; text?: string; compact?: boolean }) {
   return (
-    <div className={`flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-warn/50 bg-warn/5 text-center ${compact ? 'p-4' : 'p-8'}`}>
-      <Lock className="h-6 w-6 text-warn" />
-      <div className="font-semibold">{title}</div>
-      {text && <div className="max-w-md text-sm text-muted">{text}</div>}
-      <Link to="/pro" className="btn btn-primary btn-sm mt-1"><Crown className="h-3.5 w-3.5" /> PRO előfizetés</Link>
+    <div className={`flex flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-warning/40 bg-warning-soft text-center ${compact ? 'p-5' : 'p-8'}`}>
+      <span aria-hidden className="flex h-12 w-12 items-center justify-center rounded-2xl bg-card text-2xl shadow-soft">🔒</span>
+      <div className="text-base font-extrabold">{title}</div>
+      {text && <div className="max-w-md text-sm font-semibold text-text-muted">{text}</div>}
+      <Link to="/pro" className="btn btn-primary mt-1"><Crown className="h-4 w-4" /> PRO kipróbálása</Link>
     </div>
   );
 }

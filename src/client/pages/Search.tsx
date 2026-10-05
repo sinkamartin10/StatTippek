@@ -13,20 +13,20 @@ export default function Search() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Keresés: „{q}”</h1>
-        <p className="text-sm text-muted">Csapatok, közelgő mérkőzések (3 nap), bajnokságok és országok.</p>
+        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Keresés: „{q}”</h1>
+        <p className="mt-1.5 text-sm font-semibold text-text-muted">Csapatok, közelgő mérkőzések (3 nap), bajnokságok és országok.</p>
       </div>
       {q.length < 2 ? <EmptyState title="Adj meg legalább 2 karaktert" /> : r.loading ? <Loading /> : r.error ? <ErrorBox message={r.error} onRetry={r.reload} /> : r.data && (
         <>
           {r.data.teams.length === 0 && r.data.leagues.length === 0 && r.data.matches.length === 0 && <EmptyState title="Nincs találat" text="Próbálj más kulcsszót (pl. csapatnév, bajnokság vagy ország)." />}
           {r.data.teams.length > 0 && (
             <Card title={`Csapatok (${r.data.teams.length})`}>
-              <div className="flex flex-wrap gap-2">{r.data.teams.map((t) => <Link key={t.id} to={`/csapat/${encodeURIComponent(t.id)}`} className="btn">{t.name} <span className="text-xs text-muted">{t.country}</span></Link>)}</div>
+              <div className="flex flex-wrap gap-2">{r.data.teams.map((t) => <Link key={t.id} to={`/csapat/${encodeURIComponent(t.id)}`} className="btn">{t.name} <span className="field-label">{t.country}</span></Link>)}</div>
             </Card>
           )}
           {r.data.leagues.length > 0 && (
             <Card title={`Bajnokságok (${r.data.leagues.length})`}>
-              <div className="flex flex-wrap gap-2">{r.data.leagues.map((l) => <Link key={l.id} to="/statisztikak" className="btn">{l.name} <span className="text-xs text-muted">{l.country}</span></Link>)}</div>
+              <div className="flex flex-wrap gap-2">{r.data.leagues.map((l) => <Link key={l.id} to="/statisztikak" className="btn">{l.name} <span className="field-label">{l.country}</span></Link>)}</div>
             </Card>
           )}
           {r.data.matches.length > 0 && (

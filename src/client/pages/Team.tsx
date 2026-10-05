@@ -14,9 +14,9 @@ export default function Team() {
   const d = t.data;
   const FormBox = ({ f, title }: { f: typeof d.last10; title: string }) => (
     <Card title={title}>
-      {f.sampleSize === 0 ? <div className="text-sm text-muted">Nincs elérhető mérkőzés.</div> : (
+      {f.sampleSize === 0 ? <div className="mt-1.5 text-sm font-semibold text-text-muted">Nincs elérhető mérkőzés.</div> : (
         <>
-          <div className="mb-3 flex items-center justify-between"><FormPills form={f.formString} /><span className="text-xs text-muted">{f.sampleSize} meccs</span></div>
+          <div className="mb-3 flex items-center justify-between"><FormPills form={f.formString} /><span className="field-label">{f.sampleSize} meccs</span></div>
           <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
             <div><span className="text-muted">Gy–D–V:</span> <b className="mono">{f.wins}–{f.draws}–{f.losses}</b></div>
             <div><span className="text-muted">Pont/meccs:</span> <b className="mono">{num(f.points / f.sampleSize)}</b></div>
@@ -32,8 +32,8 @@ export default function Team() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-extrabold tracking-tight">{d.team.name}</h1>
-        <span className="text-sm text-muted">{d.league?.name} · {d.team.country}</span>
+        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{d.team.name}</h1>
+        <span className="mt-1.5 text-sm font-semibold text-text-muted">{d.league?.name} · {d.team.country}</span>
         <OriginBadge origin={d.origin} />
         {d.league && <Link to="/statisztikak" className="btn btn-sm">Tabella</Link>}
       </div>
@@ -50,7 +50,7 @@ export default function Team() {
       <Card title="Lőtt / kapott gólok – utolsó 10"><FormGoalsChart form={d.last10} name={d.team.shortName} /></Card>
       <section><h2 className="section-title">Közelgő mérkőzések</h2><MatchGrid matches={d.upcoming} emptyText="Nincs közelgő mérkőzés az adatkészletben." /></section>
       <Card title="Legutóbbi mérkőzések">
-        {d.recent.length === 0 ? <div className="text-sm text-muted">Nincs lejátszott mérkőzés.</div> : (
+        {d.recent.length === 0 ? <div className="mt-1.5 text-sm font-semibold text-text-muted">Nincs lejátszott mérkőzés.</div> : (
           <table className="table">
             <thead><tr><th>Dátum</th><th>Mérkőzés</th><th>Sorozat</th><th>Eredmény</th><th></th></tr></thead>
             <tbody>
@@ -58,7 +58,7 @@ export default function Team() {
                 <tr key={m.id}>
                   <td className="mono text-xs">{fmtDateTime(m.date)}</td>
                   <td className="font-semibold">{m.homeTeam?.name ?? m.homeTeamId} – {m.awayTeam?.name ?? m.awayTeamId}</td>
-                  <td className="text-xs text-muted">{m.league?.name}</td>
+                  <td className="field-label">{m.league?.name}</td>
                   <td className="mono font-bold">{m.homeGoals}–{m.awayGoals}{m.htHomeGoals != null && <span className="ml-1 text-xs font-normal text-muted">({m.htHomeGoals}–{m.htAwayGoals})</span>}</td>
                   <td><Link to={`/meccs/${encodeURIComponent(m.id)}`} className="btn btn-sm">Elemzés</Link></td>
                 </tr>

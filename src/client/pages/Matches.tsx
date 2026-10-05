@@ -25,12 +25,12 @@ export default function Matches() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Mai meccsek</h1>
-          <p className="text-sm text-muted">{fmtDayLabel(f.date + 'T12:00:00')} – {list.length} mérkőzés</p>
+          <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Mai meccsek</h1>
+          <p className="mt-1.5 text-sm font-semibold text-text-muted">{fmtDayLabel(f.date + 'T12:00:00')} – {list.length} mérkőzés</p>
         </div>
         <div className="flex gap-2">
           {[-1, 0, 1, 2].map((d) => (
-            <button key={d} className={`btn btn-sm ${f.date === todayKey(d) ? 'btn-primary' : ''}`} onClick={() => setF({ ...f, date: todayKey(d) })}>
+            <button key={d} className={`chip ${f.date === todayKey(d) ? 'chip-active' : ''}`} onClick={() => setF({ ...f, date: todayKey(d) })}>
               {d === -1 ? 'Tegnap' : d === 0 ? 'Ma' : d === 1 ? 'Holnap' : 'Holnapután'}
             </button>
           ))}

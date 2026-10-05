@@ -1,7 +1,7 @@
-/** PRO oldal (látogatóknak is): ár (a Stripe Price-ból), funkciók, „Előfizetek” → Stripe Checkout; PRO-nak ügyfélportál. */
+/** PRO oldal: ár (a Stripe Price-ból), előnyök, „PRO aktiválása” → Stripe Checkout; PRO-nak ügyfélportál. */
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, Crown, Lock } from 'lucide-react';
+import { Check, Crown, Lock } from 'lucide-react';
 import { Card, Disclaimer, ErrorBox, Loading, Note } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
 import { STATUS_LABEL, expiryText } from '../auth/useProfile';
@@ -13,14 +13,20 @@ import { api } from '../lib/api';
 /** Tartalék ár-felirat, ha a Stripe nincs beállítva – élesben a Stripe Price adja az árat. */
 export const PRO_PRICE = '2 990 Ft/hó';
 
-const FEATURES: { label: string; free: string | null; pro: string }[] = [
-  { label: 'Teljes tipplisták', free: `napi ${FREE_DAILY_TIPS} tipp`, pro: 'minden mérkőzés, minden piac' },
-  { label: 'Részletes statisztikák', free: 'csak gyors áttekintés', pro: 'forma, hazai/idegen bontás, gólpiacok, egymás elleni, diagramok' },
-  { label: 'Modell indoklásai', free: null, pro: 'tippenként mellette/ellene érvek, kockázatok, 1X2 tényezők' },
-  { label: 'Történelmi eredmények', free: null, pro: 'előzmények, találati arány, kalibráció, ROI' },
-  { label: 'Szelvényépítő', free: null, pro: 'kombinációk valódi oddsokkal, három stratégia' },
-  { label: 'Odds és értékelemzés', free: 'alap odds', pro: 'modell vs. implikált valószínűség minden piacon' },
-  { label: 'Mérkőzések, hírek, források', free: 'igen', pro: 'igen' },
+const BENEFITS = [
+  'Minden mérkőzés, minden piac – nem csak napi 3 tipp',
+  'A modell indoklásai: mellette és ellene szóló mutatók, kockázatok',
+  'Részletes statisztikák: forma, hazai/idegen bontás, gólpiacok, diagramok',
+  'Előzmények: találati arány, kalibráció, nyereség/veszteség',
+  'Szelvényépítő valódi oddsokkal, három stratégiával',
+  'Odds- és értékelemzés: modell vs. odds szerinti esély minden piacon',
+];
+
+const FREE_LIST = [
+  `Napi ${FREE_DAILY_TIPS} tipp`,
+  'A nap első néhány mérkőzésének elemzése',
+  'Liga-átlagok és gyors áttekintés',
+  'Hírek és források linkekkel',
 ];
 
 export default function Pro() {
@@ -75,68 +81,76 @@ export default function Pro() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="card overflow-hidden">
-        <div className="bg-gradient-to-r from-accent/15 via-transparent to-warn/10 p-6 md:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="flex items-center gap-2 text-3xl font-extrabold tracking-tight"><Crown className="h-7 w-7 text-accent" /> TIPPMIX AI PRO</h1>
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Fejléc */}
+      <div className="text-center">
+        <span className="badge badge-yellow"><Crown className="h-3.5 w-3.5" /> TippStats PRO</span>
+        <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Többet szeretnél látni? 👀</h1>
+        <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-text-muted">
+          A FREE csomagban naponta {FREE_DAILY_TIPS} tippet látsz. PRO-val megnyílik minden mérkőzés, minden piac és a modell teljes indoklása.
+        </p>
+      </div>
+
+      {/* Csomagok */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* FREE */}
+        <Card className="h-full" title="FREE" right={<span className="badge badge-muted">0 Ft</span>}>
+          <ul className="space-y-2.5">
+            {FREE_LIST.map((t) => (
+              <li key={t} className="flex items-start gap-2 text-sm font-semibold"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}</li>
+            ))}
+            <li className="flex items-start gap-2 text-sm font-semibold text-text-muted"><Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" /> Indoklás, előzmények és szelvényépítő: zárva</li>
+          </ul>
+        </Card>
+
+        {/* PRO */}
+        <section className="card relative overflow-hidden border-primary/40 p-5 shadow-lift">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight"><Crown className="h-5 w-5 text-secondary" /> PRO</h2>
             {configured && loggedIn && <PlanBadge pro={pro} />}
           </div>
-          <div className="mt-2 text-4xl font-black tracking-tight text-accent">{price}</div>
-          <p className="mt-2 max-w-2xl text-sm text-muted">Teljes hozzáférés az elemzésekhez: minden tipp, részletes statisztikák, a modell indoklásai és a történelmi eredmények. Bármikor lemondható.</p>
-          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-            {['Teljes tipplisták', 'Részletes statisztikák', 'Modell indoklásai', 'Történelmi eredmények', 'Szelvényépítő', 'Odds- és értékelemzés'].map((f) => (
-              <li key={f} className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 shrink-0 text-accent" /> {f}</li>
+          <div className="mt-1 text-3xl font-black tracking-tight text-primary">{price}</div>
+          <p className="mt-1 text-xs font-semibold text-text-muted">Bármikor lemondható. Biztonságos fizetés Stripe-on keresztül – a kártyaadatok nem kerülnek a mi szerverünkre.</p>
+
+          <ul className="mt-4 space-y-2.5">
+            {BENEFITS.map((t) => (
+              <li key={t} className="flex items-start gap-2 text-sm font-semibold"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}</li>
             ))}
           </ul>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+
+          <div className="mt-5 space-y-2">
             {pro && configured ? (
               <>
                 <Note>Aktív PRO előfizetésed van – köszönjük!</Note>
-                {profile?.stripe_customer_id && <button className="btn" onClick={openPortal} disabled={busy}>Előfizetés kezelése (számlák, lemondás)</button>}
+                {profile?.stripe_customer_id && <button className="btn w-full" onClick={openPortal} disabled={busy}>Előfizetés kezelése (számlák, lemondás)</button>}
               </>
             ) : (
-              <button className="btn btn-primary px-6 py-3 text-base" onClick={subscribe} disabled={busy || (billing.data ? !billing.data.configured : false)}><Crown className="h-5 w-5" /> {busy ? 'Átirányítás a fizetéshez…' : 'Előfizetek'}</button>
+              <button className="btn btn-primary btn-lg w-full" onClick={subscribe} disabled={busy || (billing.data ? !billing.data.configured : false)}>
+                <Crown className="h-5 w-5" /> {busy ? 'Átirányítás a fizetéshez…' : 'PRO aktiválása'}
+              </button>
             )}
-            {!loggedIn && configured && <span className="text-xs text-muted">Nincs még fiókod? <Link to="/regisztracio" className="text-accent">Regisztrálj ingyen</Link></span>}
-            {billing.data && !billing.data.configured && <span className="text-xs text-warn">A fizetés még nincs beállítva a szerveren (Stripe kulcsok) – lásd README.</span>}
-            {loggedIn && billing.data?.configured && <button className="btn btn-sm" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Státusz frissítése</button>}
+            {!loggedIn && configured && <p className="text-center text-xs font-semibold text-text-muted">Nincs még fiókod? <Link to="/regisztracio" className="text-primary">Regisztrálj ingyen</Link></p>}
+            {billing.data && !billing.data.configured && <p className="text-center text-xs font-semibold text-warning">A fizetés még nincs beállítva a szerveren (Stripe kulcsok) – lásd README.</p>}
+            {loggedIn && billing.data?.configured && <button className="btn btn-sm btn-ghost w-full" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Státusz frissítése</button>}
           </div>
           {msg && <div className="mt-3"><Note tone={msg.tone}>{msg.text}</Note></div>}
-          <div className="mt-3 text-[11px] text-muted">Biztonságos fizetés a Stripe-on keresztül; a kártyaadatok nem kerülnek a mi szerverünkre.</div>
-        </div>
+        </section>
       </div>
 
+      {/* Az előfizetésed */}
       {configured && loggedIn && (
         <Card title="Az előfizetésed">
           {loading && !profile ? <Loading /> : error ? <ErrorBox message={error} onRetry={reload} /> : (
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border border-border bg-bg-2/60 p-3"><div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Fiók</div><div className="mt-1 truncate text-sm font-semibold">{user?.email}</div></div>
-              <div className="rounded-lg border border-border bg-bg-2/60 p-3"><div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Státusz</div><div className="mt-1 text-sm font-semibold">{profile ? STATUS_LABEL[profile.subscription_status] : '–'}</div></div>
-              <div className="rounded-lg border border-border bg-bg-2/60 p-3"><div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Lejárat</div><div className="mt-1 text-sm font-semibold">{expiryText(profile, fmtDateTime)}</div></div>
+              <div className="rounded-xl border border-border bg-card-2 p-3"><div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Fiók</div><div className="mt-1 truncate text-sm font-extrabold">{user?.email}</div></div>
+              <div className="rounded-xl border border-border bg-card-2 p-3"><div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Státusz</div><div className="mt-1 text-sm font-extrabold">{profile ? STATUS_LABEL[profile.subscription_status] : '–'}</div></div>
+              <div className="rounded-xl border border-border bg-card-2 p-3"><div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Lejárat</div><div className="mt-1 text-sm font-extrabold">{expiryText(profile, fmtDateTime)}</div></div>
             </div>
           )}
         </Card>
       )}
 
-      <Card title="FREE és PRO összehasonlítás">
-        <div className="overflow-x-auto">
-          <table className="table">
-            <thead><tr><th>Funkció</th><th>FREE</th><th>PRO – {price}</th></tr></thead>
-            <tbody>
-              {FEATURES.map((f) => (
-                <tr key={f.label}>
-                  <td className="font-medium">{f.label}</td>
-                  <td className="text-sm">{f.free ? <span className="text-muted">{f.free}</span> : <span className="inline-flex items-center gap-1 text-warn"><Lock className="h-3.5 w-3.5" /> zárva</span>}</td>
-                  <td className="text-sm"><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-4 w-4 text-accent" /> {f.pro}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <Note>A TIPPMIX AI elemző eszköz – egyetlen csomag sem ígér nyereséget. Az előfizetés státuszát csak a szerver módosíthatja; a felületről nem állítható át.</Note>
+      <Note>A TippStats elemző eszköz – egyetlen csomag sem ígér nyereséget. Az előfizetés státuszát csak a szerver módosíthatja; a felületről nem állítható át.</Note>
       <Disclaimer />
     </div>
   );

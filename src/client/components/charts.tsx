@@ -1,18 +1,18 @@
-/** Recharts alapú, reszponzív diagramok (sötét téma). */
+/** Recharts alapú, reszponzív diagramok (világos téma, a design tokenekkel egyező színekkel). */
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import type { FormSummary, PoissonResult } from '@shared/types';
 
-const AX = { stroke: '#8b9bb0', fontSize: 11 };
-const GRID = '#223041';
+const AX = { stroke: '#6d7894', fontSize: 11, fontWeight: 700 };
+const GRID = '#e2e7f3';
 const fmtPct = (v: number) => `${(v * 100).toFixed(1).replace('.', ',')}%`;
 
 export function OneXTwoChart({ p, home, away }: { p: PoissonResult; home: string; away: string }) {
   const data = [
-    { name: `1 – ${home}`, v: p.homeWin, c: '#22c55e' },
-    { name: 'X – Döntetlen', v: p.draw, c: '#8b9bb0' },
-    { name: `2 – ${away}`, v: p.awayWin, c: '#38bdf8' },
+    { name: `1 – ${home}`, v: p.homeWin, c: '#4f6ef7' },
+    { name: 'X – Döntetlen', v: p.draw, c: '#6d7894' },
+    { name: `2 – ${away}`, v: p.awayWin, c: '#17b877' },
   ];
   return (
     <ResponsiveContainer width="100%" height={180}>
@@ -20,8 +20,8 @@ export function OneXTwoChart({ p, home, away }: { p: PoissonResult; home: string
         <CartesianGrid stroke={GRID} horizontal={false} />
         <XAxis type="number" domain={[0, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={AX} />
         <YAxis type="category" dataKey="name" width={130} tick={AX} />
-        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-        <Bar isAnimationActive={false} dataKey="v" radius={[0, 6, 6, 0]} label={{ position: 'right', fill: '#e6edf3', fontSize: 12, formatter: (v: number) => fmtPct(v) }}>
+        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(79,110,247,0.07)' }} />
+        <Bar isAnimationActive={false} dataKey="v" radius={[0, 6, 6, 0]} label={{ position: 'right', fill: '#1d2539', fontSize: 12, formatter: (v: number) => fmtPct(v) }}>
           {data.map((d) => <Cell key={d.name} fill={d.c} />)}
         </Bar>
       </BarChart>
@@ -35,12 +35,12 @@ export function GoalDistChart({ p, home, away }: { p: PoissonResult; home: strin
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data}>
         <CartesianGrid stroke={GRID} vertical={false} />
-        <XAxis dataKey="g" tick={AX} label={{ value: 'gólok száma', position: 'insideBottom', offset: -2, fill: '#8b9bb0', fontSize: 11 }} />
+        <XAxis dataKey="g" tick={AX} label={{ value: 'gólok száma', position: 'insideBottom', offset: -2, fill: '#6d7894', fontSize: 11 }} />
         <YAxis tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={AX} />
-        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(79,110,247,0.07)' }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar isAnimationActive={false} dataKey={home} fill="#22c55e" radius={[4, 4, 0, 0]} />
-        <Bar isAnimationActive={false} dataKey={away} fill="#38bdf8" radius={[4, 4, 0, 0]} />
+        <Bar isAnimationActive={false} dataKey={home} fill="#4f6ef7" radius={[4, 4, 0, 0]} />
+        <Bar isAnimationActive={false} dataKey={away} fill="#17b877" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -54,8 +54,8 @@ export function CorrectScoreChart({ p }: { p: PoissonResult }) {
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="name" tick={AX} />
         <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} tick={AX} />
-        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-        <Bar isAnimationActive={false} dataKey="v" fill="#22c55e" radius={[4, 4, 0, 0]} />
+        <Tooltip formatter={(v) => fmtPct(Number(v))} cursor={{ fill: 'rgba(79,110,247,0.07)' }} />
+        <Bar isAnimationActive={false} dataKey="v" fill="#4f6ef7" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -71,8 +71,8 @@ export function OverUnderChart({ p }: { p: PoissonResult }) {
         <YAxis domain={[0, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={AX} />
         <Tooltip formatter={(v) => fmtPct(Number(v))} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Line isAnimationActive={false} type="monotone" dataKey="Több" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-        <Line isAnimationActive={false} type="monotone" dataKey="Kevesebb" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+        <Line isAnimationActive={false} type="monotone" dataKey="Több" stroke="#4f6ef7" strokeWidth={2} dot={{ r: 3 }} />
+        <Line isAnimationActive={false} type="monotone" dataKey="Kevesebb" stroke="#f5a524" strokeWidth={2} dot={{ r: 3 }} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -81,17 +81,17 @@ export function OverUnderChart({ p }: { p: PoissonResult }) {
 /** Forma: az utolsó N meccs lőtt/kapott góljai (legrégebbi balra). */
 export function FormGoalsChart({ form, name }: { form: FormSummary; name: string }) {
   const data = [...form.matches].reverse().map((m, i) => ({ i: i + 1, Lőtt: m.gf, Kapott: m.ga, res: m.result }));
-  if (!data.length) return <div className="py-6 text-center text-sm text-muted">Nincs adat</div>;
+  if (!data.length) return <div className="py-6 text-center text-sm font-semibold text-text-muted">Nincs adat</div>;
   return (
     <ResponsiveContainer width="100%" height={180}>
       <BarChart data={data}>
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="i" tick={AX} />
         <YAxis allowDecimals={false} tick={AX} />
-        <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} labelFormatter={(l) => `${name} – ${l}. meccs`} />
+        <Tooltip cursor={{ fill: 'rgba(79,110,247,0.07)' }} labelFormatter={(l) => `${name} – ${l}. meccs`} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar isAnimationActive={false} dataKey="Lőtt" fill="#22c55e" radius={[3, 3, 0, 0]} />
-        <Bar isAnimationActive={false} dataKey="Kapott" fill="#ef4444" radius={[3, 3, 0, 0]} />
+        <Bar isAnimationActive={false} dataKey="Lőtt" fill="#4f6ef7" radius={[3, 3, 0, 0]} />
+        <Bar isAnimationActive={false} dataKey="Kapott" fill="#f2546a" radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -106,7 +106,7 @@ export function FormTrendChart({ home, away, homeName, awayName }: { home: FormS
   const h = cum(home), a = cum(away);
   const n = Math.max(h.length, a.length);
   const data = Array.from({ length: n }, (_, i) => ({ i: i + 1, [homeName]: h[i], [awayName]: a[i] }));
-  if (!n) return <div className="py-6 text-center text-sm text-muted">Nincs adat</div>;
+  if (!n) return <div className="py-6 text-center text-sm font-semibold text-text-muted">Nincs adat</div>;
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data}>
@@ -115,21 +115,21 @@ export function FormTrendChart({ home, away, homeName, awayName }: { home: FormS
         <YAxis allowDecimals={false} tick={AX} />
         <Tooltip />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Line isAnimationActive={false} type="monotone" dataKey={homeName} stroke="#22c55e" strokeWidth={2} dot={false} />
-        <Line isAnimationActive={false} type="monotone" dataKey={awayName} stroke="#38bdf8" strokeWidth={2} dot={false} />
+        <Line isAnimationActive={false} type="monotone" dataKey={homeName} stroke="#4f6ef7" strokeWidth={2} dot={false} />
+        <Line isAnimationActive={false} type="monotone" dataKey={awayName} stroke="#17b877" strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-export function SimpleBarChart({ data, color = '#22c55e', height = 200, pctAxis = false }: { data: { name: string; v: number }[]; color?: string; height?: number; pctAxis?: boolean }) {
+export function SimpleBarChart({ data, color = '#4f6ef7', height = 200, pctAxis = false }: { data: { name: string; v: number }[]; color?: string; height?: number; pctAxis?: boolean }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data}>
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="name" tick={AX} />
         <YAxis tick={AX} tickFormatter={pctAxis ? (v) => `${v}%` : undefined} />
-        <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={(v) => (pctAxis ? `${Number(v).toFixed(1).replace('.', ',')}%` : Number(v).toFixed(2).replace('.', ','))} />
+        <Tooltip cursor={{ fill: 'rgba(79,110,247,0.07)' }} formatter={(v) => (pctAxis ? `${Number(v).toFixed(1).replace('.', ',')}%` : Number(v).toFixed(2).replace('.', ','))} />
         <Bar isAnimationActive={false} dataKey="v" fill={color} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>

@@ -17,8 +17,8 @@ export default function Analysis() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Elemzés</h1>
-        <p className="text-sm text-muted">Válassz mérkőzést a következő 3 napból – a kutatómotor és a statisztikai modellek részletes elemzést készítenek.</p>
+        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Elemzés</h1>
+        <p className="mt-1.5 text-sm font-semibold text-text-muted">Válassz mérkőzést a következő 3 napból – a kutatómotor és a statisztikai modellek részletes elemzést készítenek.</p>
       </div>
       <Card title="Mérkőzés kiválasztása">
         <div className="grid gap-3 sm:grid-cols-2">
