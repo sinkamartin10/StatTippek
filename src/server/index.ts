@@ -11,13 +11,21 @@ import { apiRouter } from './routes/api';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
+import { progressionRouter } from './routes/progression';
+import { ProgressionService } from './progression/service';
+import { getProfile, profileIsPro } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseConfigured } from './billing/supabaseAdmin';
 
 const container = buildContainer();
 const service = new AnalysisService(container);
-const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames);
+// A PRO-állapot KIZÁRÓLAG szerveroldalról, a meglévő profiles/Stripe adatból jön
+const progressionService = new ProgressionService(
+  container.progression,
+  async (userId) => profileIsPro(await getProfile(userId)),
+);
+const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames, progressionService);
 const app = express();
 app.disable('x-powered-by');
 
@@ -87,6 +95,8 @@ app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competiti
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
 app.use('/api/profile', profileRouter(container.displayNames));
+// Progression: saját XP/achievement állapot olvasása és a testreszabás mentése (PRO)
+app.use('/api/progression', progressionRouter(progressionService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -133,6 +143,11 @@ app.listen(port, async () => {
       if (missingCompetition.length) {
         console.warn('Tippverseny táblák hiányoznak:', missingCompetition.join(', '));
         console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0004_prediction_league.sql');
+      }
+      const missingProgression = await container.progression.healthCheck();
+      if (missingProgression.length) {
+        console.warn('Progression táblák hiányoznak:', missingProgression.join(', '));
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql');
       }
     }
     const pruned = container.db.pruneCache();

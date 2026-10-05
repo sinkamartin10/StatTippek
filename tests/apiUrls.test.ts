@@ -51,6 +51,7 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       const { url } = await urlOf(fn);
       expect(url, url).not.toContain('/competition/competition');
       expect(url, url).not.toContain('/profile/profile');
+      expect(url, url).not.toContain('/progression/progression');
       expect(url, url).not.toContain('//api');
     }
   });
@@ -107,6 +108,14 @@ describe('Kliens API – profil és a meglévő végpontok', () => {
     calls = [];
     const put = await urlOf(() => api.saveDisplayName('Martin23'));
     expect(put.url).toBe('/api/profile/display-name');
+    expect(put.method).toBe('PUT');
+  });
+
+  it('a progression hívások a /api/progression alá mennek', async () => {
+    expect((await urlOf(() => api.progressionMe())).url).toBe('/api/progression/me');
+    calls = [];
+    const put = await urlOf(() => api.saveProgressionSettings({ border: 'classic' }));
+    expect(put.url).toBe('/api/progression/settings');
     expect(put.method).toBe('PUT');
   });
 

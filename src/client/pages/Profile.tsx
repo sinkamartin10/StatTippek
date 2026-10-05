@@ -11,6 +11,7 @@ import { fmtDateTime } from '../lib/format';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/format';
 import { DisplayNameEditor } from '../components/DisplayNameEditor';
+import { ProgressionCard } from '../components/ProgressionCard';
 
 export default function Profile() {
   const auth = useAuth();
@@ -65,8 +66,8 @@ export default function Profile() {
   const soon = d != null && d >= 0 && d <= 7;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <PageHeader emoji="👤" title="Profil" text="A fiókod és az előfizetésed adatai." right={<PlanBadge pro={pro} />} />
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PageHeader emoji="👤" title="Profil" text="A fiókod, az előfizetésed és a Tipster profilod." right={<PlanBadge pro={pro} />} />
 
       <Card title="Fiók">
         {loading && !profile ? <Loading text="Profil betöltése…" /> : error ? <ErrorBox message={error} onRetry={reload} /> : (
@@ -106,6 +107,9 @@ export default function Profile() {
           <DisplayNameEditor current={me.data?.displayName ?? null} onSaved={() => me.reload()} />
         )}
       </Card>
+
+      {/* Tipster progression – külön modul, a meglévő profilfunkciókat nem érinti */}
+      <ProgressionCard displayName={me.data?.displayName ?? null} />
 
       <Card title="Előfizetés kezelése">
         <div className="flex flex-wrap gap-2">

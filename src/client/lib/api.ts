@@ -9,6 +9,7 @@ import type {
   AdminLeaderboardRow, Competition, CompetitionMatch, CompetitionMatchView, CompetitionReward,
   LeaderboardRow, RewardStatus, UserPrediction,
 } from '@shared/competition';
+import type { ProfileSettings } from '@shared/progression';
 import { supabase } from './supabase';
 
 export interface MatchWithTeams extends Match {
@@ -36,6 +37,31 @@ export interface TeamResponse {
 }
 
 export interface ProfileMe { displayName: string | null; hasDisplayName: boolean; rules: string[]; min: number; max: number }
+
+/** A szerver által számolt progression-állapot (a kliens SOHA nem számol XP-t vagy szintet). */
+export interface ProgressionProfileResponse {
+  pro: boolean;
+  xp: number;
+  level: number;
+  levelTier: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
+  progress: number;
+  stats: {
+    settledPredictions: number; correctPredictions: number; exactScores: number;
+    bestStreak: number; currentStreak: number; competitionsWon: number;
+    runnerUps: number; thirdPlaces: number; distinctLeagues: number;
+    correctByLeague: Record<string, number>; level: number;
+  };
+  achievements: { key: string; name: string; description: string; icon: string; category: string; unlocked: boolean; unlockedAt: string | null }[];
+  settings: ProfileSettings;
+  catalog: {
+    avatar: Record<string, { key: string; name: string; value?: string; animation?: string; unlocked: boolean; requirementLabel: string }[]>;
+    borders: { key: string; name: string; value?: string; animation?: string; unlocked: boolean; requirementLabel: string }[];
+    titles: { key: string; name: string; unlocked: boolean; requirementLabel: string }[];
+    maxShowcase: number;
+  };
+}
 
 export interface CompetitionDetail { competition: Competition; scoring: { label: string; points: number; text: string }[]; tieBreak: string[] }
 export interface CompetitionMyStats { rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean }
@@ -115,6 +141,12 @@ export const api = {
   /** A nevet mindig a hitelesített felhasználóhoz menti; a törzsben user_id-t nem küldünk. */
   saveDisplayName: (displayName: string) =>
     request<{ displayName: string; hasDisplayName: boolean }>('/display-name', { method: 'PUT', body: JSON.stringify({ displayName }) }, '/api/profile'),
+
+  // ---------- Tipster progression (XP, achievement, testreszabás) ----------
+  progressionMe: () => request<ProgressionProfileResponse>('/me', {}, '/api/progression'),
+  /** Csak a VÁLASZTÁST küldjük; XP-t, szintet és feloldást a szerver sosem fogad el a klienstől. */
+  saveProgressionSettings: (settings: Partial<ProfileSettings>) =>
+    request<{ settings: ProfileSettings; rejected: string[] }>('/settings', { method: 'PUT', body: JSON.stringify(settings) }, '/api/progression'),
 
   // ---------- Tippverseny (külön modul; a meglévő végpontokat nem érinti) ----------
   // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, a path pedig csak az azon belüli rész –

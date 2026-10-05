@@ -14,6 +14,16 @@ import {
 } from '../../shared/competition';
 import type { CompetitionStore, SyncMatch } from './store';
 
+/**
+ * A progression-réteg felé mutató, szándékosan szűk felület.
+ * A Tippverseny csak ÉRTESÍT; a pontszámítását semmilyen módon nem befolyásolja,
+ * és a hook hibája sem ronthatja el a kiértékelést.
+ */
+export interface ProgressionHook {
+  syncUser(userId: string): Promise<unknown>;
+  awardPlacement(userId: string, competitionId: string, placement: number): Promise<unknown>;
+}
+
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
 export class CompetitionError extends Error {
   constructor(message: string, public status: number, public code?: string) { super(message); }
@@ -38,6 +48,12 @@ export class CompetitionService {
     private store: CompetitionStore,
     private data: MatchDataProvider,
     private names: DisplayNameDirectory,
+    /**
+     * Opcionális progression-réteg (XP / achievement). CSAK RÁÉPÜL a kiértékelésre:
+     * ha nincs megadva, a Tippverseny működése bitre azonos a korábbival.
+     * A verseny pontszámítását nem befolyásolja.
+     */
+    private progression?: ProgressionHook,
   ) {}
 
   /** A tárolt név, vagy – ha valamiért nincs – állandó álnév (soha nem e-mail). */
@@ -159,6 +175,7 @@ export class CompetitionService {
     const predictions = await this.store.listPredictionsForCompetition(competitionId);
     const byMatch = new Map(finished.map((m) => [m.id, m]));
     let scored = 0;
+    const touched = new Set<string>();
     for (const p of predictions) {
       const m = byMatch.get(p.competitionMatchId);
       if (!m) continue;
@@ -166,6 +183,13 @@ export class CompetitionService {
       if (p.points === points) continue; // már pontosan ennyi – felesleges írás nélkül is idempotens
       await this.store.setPredictionPoints(p.id, points);
       scored++;
+      touched.add(p.userId);
+    }
+    // A progression KÜLÖN rendszer: a pontszámítás már lezárult, ez csak ráépül.
+    // Hibája nem bukhatja meg a verseny kiértékelését.
+    for (const userId of touched) {
+      try { await this.progression?.syncUser(userId); }
+      catch (e) { console.error('[competition] progression szinkron hiba:', (e as Error).message); }
     }
     return { scoredMatches: finished.length, scoredPredictions: scored };
   }
@@ -359,6 +383,9 @@ export class CompetitionService {
         rewardType: tier.rewardType, rewardLabel: tier.rewardLabel,
       });
       if (created) createdRewards++;
+      // Helyezési XP – a (verseny, helyezés) kulcs miatt az ismételt lezárás sem ad újra XP-t
+      try { await this.progression?.awardPlacement(winner.userId, id, tier.placement); }
+      catch (e) { console.error('[competition] progression helyezés hiba:', (e as Error).message); }
     }
 
     // 'finished' is szerepel a megengedett kiinduló állapotok közt → az ismételt lezárás nem hibázik

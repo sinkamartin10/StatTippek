@@ -163,3 +163,63 @@ body {
   font-weight: 700;
 }
 .recharts-tooltip-label, .recharts-tooltip-item { color: #1d2539 !important; }
+
+/* ===========================================================================
+   Avatar és keret (Tipster Progression)
+   Visszafogott animációk; prefers-reduced-motion esetén automatikusan leállnak.
+   =========================================================================== */
+.avatar-frame {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  border-radius: 9999px;
+  padding: 3px;
+  background: var(--avatar-ring, #cdd5ea);
+}
+.avatar-frame .avatar-svg {
+  display: block;
+  border-radius: 9999px;
+  background: var(--color-surface);
+}
+
+/* glow – lágy derengés */
+.avatar-anim-glow { box-shadow: 0 0 0 0 color-mix(in srgb, var(--avatar-ring) 55%, transparent); animation: avatar-glow 2.8s ease-in-out infinite; }
+@keyframes avatar-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--avatar-ring) 50%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--avatar-ring) 0%, transparent); }
+}
+
+/* pulse – finom méretlüktetés */
+.avatar-anim-pulse { animation: avatar-pulse 3.2s ease-in-out infinite; }
+@keyframes avatar-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.035); }
+}
+
+/* flame – meleg színátmenet lassú körbefordulással */
+.avatar-anim-flame {
+  background: conic-gradient(from 0deg, #f5a524, #e23d4b, #f0b429, #f5a524);
+  animation: avatar-spin 6s linear infinite;
+}
+.avatar-anim-flame .avatar-svg { animation: avatar-spin 6s linear infinite reverse; }
+
+/* sweep – egyszer körbefutó fénycsík */
+.avatar-anim-sweep {
+  background: conic-gradient(from 0deg, var(--avatar-ring) 0deg, #ffffff 40deg, var(--avatar-ring) 90deg, var(--avatar-ring) 360deg);
+  animation: avatar-spin 4.5s linear infinite;
+}
+.avatar-anim-sweep .avatar-svg { animation: avatar-spin 4.5s linear infinite reverse; }
+
+@keyframes avatar-spin { to { transform: rotate(360deg); } }
+
+/* XP-sáv */
+.xp-bar { @apply h-3 w-full overflow-hidden rounded-full bg-surface; }
+.xp-bar-fill { @apply h-full rounded-full bg-primary transition-[width] duration-700 ease-out; }
+
+/* Zárolt kozmetikum-csempe */
+.cosmetic-tile {
+  @apply flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2.5 text-center text-xs font-bold transition;
+}
+.cosmetic-tile:hover:not(:disabled) { @apply border-border-strong; }
+.cosmetic-tile-active { @apply border-primary bg-primary-soft text-primary-strong; }
+.cosmetic-tile:disabled { @apply cursor-not-allowed opacity-45; }
