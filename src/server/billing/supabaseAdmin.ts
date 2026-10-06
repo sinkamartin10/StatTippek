@@ -65,6 +65,22 @@ export async function updateProfile(userId: string, patch: Partial<Omit<ProfileR
   if (error) throw new Error(`profil frissítés sikertelen: ${error.message}`);
 }
 
+/**
+ * Kötegelt PRO-ellenőrzés: több felhasználó állapota EGY lekérdezéssel (ranglistához).
+ * Ugyanazt a szabályt alkalmazza, mint a profileIsPro – nincs második előfizetés-logika.
+ */
+export async function proUserIds(userIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!supabaseAdmin || !userIds.length) return out;
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, subscription_status, stripe_customer_id, stripe_subscription_id, subscription_end')
+    .in('id', userIds);
+  if (error) { console.error('[supabase] kötegelt PRO lekérdezés:', error.message); return out; }
+  for (const row of (data ?? []) as ProfileRow[]) if (profileIsPro(row)) out.add(row.id);
+  return out;
+}
+
 /** Szerveroldali PRO-ellenőrzés (a frontend állapotát sosem hisszük el). */
 export function profileIsPro(p: ProfileRow | null): boolean {
   if (!p || p.subscription_status !== 'pro') return false;

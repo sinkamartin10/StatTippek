@@ -23,6 +23,7 @@ import { progressionRouter } from '../src/server/routes/progression';
 import { InMemoryDisplayNameDirectory } from '../src/server/profile/displayNameDirectory';
 import {
   LEVEL_BASE_XP, LEVEL_STEP_XP, XP_CORRECT_OUTCOME, XP_EXACT_MILESTONE_BONUS, XP_EXACT_SCORE, XP_STREAK_BONUS,
+  DEFAULT_SETTINGS,
   computeStats, levelFromXp, sanitizeSettings, streakBonusPredictionIds, tierForLevel, xpForPredictionPoints,
   type ProgressionStats,
 } from '../src/shared/progression';
@@ -59,6 +60,7 @@ interface Harness {
   competitionSvc: CompetitionService;
   progression: ProgressionService;
   proUsers: Set<string>;
+  names: InMemoryDisplayNameDirectory;
 }
 
 async function startApp(): Promise<Harness> {
@@ -90,7 +92,7 @@ async function startApp(): Promise<Harness> {
   return {
     url: `http://127.0.0.1:${port}`,
     close: () => new Promise<void>((r) => server.close(() => r())),
-    competitions, progressionStore, competitionSvc, progression, proUsers,
+    competitions, progressionStore, competitionSvc, progression, proUsers, names,
   };
 }
 
@@ -588,5 +590,127 @@ describe('Progression – utólagos eredménymódosítás', () => {
     const streakBonuses = (xp - afterFirst) / XP_STREAK_BONUS;
     expect(streakBonuses).toBeLessThanOrEqual(0); // NEM keletkezett újabb bónusz
     expect(xp).toBe(afterFirst); // a tippenkénti XP sem íródik felül és nem duplázódik
+  });
+});
+
+// ===========================================================================
+// Ranglista-profilok: avatar + keret + cím, szerveroldali validációval
+// ===========================================================================
+
+describe('Ranglista – profil megjelenítés', () => {
+  it('PRO felhasználó beállított profilja megjelenik a ranglistán', async () => {
+    const c = await playCompetition(h, PRO_USER, [EXACT, EXACT]);
+    // feloldott elemek: Mesterlövész keret 5 pontos eredménytől, cím a szinttől
+    await h.progression.saveSettings(PRO_USER, {
+      avatar: { skin: 'deep', hair: 'curly', hairColor: 'blonde', shirt: 'stripes', shirtColor: 'red', accessory: 'headband', background: 'solid' },
+      border: 'classic',
+      title: 'tier_rookie',
+    });
+
+    const lb = await h.competitionSvc.leaderboard(c.id, null);
+    const me = lb.find((r) => r.displayName === 'Martin23')!;
+    expect(me.profile).toBeDefined();
+    expect(me.profile!.avatar.skin).toBe('deep');
+    expect(me.profile!.avatar.hair).toBe('curly');
+    expect(me.profile!.avatar.shirtColor).toBe('red');
+    expect(me.profile!.borderKey).toBe('classic');
+    expect(me.profile!.titleKey).toBe('tier_rookie');
+    // a pontszám és a sorrend változatlan marad
+    expect(me.points).toBe(10);
+    expect(me.rank).toBe(1);
+  });
+
+  it('a beállítás módosítása azonnal látszik a következő lekérésnél (nincs gyorsítótár)', async () => {
+    const c = await playCompetition(h, PRO_USER, [EXACT]);
+    await h.progression.saveSettings(PRO_USER, { border: 'classic', title: 'none' });
+    expect((await h.competitionSvc.leaderboard(c.id, null))[0].profile!.borderKey).toBe('classic');
+
+    await h.progression.saveSettings(PRO_USER, { border: 'none', title: 'tier_rookie' });
+    const after = await h.competitionSvc.leaderboard(c.id, null);
+    expect(after[0].profile!.borderKey).toBe('none');
+    expect(after[0].profile!.titleKey).toBe('tier_rookie');
+  });
+
+  it('FREE felhasználó mindig az alapértelmezett megjelenést kapja', async () => {
+    // A felhasználó PRO-ként beállít valamit, majd lejár az előfizetése
+    const c = await playCompetition(h, PRO_USER, [EXACT]);
+    await h.progression.saveSettings(PRO_USER, { border: 'classic', title: 'tier_rookie' });
+    h.proUsers.delete(PRO_USER);
+
+    const lb = await h.competitionSvc.leaderboard(c.id, null);
+    expect(lb[0].profile).toEqual({ avatar: DEFAULT_SETTINGS.avatar, borderKey: DEFAULT_SETTINGS.border, titleKey: DEFAULT_SETTINGS.title });
+  });
+
+  it('a tárolóban lévő ZÁROLT vagy ismeretlen kozmetikum nem jelenik meg', async () => {
+    const c = await playCompetition(h, PRO_USER, [CORRECT]); // 1 helyes tipp → semmi nincs feloldva
+    // az API-t megkerülve, közvetlenül a tárolóba írunk érvénytelen/zárolt kulcsokat
+    await h.progressionStore.saveSettings(PRO_USER, {
+      avatar: { ...DEFAULT_SETTINGS.avatar, hair: 'mohawk', shirtColor: 'gold', accessory: 'captain' },
+      border: 'legend',
+      title: 'champion',
+      showcase: [],
+    });
+
+    const lb = await h.competitionSvc.leaderboard(c.id, null);
+    const p = lb[0].profile!;
+    expect(p.borderKey).toBe(DEFAULT_SETTINGS.border);   // legend (Lv50) nincs feloldva
+    expect(p.titleKey).toBe(DEFAULT_SETTINGS.title);     // champion achievement nincs meg
+    expect(p.avatar.hair).toBe(DEFAULT_SETTINGS.avatar.hair);             // mohawk = Lv10
+    expect(p.avatar.shirtColor).toBe(DEFAULT_SETTINGS.avatar.shirtColor); // gold = Lv30
+    expect(p.avatar.accessory).toBe(DEFAULT_SETTINGS.avatar.accessory);   // captain = Bajnok
+  });
+
+  it('a ranglista továbbra sem tartalmaz e-mailt, user_id-t vagy előfizetési adatot', async () => {
+    const c = await playCompetition(h, PRO_USER, [EXACT]);
+    await playCompetition(h, PRO_USER_B, [CORRECT], 'esp-ll', -60);
+    await h.progression.saveSettings(PRO_USER, { border: 'classic', title: 'tier_rookie' });
+
+    const lb = await h.competitionSvc.leaderboard(c.id, null);
+    const raw = JSON.stringify(lb);
+    expect(raw).not.toContain('@');
+    expect(raw).not.toContain(PRO_USER);
+    expect(raw).not.toContain('subscription');
+    expect(raw).not.toContain('"xp"');
+    expect(Object.keys(lb[0]).sort()).toEqual(['displayName', 'exactHits', 'isMe', 'points', 'predictions', 'profile', 'rank']);
+    expect(Object.keys(lb[0].profile!).sort()).toEqual(['avatar', 'borderKey', 'titleKey']);
+  });
+
+  it('nincs N+1: a lekérdezések száma független a résztvevők számától', async () => {
+    // számláló burkolat a tárolóra
+    const calls: Record<string, number> = {};
+    const counted = new Proxy(h.progressionStore, {
+      get(target, prop: string) {
+        const v = (target as any)[prop];
+        if (typeof v !== 'function') return v;
+        return (...args: unknown[]) => { calls[prop] = (calls[prop] ?? 0) + 1; return v.apply(target, args); };
+      },
+    }) as typeof h.progressionStore;
+
+    const progression = new ProgressionService(counted, async (id) => h.proUsers.has(id));
+    const svc = new CompetitionService(h.competitions, new StubProvider(), h.names, progression);
+
+    // három résztvevő ugyanazon a versenyen
+    const c = await h.competitions.createCompetition({
+      name: 'N+1', leagueKey: 'eng-pl', leagueName: 'PL', provider: 'teszt',
+      startsAt: hours(-100), endsAt: hours(-10), status: 'active',
+    });
+    await h.competitions.upsertMatches(c.id, [{
+      externalMatchId: 'n1', homeTeam: 'H', awayTeam: 'A', kickoff: hours(-90),
+      homeScore: 2, awayScore: 1, status: 'finished' as const,
+    }]);
+    const [m] = await h.competitions.listMatches(c.id);
+    for (const u of [PRO_USER, PRO_USER_B, PRO_USER_C]) await h.competitions.upsertPrediction(u, m.id, 2, 1);
+    h.proUsers.add(PRO_USER_C);
+
+    Object.keys(calls).forEach((k) => delete calls[k]);
+    await svc.leaderboard(c.id, null);
+
+    // a kötegelt metódusok PONTOSAN egyszer futnak, a per-user változatok egyszer sem
+    for (const batch of ['getSettingsMany', 'listAchievementsMany', 'totalXpMany', 'settledPredictionsMany', 'placementsMany']) {
+      expect(calls[batch] ?? 0, batch).toBe(1);
+    }
+    for (const single of ['getSettings', 'listAchievements', 'totalXp', 'settledPredictions', 'placements']) {
+      expect(calls[single] ?? 0, single).toBe(0);
+    }
   });
 });

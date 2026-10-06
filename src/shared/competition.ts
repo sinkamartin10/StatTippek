@@ -55,6 +55,17 @@ export interface UserPrediction {
   updatedAt: string;
 }
 
+/**
+ * A ranglistán megjelenített profil: a SZERVER által ellenőrzött megjelenés.
+ * Kizárólag megjelenítési kulcsokat tartalmaz – nincs benne user_id, e-mail,
+ * előfizetési adat vagy XP. A fel nem oldott elemek helyén már az alapértelmezés áll.
+ */
+export interface PublicProfile {
+  avatar: Record<string, string>;
+  borderKey: string;
+  titleKey: string;
+}
+
 /** Nyilvános ranglista-sor. SZÁNDÉKOSAN nem tartalmaz e-mailt és user_id-t. */
 export interface LeaderboardRow {
   rank: number;
@@ -64,6 +75,8 @@ export interface LeaderboardRow {
   exactHits: number;
   /** true, ha ez a bejelentkezett felhasználó sora */
   isMe: boolean;
+  /** A szerver által validált megjelenés (avatar, keret, cím). */
+  profile?: PublicProfile;
 }
 
 /** Admin ranglista-sor: a jutalmazáshoz szükséges user_id is szerepel benne. */

@@ -10,7 +10,7 @@ import {
   predictionWindow, rankEntries, scorePrediction,
   type AdminLeaderboardRow, type Competition, type CompetitionMatch, type CompetitionMatchView,
   type CompetitionReward, type CompetitionStatus, type LeaderboardEntry, type LeaderboardRow,
-  type RewardStatus, type UserPrediction,
+  type PublicProfile, type RewardStatus, type UserPrediction,
 } from '../../shared/competition';
 import type { CompetitionStore, SyncMatch } from './store';
 
@@ -22,6 +22,11 @@ import type { CompetitionStore, SyncMatch } from './store';
 export interface ProgressionHook {
   syncUser(userId: string): Promise<unknown>;
   awardPlacement(userId: string, competitionId: string, placement: number): Promise<unknown>;
+  /**
+   * A ranglistán megjelenítendő profilok EGY menetben (nincs N+1).
+   * Opcionális: ha hiányzik, a ranglista a korábbi, profil nélküli alakot adja vissza.
+   */
+  publicProfiles?(userIds: string[]): Promise<Map<string, PublicProfile>>;
 }
 
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
@@ -219,7 +224,15 @@ export class CompetitionService {
   /** Nyilvános ranglista: SOHA nem tartalmaz e-mailt és user_id-t. */
   async leaderboard(competitionId: string, meUserId: string | null): Promise<LeaderboardRow[]> {
     const ranked = rankEntries(await this.entries(competitionId));
-    const names = await this.nameMap(ranked.map((e) => e.userId));
+    const userIds = ranked.map((e) => e.userId);
+    // A sorrendet és a pontokat a progression NEM befolyásolja – csak a megjelenés bővül.
+    const [names, profiles] = await Promise.all([
+      this.nameMap(userIds),
+      this.progression?.publicProfiles?.(userIds).catch((err) => {
+        console.error('[competition] ranglista-profilok hiba:', (err as Error).message);
+        return undefined;
+      }) ?? Promise.resolve(undefined),
+    ]);
     return ranked.map((e) => ({
       rank: e.rank,
       displayName: names.get(e.userId)!,
@@ -227,6 +240,7 @@ export class CompetitionService {
       predictions: e.predictions,
       exactHits: e.exactHits,
       isMe: !!meUserId && e.userId === meUserId,
+      ...(profiles?.get(e.userId) ? { profile: profiles.get(e.userId) } : {}),
     }));
   }
 

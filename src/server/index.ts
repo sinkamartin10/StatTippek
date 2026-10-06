@@ -13,7 +13,7 @@ import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
 import { progressionRouter } from './routes/progression';
 import { ProgressionService } from './progression/service';
-import { getProfile, profileIsPro } from './billing/supabaseAdmin';
+import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseConfigured } from './billing/supabaseAdmin';
@@ -24,6 +24,8 @@ const service = new AnalysisService(container);
 const progressionService = new ProgressionService(
   container.progression,
   async (userId) => profileIsPro(await getProfile(userId)),
+  // Kötegelt PRO-ellenőrzés a ranglistához: N felhasználó → EGY lekérdezés
+  (userIds) => proUserIds(userIds),
 );
 const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames, progressionService);
 const app = express();

@@ -11,6 +11,7 @@ import { fmtDateTime, fmtTime, useAsync } from '../lib/format';
 import { Card, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { usePlan } from '../auth/PlanContext';
 import { ParticipationBox, useParticipation } from '../components/Participation';
+import { LeaderboardList } from '../components/LeaderboardList';
 import { CompetitionStatusBadge, remainingText } from './Competitions';
 
 export default function CompetitionDetail() {
@@ -64,17 +65,7 @@ export default function CompetitionDetail() {
           <Card title="Ranglista">
             {board.loading ? <Loading /> : board.error ? <ErrorBox message={board.error} onRetry={board.reload} />
               : !board.data?.length ? <p className="text-sm font-semibold text-text-muted">Még senki nem adott le tippet.</p> : (
-                <ol className="divide-y divide-border">
-                  {board.data.map((row) => (
-                    <li key={row.rank} className={`flex items-center gap-3 py-2.5 first:pt-0 last:pb-0 ${row.isMe ? 'font-extrabold' : ''}`}>
-                      <span className="mono w-7 shrink-0 text-sm font-extrabold text-text-muted">{row.rank}.</span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-bold">
-                        {row.displayName}{row.isMe && <span className="badge badge-blue ml-2">te</span>}
-                      </span>
-                      <span className="mono shrink-0 text-right text-sm font-extrabold">{row.points} pont</span>
-                    </li>
-                  ))}
-                </ol>
+                <LeaderboardList rows={board.data} />
               )}
             <p className="mt-3 text-[11px] font-semibold text-text-muted">A ranglistán azonosításra alkalmas adat (pl. e-mail) nem jelenik meg.</p>
           </Card>

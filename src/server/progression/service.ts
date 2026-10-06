@@ -19,6 +19,7 @@ import {
   viewCosmetics, xpForPredictionPoints,
   type AvatarSlot, type CosmeticView, type ProfileSettings, type ProgressionStats,
 } from '../../shared/progression';
+import type { PublicProfile } from '../../shared/competition';
 import type { ProgressionStore } from './store';
 
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
@@ -69,7 +70,20 @@ export class ProgressionService {
   constructor(
     private store: ProgressionStore,
     private isPro: (userId: string) => Promise<boolean>,
+    /**
+     * Kötegelt PRO-ellenőrzés a ranglistához (N felhasználó → EGY lekérdezés).
+     * Ha nincs megadva, az egyesével történő ellenőrzésre esik vissza.
+     */
+    private proUserIds?: (userIds: string[]) => Promise<Set<string>>,
   ) {}
+
+  private async proSet(userIds: string[]): Promise<Set<string>> {
+    if (!userIds.length) return new Set();
+    if (this.proUserIds) return this.proUserIds(userIds);
+    const out = new Set<string>();
+    for (const id of userIds) if (await this.isPro(id)) out.add(id);
+    return out;
+  }
 
   // -------------------------------------------------------------------------
   // XP jóváírás
@@ -194,6 +208,49 @@ export class ProgressionService {
   // -------------------------------------------------------------------------
   // Testreszabás mentése
   // -------------------------------------------------------------------------
+
+  /**
+   * A RANGLISTÁHOZ: több felhasználó megjelenítendő profilja EGY menetben.
+   *
+   * Nincs N+1: a tároló kötegelt metódusait használja, így a lekérdezések száma
+   * független a résztvevők számától. Nincs külön ranglista-gyorsítótár sem, ezért
+   * a felhasználó beállítás-változása a következő lekérésnél azonnal látszik.
+   *
+   * A megjelenített elemeket UGYANAZ a `sanitizeSettings()` ellenőrzés adja, mint a
+   * saját profilnál: fel nem oldott vagy ismeretlen kulcs helyére az alapértelmezés kerül.
+   * FREE felhasználó mindig az alapértelmezett megjelenést kapja.
+   */
+  async publicProfiles(userIds: string[]): Promise<Map<string, PublicProfile>> {
+    const out = new Map<string, PublicProfile>();
+    const unique = [...new Set(userIds)];
+    if (!unique.length) return out;
+
+    const fallback: PublicProfile = { avatar: DEFAULT_SETTINGS.avatar, borderKey: DEFAULT_SETTINGS.border, titleKey: DEFAULT_SETTINGS.title };
+    const pro = await this.proSet(unique);
+    const proIds = unique.filter((id) => pro.has(id));
+
+    // FREE felhasználó: nincs testreszabás, mindig az alapértelmezett megjelenés
+    for (const id of unique) out.set(id, fallback);
+    if (!proIds.length) return out;
+
+    const [settings, achievements, xp, predictions, placements] = await Promise.all([
+      this.store.getSettingsMany(proIds),
+      this.store.listAchievementsMany(proIds),
+      this.store.totalXpMany(proIds),
+      this.store.settledPredictionsMany(proIds),
+      this.store.placementsMany(proIds),
+    ]);
+
+    for (const id of proIds) {
+      const stored = settings.get(id);
+      if (!stored) continue; // még nem szabta testre – marad az alapértelmezés
+      const stats = computeStats(predictions.get(id) ?? [], placements.get(id) ?? [], xp.get(id) ?? 0);
+      const unlocked = new Set(achievements.get(id) ?? []);
+      const { settings: safe } = sanitizeSettings(stored, stats, unlocked);
+      out.set(id, { avatar: safe.avatar, borderKey: safe.border, titleKey: safe.title });
+    }
+    return out;
+  }
 
   /**
    * A felhasználó választásának mentése. A szerver MINDEN elemet ellenőriz:

@@ -42,6 +42,28 @@ export interface ProgressionStore {
   settledPredictions(userId: string): Promise<SettledPrediction[]>;
   /** A felhasználó dobogós helyezései a már meglévő competition_rewards táblából. */
   placements(userId: string): Promise<Placement[]>;
+
+  // --- Kötegelt olvasások: a ranglista EGYSZER kéri le az összes résztvevő adatát.
+  //     Így a megjelenítendő profilok száma nem növeli a lekérdezések számát (nincs N+1).
+  getSettingsMany(userIds: string[]): Promise<Map<string, ProfileSettings>>;
+  listAchievementsMany(userIds: string[]): Promise<Map<string, string[]>>;
+  totalXpMany(userIds: string[]): Promise<Map<string, number>>;
+  settledPredictionsMany(userIds: string[]): Promise<Map<string, SettledPrediction[]>>;
+  placementsMany(userIds: string[]): Promise<Map<string, Placement[]>>;
+}
+
+/** Üres kötegelt eredmény – üres bemenetre felesleges lekérdezni. */
+const emptyMap = <T>(): Map<string, T> => new Map<string, T>();
+
+/** Sorok csoportosítása felhasználónként. */
+function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    const list = out.get(k);
+    if (list) list.push(r); else out.set(k, [r]);
+  }
+  return out;
 }
 
 type Row = Record<string, any>;
@@ -143,6 +165,76 @@ export class PostgresProgressionStore implements ProgressionStore {
       .select('competition_id, placement').eq('user_id', userId);
     this.fail('placements', error);
     return (data ?? []).map((r: Row) => ({ competitionId: r.competition_id, placement: r.placement }));
+  }
+
+  // ---------- Kötegelt olvasások (ranglista) ----------
+
+  async getSettingsMany(userIds: string[]): Promise<Map<string, ProfileSettings>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('user_profile_settings')
+      .select('user_id, avatar, border_key, title_key, showcase').in('user_id', userIds);
+    this.fail('getSettingsMany', error);
+    const out = new Map<string, ProfileSettings>();
+    for (const r of (data ?? []) as Row[]) {
+      out.set(r.user_id, { avatar: (r.avatar ?? {}) as ProfileSettings['avatar'], border: r.border_key, title: r.title_key, showcase: r.showcase ?? [] });
+    }
+    return out;
+  }
+
+  async listAchievementsMany(userIds: string[]): Promise<Map<string, string[]>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('user_achievements')
+      .select('user_id, achievement_key').in('user_id', userIds);
+    this.fail('listAchievementsMany', error);
+    const out = new Map<string, string[]>();
+    for (const r of (data ?? []) as Row[]) {
+      const list = out.get(r.user_id);
+      if (list) list.push(r.achievement_key); else out.set(r.user_id, [r.achievement_key]);
+    }
+    return out;
+  }
+
+  async totalXpMany(userIds: string[]): Promise<Map<string, number>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('progression_events').select('user_id, xp').in('user_id', userIds);
+    this.fail('totalXpMany', error);
+    const out = new Map<string, number>();
+    for (const r of (data ?? []) as Row[]) out.set(r.user_id, (out.get(r.user_id) ?? 0) + (r.xp ?? 0));
+    return out;
+  }
+
+  async settledPredictionsMany(userIds: string[]): Promise<Map<string, SettledPrediction[]>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('user_predictions')
+      .select('id, user_id, points, competition_matches!inner(kickoff, competition_rounds!inner(league_key))')
+      .in('user_id', userIds).not('points', 'is', null);
+    this.fail('settledPredictionsMany', error);
+    const rows = (data ?? []).map((r: Row) => {
+      const m = Array.isArray(r.competition_matches) ? r.competition_matches[0] : r.competition_matches;
+      const c = Array.isArray(m?.competition_rounds) ? m.competition_rounds[0] : m?.competition_rounds;
+      return {
+        userId: r.user_id as string,
+        predictionId: r.id as string,
+        points: r.points as number,
+        kickoff: new Date(m?.kickoff ?? 0).toISOString(),
+        leagueKey: (c?.league_key ?? '') as string,
+      };
+    });
+    const grouped = groupBy(rows, (r) => r.userId);
+    const out = new Map<string, SettledPrediction[]>();
+    for (const [uid, list] of grouped) out.set(uid, list.map(({ userId, ...rest }) => rest));
+    return out;
+  }
+
+  async placementsMany(userIds: string[]): Promise<Map<string, Placement[]>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('competition_rewards')
+      .select('user_id, competition_id, placement').in('user_id', userIds);
+    this.fail('placementsMany', error);
+    const grouped = groupBy((data ?? []) as Row[], (r) => r.user_id);
+    const out = new Map<string, Placement[]>();
+    for (const [uid, list] of grouped) out.set(uid, list.map((r) => ({ competitionId: r.competition_id, placement: Number(r.placement) })));
+    return out;
   }
 }
 
@@ -246,5 +338,72 @@ export class SqliteProgressionStore implements ProgressionStore {
   async placements(userId: string): Promise<Placement[]> {
     const rows = this.db.prepare('SELECT competition_id, placement FROM competition_rewards WHERE user_id = ?').all(userId) as Row[];
     return rows.map((r) => ({ competitionId: r.competition_id, placement: Number(r.placement) }));
+  }
+
+  // ---------- Kötegelt olvasások (ranglista) ----------
+
+  /** Paraméter-helyőrzők az IN (…) listához. */
+  private marks(n: number): string { return new Array(n).fill('?').join(','); }
+
+  async getSettingsMany(userIds: string[]): Promise<Map<string, ProfileSettings>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(`SELECT user_id, avatar, border_key, title_key, showcase
+      FROM user_profile_settings WHERE user_id IN (${this.marks(userIds.length)})`).all(...userIds) as Row[];
+    const out = new Map<string, ProfileSettings>();
+    for (const r of rows) {
+      out.set(r.user_id, { avatar: JSON.parse(r.avatar || '{}'), border: r.border_key, title: r.title_key, showcase: JSON.parse(r.showcase || '[]') });
+    }
+    return out;
+  }
+
+  async listAchievementsMany(userIds: string[]): Promise<Map<string, string[]>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(`SELECT user_id, achievement_key FROM user_achievements
+      WHERE user_id IN (${this.marks(userIds.length)})`).all(...userIds) as Row[];
+    const out = new Map<string, string[]>();
+    for (const r of rows) {
+      const list = out.get(r.user_id);
+      if (list) list.push(r.achievement_key); else out.set(r.user_id, [r.achievement_key]);
+    }
+    return out;
+  }
+
+  async totalXpMany(userIds: string[]): Promise<Map<string, number>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(`SELECT user_id, COALESCE(SUM(xp), 0) AS total FROM progression_events
+      WHERE user_id IN (${this.marks(userIds.length)}) GROUP BY user_id`).all(...userIds) as Row[];
+    const out = new Map<string, number>();
+    for (const r of rows) out.set(r.user_id, Number(r.total ?? 0));
+    return out;
+  }
+
+  async settledPredictionsMany(userIds: string[]): Promise<Map<string, SettledPrediction[]>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(`
+      SELECT p.user_id AS user_id, p.id AS id, p.points AS points, m.kickoff AS kickoff, c.league_key AS league_key
+      FROM user_predictions p
+      JOIN competition_matches m ON m.id = p.competition_match_id
+      JOIN competition_rounds c ON c.id = m.competition_id
+      WHERE p.user_id IN (${this.marks(userIds.length)}) AND p.points IS NOT NULL`).all(...userIds) as Row[];
+    const out = new Map<string, SettledPrediction[]>();
+    for (const r of rows) {
+      const item = { predictionId: r.id, points: Number(r.points), kickoff: r.kickoff, leagueKey: r.league_key };
+      const list = out.get(r.user_id);
+      if (list) list.push(item); else out.set(r.user_id, [item]);
+    }
+    return out;
+  }
+
+  async placementsMany(userIds: string[]): Promise<Map<string, Placement[]>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(`SELECT user_id, competition_id, placement FROM competition_rewards
+      WHERE user_id IN (${this.marks(userIds.length)})`).all(...userIds) as Row[];
+    const out = new Map<string, Placement[]>();
+    for (const r of rows) {
+      const item = { competitionId: r.competition_id, placement: Number(r.placement) };
+      const list = out.get(r.user_id);
+      if (list) list.push(item); else out.set(r.user_id, [item]);
+    }
+    return out;
   }
 }
