@@ -456,3 +456,208 @@ export interface CosmeticView extends CosmeticOption {
 export function viewCosmetics(options: CosmeticOption[], stats: ProgressionStats, unlocked: Set<string>): CosmeticView[] {
   return options.map((o) => ({ ...o, unlocked: isCosmeticUnlocked(o, stats, unlocked), requirementLabel: requirementLabel(o.requirement) }));
 }
+
+// ===========================================================================
+// 6) Tipster statisztika és tipp-előzmény (Personal Statistics)
+//
+//    Ez a szakasz NEM vezet be új adatot: kizárólag a már meglévő Tippverseny-
+//    tippekből (user_predictions + competition_matches + competition_rounds),
+//    az XP-naplóból és a jutalmakból számol. Ha egy érték nem állítható elő
+//    pontosan, inkább null-t adunk vissza, mint kitalált számot.
+// ===========================================================================
+
+/** Egy tipp a felhasználó előzményéből – minden mező a meglévő táblákból jön. */
+export interface PredictionRecordRow {
+  predictionId: string;
+  competitionId: string;
+  competitionName: string;
+  leagueKey: string;
+  leagueName: string;
+  homeTeam: string;
+  awayTeam: string;
+  kickoff: string;
+  matchStatus: string;
+  predictedHome: number;
+  predictedAway: number;
+  /** null, amíg a mérkőzésnek nincs végeredménye */
+  actualHome: number | null;
+  actualAway: number | null;
+  /** null = még nincs kiértékelve */
+  points: number | null;
+  submittedAt: string;
+}
+
+export type PredictionStatus = 'exact' | 'correct' | 'wrong' | 'pending';
+
+export function predictionStatus(points: number | null): PredictionStatus {
+  if (points == null) return 'pending';
+  if (points === 5) return 'exact';
+  if (points === 3) return 'correct';
+  return 'wrong';
+}
+
+export const PREDICTION_STATUS_LABEL: Record<PredictionStatus, string> = {
+  exact: 'Pontos eredmény',
+  correct: 'Helyes kimenetel',
+  wrong: 'Nem talált',
+  pending: 'Függőben',
+};
+
+/** Ligánkénti bontás. Az accuracy csak kiértékelt tippekből számol; enélkül null. */
+export interface LeagueBreakdownRow {
+  leagueKey: string;
+  leagueName: string;
+  predictions: number;
+  settled: number;
+  correct: number;
+  exact: number;
+  /** 0..1 arány, vagy null, ha még nincs kiértékelt tipp ebben a ligában */
+  accuracy: number | null;
+}
+
+/** Egy pont a teljesítmény-trendhez (időrendben, a legrégebbitől). */
+export interface TrendPoint {
+  index: number;
+  kickoff: string;
+  points: number;
+  hit: boolean;
+  exact: boolean;
+  /** az adott pontig számolt futó pontosság (0..1) */
+  rollingAccuracy: number;
+}
+
+export interface TipsterStats {
+  totalPredictions: number;
+  settledPredictions: number;
+  correctPredictions: number;
+  wrongPredictions: number;
+  pendingPredictions: number;
+  exactScores: number;
+  /** correct / settled – null, ha még nincs kiértékelt tipp */
+  accuracy: number | null;
+  currentStreak: number;
+  bestStreak: number;
+  totalXp: number;
+  level: number;
+  levelTier: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
+  progress: number;
+  competitionWins: number;
+  competitionPodiums: number;
+  competitionRunnerUps: number;
+  competitionThirdPlaces: number;
+  distinctLeagues: number;
+  leagues: LeagueBreakdownRow[];
+  trend: TrendPoint[];
+}
+
+/** Stabil rendezés: kezdési idő, majd azonosító (determinisztikus holtverseny-feloldás). */
+const byKickoff = (a: PredictionRecordRow, b: PredictionRecordRow) =>
+  (a.kickoff === b.kickoff ? a.predictionId.localeCompare(b.predictionId) : a.kickoff.localeCompare(b.kickoff));
+
+/** Ligánkénti bontás az ÖSSZES tippből (a kiértékeletlenek is számítanak a darabszámba). */
+export function leagueBreakdown(rows: PredictionRecordRow[]): LeagueBreakdownRow[] {
+  const acc = new Map<string, LeagueBreakdownRow>();
+  for (const r of rows) {
+    const e = acc.get(r.leagueKey) ?? {
+      leagueKey: r.leagueKey, leagueName: r.leagueName,
+      predictions: 0, settled: 0, correct: 0, exact: 0, accuracy: null,
+    };
+    e.predictions++;
+    if (r.points != null) {
+      e.settled++;
+      if (isCorrect(r.points)) e.correct++;
+      if (isExact(r.points)) e.exact++;
+    }
+    acc.set(r.leagueKey, e);
+  }
+  return [...acc.values()]
+    .map((e) => ({ ...e, accuracy: e.settled ? e.correct / e.settled : null }))
+    .sort((a, b) => b.predictions - a.predictions || a.leagueName.localeCompare(b.leagueName));
+}
+
+/** Az utolsó N KIÉRTÉKELT tipp trendje, időrendben (a legrégebbitől a legújabbig). */
+export function recentTrend(rows: PredictionRecordRow[], limit = 30): TrendPoint[] {
+  const settled = rows.filter((r) => r.points != null).sort(byKickoff).slice(-limit);
+  let hits = 0;
+  return settled.map((r, i) => {
+    const hit = isCorrect(r.points);
+    if (hit) hits++;
+    return {
+      index: i + 1,
+      kickoff: r.kickoff,
+      points: r.points!,
+      hit,
+      exact: isExact(r.points),
+      rollingAccuracy: hits / (i + 1),
+    };
+  });
+}
+
+/**
+ * Teljes tipster statisztika. A sorozatot és az alapszámlálókat a már meglévő
+ * computeStats() adja (egy helyen él a logika), ez csak kiegészíti a
+ * megjelenítéshez szükséges, szintén számított értékekkel.
+ */
+export function computeTipsterStats(
+  rows: PredictionRecordRow[],
+  placements: { placement: number }[],
+  xp: number,
+  trendLimit = 30,
+): TipsterStats {
+  const settledRows = rows.filter((r) => r.points != null);
+  const base = computeStats(
+    settledRows.map((r) => ({ predictionId: r.predictionId, points: r.points!, kickoff: r.kickoff, leagueKey: r.leagueKey })),
+    placements,
+    xp,
+  );
+  const level = levelFromXp(xp);
+  const settled = settledRows.length;
+
+  return {
+    totalPredictions: rows.length,
+    settledPredictions: settled,
+    correctPredictions: base.correctPredictions,
+    wrongPredictions: settled - base.correctPredictions,
+    pendingPredictions: rows.length - settled,
+    exactScores: base.exactScores,
+    accuracy: settled ? base.correctPredictions / settled : null,
+    currentStreak: base.currentStreak,
+    bestStreak: base.bestStreak,
+    totalXp: xp,
+    level: level.level,
+    levelTier: level.tier,
+    xpIntoLevel: level.xpIntoLevel,
+    xpForNextLevel: level.xpForNextLevel,
+    progress: level.progress,
+    competitionWins: base.competitionsWon,
+    competitionPodiums: base.competitionsWon + base.runnerUps + base.thirdPlaces,
+    competitionRunnerUps: base.runnerUps,
+    competitionThirdPlaces: base.thirdPlaces,
+    distinctLeagues: new Set(rows.map((r) => r.leagueKey)).size,
+    leagues: leagueBreakdown(rows),
+    trend: recentTrend(rows, trendLimit),
+  };
+}
+
+/** Előzmény-elem: a tipp a mérkőzés adataival és a ténylegesen kapott XP-vel. */
+export interface HistoryEntry extends PredictionRecordRow {
+  status: PredictionStatus;
+  /**
+   * A tippért ténylegesen jóváírt XP az XP-naplóból (0, ha nem járt, vagy FREE volt).
+   * A sorozat- és mérföldkő-bónuszok nem egyetlen tipphez tartoznak, ezért itt nem szerepelnek.
+   */
+  xpEarned: number;
+}
+
+/** Legfrissebb elöl, stabil sorrendben. */
+export const HISTORY_MAX_LIMIT = 100;
+export const HISTORY_DEFAULT_LIMIT = 50;
+
+export function buildHistory(rows: PredictionRecordRow[], xpByPrediction: Map<string, number>, limit: number): HistoryEntry[] {
+  return [...rows]
+    .sort((a, b) => (b.kickoff === a.kickoff ? b.predictionId.localeCompare(a.predictionId) : b.kickoff.localeCompare(a.kickoff)))
+    .slice(0, limit)
+    .map((r) => ({ ...r, status: predictionStatus(r.points), xpEarned: xpByPrediction.get(r.predictionId) ?? 0 }));
+}

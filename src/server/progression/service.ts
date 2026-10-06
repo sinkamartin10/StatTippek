@@ -15,9 +15,11 @@
 import {
   ACHIEVEMENTS, AVATAR_PARTS, AVATAR_SLOTS, BORDERS, DEFAULT_SETTINGS, EMPTY_STATS,
   EXACT_MILESTONE_AT, MAX_SHOWCASE, PLACEMENT_XP, TITLES, XP_EXACT_MILESTONE_BONUS, XP_STREAK_BONUS,
-  computeStats, earnedAchievementKeys, isExact, levelFromXp, sanitizeSettings, streakBonusPredictionIds,
-  viewCosmetics, xpForPredictionPoints,
-  type AvatarSlot, type CosmeticView, type ProfileSettings, type ProgressionStats,
+  HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT,
+  buildHistory, computeStats, computeTipsterStats, earnedAchievementKeys, isExact, levelFromXp,
+  sanitizeSettings, streakBonusPredictionIds, viewCosmetics, xpForPredictionPoints,
+  type AvatarSlot, type CosmeticView, type HistoryEntry, type ProfileSettings, type ProgressionStats,
+  type TipsterStats,
 } from '../../shared/progression';
 import type { PublicProfile } from '../../shared/competition';
 import type { ProgressionStore } from './store';
@@ -208,6 +210,39 @@ export class ProgressionService {
   // -------------------------------------------------------------------------
   // Testreszabás mentése
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Személyes statisztika és tipp-előzmény (saját adat)
+  // -------------------------------------------------------------------------
+
+  /**
+   * A bejelentkezett felhasználó tipster statisztikája.
+   * Minden érték a MEGLÉVŐ adatokból számolódik (tippek, XP-napló, jutalmak);
+   * nincs új tábla és nincs kitalált érték – ami nem számolható, az null marad.
+   * Három lekérdezés, a résztvevők/tippek számától függetlenül (nincs N+1).
+   */
+  async tipsterStats(userId: string, trendLimit = 30): Promise<TipsterStats> {
+    const [rows, placements, xp] = await Promise.all([
+      this.store.allPredictions(userId),
+      this.store.placements(userId),
+      this.store.totalXp(userId),
+    ]);
+    return computeTipsterStats(rows, placements, xp, trendLimit);
+  }
+
+  /**
+   * A bejelentkezett felhasználó SAJÁT tipp-előzménye, legfrissebb elöl.
+   * A limitet a szerver korlátozza; a felhasználó mások adatait nem érheti el,
+   * mert a lekérdezés mindig a hitelesített azonosítóra szűr.
+   */
+  async predictionHistory(userId: string, limit?: number): Promise<{ entries: HistoryEntry[]; total: number; limit: number }> {
+    const safeLimit = Math.min(HISTORY_MAX_LIMIT, Math.max(1, Math.floor(limit ?? HISTORY_DEFAULT_LIMIT)));
+    const [rows, xpByPrediction] = await Promise.all([
+      this.store.allPredictions(userId),
+      this.store.predictionXp(userId),
+    ]);
+    return { entries: buildHistory(rows, xpByPrediction, safeLimit), total: rows.length, limit: safeLimit };
+  }
 
   /**
    * A RANGLISTÁHOZ: több felhasználó megjelenítendő profilja EGY menetben.

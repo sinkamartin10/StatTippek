@@ -45,6 +45,8 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       () => api.competitionMyPredictions(UUID),
       () => api.competitionMyStats(UUID),
       () => api.submitCompetitionPrediction(UUID, UUID, 2, 1),
+      () => api.progressionStats(),
+      () => api.progressionHistory(10),
     ];
     for (const fn of fns) {
       calls = [];
@@ -117,6 +119,12 @@ describe('Kliens API – profil és a meglévő végpontok', () => {
     const put = await urlOf(() => api.saveProgressionSettings({ border: 'classic' }));
     expect(put.url).toBe('/api/progression/settings');
     expect(put.method).toBe('PUT');
+    calls = [];
+    expect((await urlOf(() => api.progressionStats())).url).toBe('/api/progression/stats');
+    calls = [];
+    expect((await urlOf(() => api.progressionHistory())).url).toBe('/api/progression/history');
+    calls = [];
+    expect((await urlOf(() => api.progressionHistory(25))).url).toBe('/api/progression/history?limit=25');
   });
 
   it('a korábbi végpontok változatlanul a /api alá mennek', async () => {

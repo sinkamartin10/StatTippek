@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3, BookOpen, CalendarDays, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
+  BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
   Search, Settings, Sparkles, Ticket, UserCircle2, UserPlus, X,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
@@ -24,6 +24,7 @@ const MAIN = [
 /** Másodlagos menü – desktopon a „Továbbiak” legördülőben, mobilon a listában. */
 const MORE = [
   { to: '/dashboard', label: 'Áttekintés', icon: LayoutDashboard },
+  { to: '/statisztikaim', label: 'Statisztikáim', icon: ChartLine },
   { to: '/meccsek', label: 'Mai meccsek', icon: CalendarDays },
   { to: '/elemzes', label: 'Elemzés', icon: Sparkles },
   { to: '/statisztikak', label: 'Statisztikák', icon: BarChart3 },

@@ -9,7 +9,7 @@ import type {
   AdminLeaderboardRow, Competition, CompetitionMatch, CompetitionMatchView, CompetitionReward,
   LeaderboardRow, RewardStatus, UserPrediction,
 } from '@shared/competition';
-import type { ProfileSettings } from '@shared/progression';
+import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
 import { supabase } from './supabase';
 
 export interface MatchWithTeams extends Match {
@@ -62,6 +62,8 @@ export interface ProgressionProfileResponse {
     maxShowcase: number;
   };
 }
+
+export interface PredictionHistoryResponse { entries: HistoryEntry[]; total: number; limit: number }
 
 export interface CompetitionDetail { competition: Competition; scoring: { label: string; points: number; text: string }[]; tieBreak: string[] }
 export interface CompetitionMyStats { rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean }
@@ -147,6 +149,12 @@ export const api = {
   /** Csak a VÁLASZTÁST küldjük; XP-t, szintet és feloldást a szerver sosem fogad el a klienstől. */
   saveProgressionSettings: (settings: Partial<ProfileSettings>) =>
     request<{ settings: ProfileSettings; rejected: string[] }>('/settings', { method: 'PUT', body: JSON.stringify(settings) }, '/api/progression'),
+
+  /** Saját tipster statisztika – minden értéket a szerver számol. */
+  progressionStats: () => request<TipsterStats>('/stats', {}, '/api/progression'),
+  /** Saját tipp-előzmény, legfrissebb elöl; a limitet a szerver korlátozza. */
+  progressionHistory: (limit?: number) =>
+    request<PredictionHistoryResponse>(`/history${limit ? `?limit=${limit}` : ''}`, {}, '/api/progression'),
 
   // ---------- Tippverseny (külön modul; a meglévő végpontokat nem érinti) ----------
   // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, a path pedig csak az azon belüli rész –

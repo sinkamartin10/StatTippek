@@ -714,3 +714,210 @@ describe('Ranglista – profil megjelenítés', () => {
     }
   });
 });
+
+// ===========================================================================
+// Személyes statisztika és tipp-előzmény (GET /stats, GET /history)
+// ===========================================================================
+
+describe('Tipster statisztika és előzmény', () => {
+  it('S2 + S4. hitelesítés nélkül mindkét végpont 401', async () => {
+    expect((await call(h, 'GET', '/api/progression/stats')).status).toBe(401);
+    expect((await call(h, 'GET', '/api/progression/history')).status).toBe(401);
+  });
+
+  it('S7. üres előzmény és üres statisztika nem borul fel', async () => {
+    const stats = await call(h, 'GET', '/api/progression/stats', PRO_USER);
+    expect(stats.status).toBe(200);
+    expect(stats.body).toMatchObject({
+      totalPredictions: 0, settledPredictions: 0, correctPredictions: 0, wrongPredictions: 0,
+      pendingPredictions: 0, exactScores: 0, accuracy: null, currentStreak: 0, bestStreak: 0,
+      totalXp: 0, level: 1, competitionWins: 0, distinctLeagues: 0,
+    });
+    expect(stats.body.leagues).toEqual([]);
+    expect(stats.body.trend).toEqual([]);
+
+    const hist = await call(h, 'GET', '/api/progression/history', PRO_USER);
+    expect(hist.status).toBe(200);
+    expect(hist.body).toEqual({ entries: [], total: 0, limit: 50 });
+  });
+
+  it('S1 + S9 + S10 + S11 + S13. saját statisztika: pontosság, pontos találat, sorozat, XP', async () => {
+    await playCompetition(h, PRO_USER, [EXACT, CORRECT, WRONG, CORRECT, EXACT]);
+    const s = (await call(h, 'GET', '/api/progression/stats', PRO_USER)).body;
+
+    expect(s.totalPredictions).toBe(5);
+    expect(s.settledPredictions).toBe(5);
+    expect(s.correctPredictions).toBe(4);      // 2 exact + 2 correct
+    expect(s.wrongPredictions).toBe(1);
+    expect(s.pendingPredictions).toBe(0);
+    expect(s.exactScores).toBe(2);
+    expect(s.accuracy).toBeCloseTo(4 / 5, 6);  // 80%
+    expect(s.bestStreak).toBe(2);              // a rossz tipp megszakítja
+    expect(s.currentStreak).toBe(2);
+    // XP: 50 + 25 + 0 + 25 + 50 = 150 (sorozatbónusz nincs, mert nincs 5-ös sorozat)
+    expect(s.totalXp).toBe(2 * XP_EXACT_SCORE + 2 * XP_CORRECT_OUTCOME);
+    expect(s.level).toBe(levelFromXp(s.totalXp).level);
+    expect(s.levelTier).toBe(tierForLevel(s.level));
+  });
+
+  it('S8. a még ki nem értékelt tipp függőben marad és nem rontja a pontosságot', async () => {
+    const c = await h.competitions.createCompetition({
+      name: 'Vegyes', leagueKey: 'eng-pl', leagueName: 'Premier League', provider: 'teszt',
+      startsAt: hours(-100), endsAt: hours(48), status: 'active',
+    });
+    await h.competitions.upsertMatches(c.id, [
+      { externalMatchId: 'done', homeTeam: 'H1', awayTeam: 'A1', kickoff: hours(-90), homeScore: 2, awayScore: 1, status: 'finished' as const },
+      { externalMatchId: 'open', homeTeam: 'H2', awayTeam: 'A2', kickoff: hours(5), homeScore: null, awayScore: null, status: 'scheduled' as const },
+    ]);
+    const ms = await h.competitions.listMatches(c.id);
+    await h.competitions.upsertPrediction(PRO_USER, ms.find((m) => m.externalMatchId === 'done')!.id, 2, 1);
+    await h.competitions.upsertPrediction(PRO_USER, ms.find((m) => m.externalMatchId === 'open')!.id, 1, 1);
+    await h.competitionSvc.settle(c.id);
+
+    const s = (await call(h, 'GET', '/api/progression/stats', PRO_USER)).body;
+    expect(s.totalPredictions).toBe(2);
+    expect(s.settledPredictions).toBe(1);
+    expect(s.pendingPredictions).toBe(1);
+    expect(s.accuracy).toBe(1);               // 1/1, a függőben lévő nem számít bele
+    expect(s.exactScores).toBe(1);
+
+    const hist = (await call(h, 'GET', '/api/progression/history', PRO_USER)).body;
+    expect(hist.total).toBe(2);
+    const pending = hist.entries.find((e: any) => e.status === 'pending');
+    expect(pending).toBeDefined();
+    expect(pending.actualHome).toBeNull();
+    expect(pending.points).toBeNull();
+    expect(pending.xpEarned).toBe(0);
+  });
+
+  it('S12. ligánkénti bontás a tényleges ligákból számol', async () => {
+    await playCompetition(h, PRO_USER, [EXACT, CORRECT], 'eng-pl', -100);
+    await playCompetition(h, PRO_USER, [WRONG], 'esp-ll', -60);
+    const s = (await call(h, 'GET', '/api/progression/stats', PRO_USER)).body;
+
+    expect(s.distinctLeagues).toBe(2);
+    const pl = s.leagues.find((l: any) => l.leagueKey === 'eng-pl');
+    const ll = s.leagues.find((l: any) => l.leagueKey === 'esp-ll');
+    expect(pl).toMatchObject({ predictions: 2, settled: 2, correct: 2, exact: 1, accuracy: 1 });
+    expect(ll).toMatchObject({ predictions: 1, settled: 1, correct: 0, exact: 0, accuracy: 0 });
+    expect(s.leagues[0].predictions).toBeGreaterThanOrEqual(s.leagues[1].predictions); // darabszám szerint rendezve
+  });
+
+  it('a trend időrendben, futó pontossággal érkezik', async () => {
+    await playCompetition(h, PRO_USER, [WRONG, CORRECT, CORRECT]);
+    const s = (await call(h, 'GET', '/api/progression/stats', PRO_USER)).body;
+    expect(s.trend).toHaveLength(3);
+    expect(s.trend.map((t: any) => t.index)).toEqual([1, 2, 3]);
+    expect(s.trend.map((t: any) => t.hit)).toEqual([false, true, true]);
+    expect(s.trend[0].rollingAccuracy).toBe(0);
+    expect(s.trend[2].rollingAccuracy).toBeCloseTo(2 / 3, 6);
+    // időrend: a legrégebbi elöl
+    expect(s.trend[0].kickoff <= s.trend[2].kickoff).toBe(true);
+  });
+
+  it('S3. saját előzmény a mérkőzés adataival, legfrissebb elöl', async () => {
+    await playCompetition(h, PRO_USER, [EXACT, CORRECT]);
+    const hist = (await call(h, 'GET', '/api/progression/history', PRO_USER)).body;
+    expect(hist.entries).toHaveLength(2);
+    // legfrissebb elöl
+    expect(hist.entries[0].kickoff >= hist.entries[1].kickoff).toBe(true);
+
+    const e = hist.entries.find((x: any) => x.status === 'exact');
+    expect(e.homeTeam).toBeTruthy();
+    expect(e.awayTeam).toBeTruthy();
+    expect(e.leagueName).toBe('eng-pl');
+    expect(e.predictedHome).toBe(2);
+    expect(e.predictedAway).toBe(1);
+    expect(e.actualHome).toBe(2);
+    expect(e.actualAway).toBe(1);
+    expect(e.points).toBe(5);
+    expect(e.xpEarned).toBe(XP_EXACT_SCORE);
+    expect(e.submittedAt).toBeTruthy();
+  });
+
+  it('S5. más felhasználó előzménye és statisztikája nem érhető el', async () => {
+    await playCompetition(h, PRO_USER_B, [EXACT, EXACT, EXACT]);
+    // A user saját lekérése üres, hiába küld idegen azonosítót queryben
+    const hist = await call(h, 'GET', `/api/progression/history?userId=${PRO_USER_B}&user_id=${PRO_USER_B}`, PRO_USER);
+    expect(hist.status).toBe(200);
+    expect(hist.body.entries).toEqual([]);
+    expect(hist.body.total).toBe(0);
+
+    const stats = await call(h, 'GET', `/api/progression/stats?userId=${PRO_USER_B}`, PRO_USER);
+    expect(stats.body.totalPredictions).toBe(0);
+    expect(stats.body.exactScores).toBe(0);
+
+    // B saját lekérése viszont látja a sajátját
+    expect((await call(h, 'GET', '/api/progression/history', PRO_USER_B)).body.total).toBe(3);
+  });
+
+  it('S6. a limitet a szerver kényszeríti ki (alapértelmezés 50, maximum 100)', async () => {
+    await playCompetition(h, PRO_USER, Array.from({ length: 6 }, () => CORRECT));
+    const base = (await call(h, 'GET', '/api/progression/history', PRO_USER)).body;
+    expect(base.limit).toBe(50);
+    expect(base.entries).toHaveLength(6);
+
+    expect((await call(h, 'GET', '/api/progression/history?limit=2', PRO_USER)).body.entries).toHaveLength(2);
+    // túl nagy, nulla, negatív és értelmezhetetlen limit
+    expect((await call(h, 'GET', '/api/progression/history?limit=9999', PRO_USER)).body.limit).toBe(100);
+    expect((await call(h, 'GET', '/api/progression/history?limit=0', PRO_USER)).body.limit).toBe(50);
+    expect((await call(h, 'GET', '/api/progression/history?limit=-5', PRO_USER)).body.limit).toBe(50);
+    expect((await call(h, 'GET', '/api/progression/history?limit=abc', PRO_USER)).body.limit).toBe(50);
+  });
+
+  it('S14 + S15. FREE és PRO felhasználó egyaránt látja a SAJÁT adatait', async () => {
+    // A FREE user tippjei léteznek (pl. korábbi PRO időszakból), de XP nem jár értük
+    await playCompetition(h, FREE_USER, [EXACT, CORRECT]);
+    const free = (await call(h, 'GET', '/api/progression/stats', FREE_USER)).body;
+    expect(free.totalPredictions).toBe(2);
+    expect(free.correctPredictions).toBe(2);
+    expect(free.accuracy).toBe(1);
+    expect(free.totalXp).toBe(0);     // FREE nem kap XP-t – a meglévő szabály érvényes
+    expect(free.level).toBe(1);
+
+    const freeHist = (await call(h, 'GET', '/api/progression/history', FREE_USER)).body;
+    expect(freeHist.entries).toHaveLength(2);
+    expect(freeHist.entries.every((e: any) => e.xpEarned === 0)).toBe(true);
+
+    // PRO user ugyanazokra az eredményekre XP-t is kap
+    await playCompetition(h, PRO_USER, [EXACT, CORRECT], 'esp-ll', -60);
+    const pro = (await call(h, 'GET', '/api/progression/stats', PRO_USER)).body;
+    expect(pro.totalXp).toBe(XP_EXACT_SCORE + XP_CORRECT_OUTCOME);
+  });
+
+  it('a válasz nem tartalmaz e-mailt, user_id-t vagy előfizetési adatot', async () => {
+    await playCompetition(h, PRO_USER, [EXACT]);
+    for (const path of ['/api/progression/stats', '/api/progression/history']) {
+      const r = await call(h, 'GET', path, PRO_USER);
+      expect(r.raw, path).not.toContain('@');
+      expect(r.raw, path).not.toContain(PRO_USER);
+      expect(r.raw, path).not.toContain('subscription');
+      expect(r.raw.toLowerCase(), path).not.toContain('user_id');
+    }
+  });
+
+  it('nincs N+1: a statisztika és az előzmény fix számú lekérdezésből áll elő', async () => {
+    const calls: Record<string, number> = {};
+    const counted = new Proxy(h.progressionStore, {
+      get(target, prop: string) {
+        const v = (target as any)[prop];
+        if (typeof v !== 'function') return v;
+        return (...args: unknown[]) => { calls[prop] = (calls[prop] ?? 0) + 1; return v.apply(target, args); };
+      },
+    }) as typeof h.progressionStore;
+    const svc = new ProgressionService(counted, async (id) => h.proUsers.has(id));
+
+    await playCompetition(h, PRO_USER, Array.from({ length: 8 }, () => CORRECT));
+
+    Object.keys(calls).forEach((k) => delete calls[k]);
+    await svc.tipsterStats(PRO_USER);
+    expect(calls.allPredictions).toBe(1);
+    expect(calls.placements).toBe(1);
+    expect(calls.totalXp).toBe(1);
+
+    Object.keys(calls).forEach((k) => delete calls[k]);
+    await svc.predictionHistory(PRO_USER, 50);
+    expect(calls.allPredictions).toBe(1);
+    expect(calls.predictionXp).toBe(1);
+  });
+});

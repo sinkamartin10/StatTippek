@@ -12,7 +12,7 @@ import { Router, type Response } from 'express';
 import { planOf } from '../billing/entitlement';
 import { ProgressionError, type ProgressionService } from '../progression/service';
 import type { AvatarSlot, ProfileSettings } from '../../shared/progression';
-import { AVATAR_SLOTS, MAX_SHOWCASE } from '../../shared/progression';
+import { AVATAR_SLOTS, HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, MAX_SHOWCASE } from '../../shared/progression';
 
 const LOCAL_USER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -57,6 +57,28 @@ export function progressionRouter(svc: ProgressionService): Router {
     const userId = ownerId(res);
     if (!userId) return needAuth(res);
     try { res.json(await svc.profile(userId)); } catch (e) { handle(res, e); }
+  });
+
+  /**
+   * Saját tipster statisztika. A felhasználót KIZÁRÓLAG a token azonosítja –
+   * a queryben vagy a törzsben küldött user_id-t nem olvassuk, így más adata nem kérhető le.
+   */
+  r.get('/stats', async (_req, res) => {
+    const userId = ownerId(res);
+    if (!userId) return needAuth(res);
+    try { res.json(await svc.tipsterStats(userId)); } catch (e) { handle(res, e); }
+  });
+
+  /**
+   * Saját tipp-előzmény, legfrissebb elöl. A limitet a szerver korlátozza
+   * (alapértelmezés 50, legfeljebb 100); érvénytelen érték esetén az alapértelmezés érvényes.
+   */
+  r.get('/history', async (req, res) => {
+    const userId = ownerId(res);
+    if (!userId) return needAuth(res);
+    const raw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
+    const limit = Number.isFinite(raw) && raw > 0 ? Math.min(raw, HISTORY_MAX_LIMIT) : HISTORY_DEFAULT_LIMIT;
+    try { res.json(await svc.predictionHistory(userId, limit)); } catch (e) { handle(res, e); }
   });
 
   /** Testreszabás mentése (PRO). A szerver minden választást ellenőriz a feloldott elemek ellen. */

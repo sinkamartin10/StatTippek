@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { ProfileSettings, SettledPrediction } from '../../shared/progression';
+import type { PredictionRecordRow, ProfileSettings, SettledPrediction } from '../../shared/progression';
 
 export type ProgressionEventType = 'prediction' | 'streak_bonus' | 'exact_milestone' | 'placement';
 
@@ -42,6 +42,14 @@ export interface ProgressionStore {
   settledPredictions(userId: string): Promise<SettledPrediction[]>;
   /** A felhasználó dobogós helyezései a már meglévő competition_rewards táblából. */
   placements(userId: string): Promise<Placement[]>;
+
+  /**
+   * A felhasználó ÖSSZES tippje (a még ki nem értékeltekkel együtt), a mérkőzés és a
+   * liga adataival – a statisztika és az előzmény ebből áll elő, EGY lekérdezéssel.
+   */
+  allPredictions(userId: string): Promise<PredictionRecordRow[]>;
+  /** Tippenként ténylegesen jóváírt XP az XP-naplóból (prediction típusú események). */
+  predictionXp(userId: string): Promise<Map<string, number>>;
 
   // --- Kötegelt olvasások: a ranglista EGYSZER kéri le az összes résztvevő adatát.
   //     Így a megjelenítendő profilok száma nem növeli a lekérdezések számát (nincs N+1).
@@ -165,6 +173,46 @@ export class PostgresProgressionStore implements ProgressionStore {
       .select('competition_id, placement').eq('user_id', userId);
     this.fail('placements', error);
     return (data ?? []).map((r: Row) => ({ competitionId: r.competition_id, placement: r.placement }));
+  }
+
+  async allPredictions(userId: string): Promise<PredictionRecordRow[]> {
+    // Egyetlen lekérdezés, beágyazott kapcsolatokkal: tipp → meccs → verseny
+    const { data, error } = await this.db.from('user_predictions')
+      .select(`id, points, predicted_home_score, predicted_away_score, submitted_at,
+        competition_matches!inner(id, home_team, away_team, kickoff, home_score, away_score, status,
+          competition_rounds!inner(id, name, league_key, league_name))`)
+      .eq('user_id', userId);
+    this.fail('allPredictions', error);
+    return (data ?? []).map((r: Row) => {
+      const m = Array.isArray(r.competition_matches) ? r.competition_matches[0] : r.competition_matches;
+      const c = Array.isArray(m?.competition_rounds) ? m.competition_rounds[0] : m?.competition_rounds;
+      return {
+        predictionId: r.id as string,
+        competitionId: (c?.id ?? '') as string,
+        competitionName: (c?.name ?? '') as string,
+        leagueKey: (c?.league_key ?? '') as string,
+        leagueName: (c?.league_name ?? '') as string,
+        homeTeam: (m?.home_team ?? '') as string,
+        awayTeam: (m?.away_team ?? '') as string,
+        kickoff: new Date(m?.kickoff ?? 0).toISOString(),
+        matchStatus: (m?.status ?? 'scheduled') as string,
+        predictedHome: r.predicted_home_score as number,
+        predictedAway: r.predicted_away_score as number,
+        actualHome: m?.home_score ?? null,
+        actualAway: m?.away_score ?? null,
+        points: r.points ?? null,
+        submittedAt: new Date(r.submitted_at).toISOString(),
+      };
+    });
+  }
+
+  async predictionXp(userId: string): Promise<Map<string, number>> {
+    const { data, error } = await this.db.from('progression_events')
+      .select('source_key, xp').eq('user_id', userId).eq('type', 'prediction');
+    this.fail('predictionXp', error);
+    const out = new Map<string, number>();
+    for (const r of (data ?? []) as Row[]) out.set(r.source_key, (out.get(r.source_key) ?? 0) + (r.xp ?? 0));
+    return out;
   }
 
   // ---------- Kötegelt olvasások (ranglista) ----------
@@ -338,6 +386,44 @@ export class SqliteProgressionStore implements ProgressionStore {
   async placements(userId: string): Promise<Placement[]> {
     const rows = this.db.prepare('SELECT competition_id, placement FROM competition_rewards WHERE user_id = ?').all(userId) as Row[];
     return rows.map((r) => ({ competitionId: r.competition_id, placement: Number(r.placement) }));
+  }
+
+  async allPredictions(userId: string): Promise<PredictionRecordRow[]> {
+    const rows = this.db.prepare(`
+      SELECT p.id AS id, p.points AS points, p.predicted_home_score AS ph, p.predicted_away_score AS pa,
+             p.submitted_at AS submitted_at,
+             m.home_team AS home_team, m.away_team AS away_team, m.kickoff AS kickoff,
+             m.home_score AS home_score, m.away_score AS away_score, m.status AS match_status,
+             c.id AS competition_id, c.name AS competition_name, c.league_key AS league_key, c.league_name AS league_name
+      FROM user_predictions p
+      JOIN competition_matches m ON m.id = p.competition_match_id
+      JOIN competition_rounds c ON c.id = m.competition_id
+      WHERE p.user_id = ?`).all(userId) as Row[];
+    return rows.map((r) => ({
+      predictionId: r.id,
+      competitionId: r.competition_id,
+      competitionName: r.competition_name,
+      leagueKey: r.league_key,
+      leagueName: r.league_name,
+      homeTeam: r.home_team,
+      awayTeam: r.away_team,
+      kickoff: r.kickoff,
+      matchStatus: r.match_status,
+      predictedHome: Number(r.ph),
+      predictedAway: Number(r.pa),
+      actualHome: r.home_score == null ? null : Number(r.home_score),
+      actualAway: r.away_score == null ? null : Number(r.away_score),
+      points: r.points == null ? null : Number(r.points),
+      submittedAt: r.submitted_at,
+    }));
+  }
+
+  async predictionXp(userId: string): Promise<Map<string, number>> {
+    const rows = this.db.prepare(
+      "SELECT source_key, xp FROM progression_events WHERE user_id = ? AND type = 'prediction'").all(userId) as Row[];
+    const out = new Map<string, number>();
+    for (const r of rows) out.set(r.source_key, (out.get(r.source_key) ?? 0) + Number(r.xp ?? 0));
+    return out;
   }
 
   // ---------- Kötegelt olvasások (ranglista) ----------
