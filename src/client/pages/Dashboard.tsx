@@ -8,6 +8,7 @@ import { applyClientFilters, defaultFilters, MatchFilters, MatchGrid } from '../
 import { Card, Disclaimer, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { TipCard } from '../components/TipCard';
 import { CompetitionStatusBadge, remainingText } from './Competitions';
+import { MissionsCard } from '../components/MissionsCard';
 import { useAuth } from '../auth/AuthContext';
 import { FREE_DAILY_TIPS, useFreeDay, usePlan } from '../auth/PlanContext';
 
@@ -55,6 +56,9 @@ export default function Dashboard() {
           <Link to="/pro" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0"><Crown className="h-3.5 w-3.5" /> PRO kipróbálása</Link>
         </Note>
       )}
+
+      {/* Napi és heti küldetések – a haladást a szerver számolja */}
+      <MissionsCard />
 
       {/* Tippverseny – belépési pont */}
       {!!competitions.data?.length && (

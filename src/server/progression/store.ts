@@ -14,9 +14,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { PredictionRecordRow, ProfileSettings, SettledPrediction } from '../../shared/progression';
 
-export type ProgressionEventType = 'prediction' | 'streak_bonus' | 'exact_milestone' | 'placement';
+export type ProgressionEventType = 'prediction' | 'streak_bonus' | 'exact_milestone' | 'placement' | 'mission';
 
 export interface UnlockedAchievement { key: string; unlockedAt: string }
+
+export interface MissionClaim { missionKey: string; periodKey: string; progress: number; xpAwarded: number; claimedAt: string }
+export interface NewMissionClaim { userId: string; missionKey: string; periodKey: string; periodType: 'daily' | 'weekly'; progress: number; xpAwarded: number }
 export interface Placement { competitionId: string; placement: number }
 
 export interface ProgressionStore {
@@ -50,6 +53,15 @@ export interface ProgressionStore {
   allPredictions(userId: string): Promise<PredictionRecordRow[]>;
   /** Tippenként ténylegesen jóváírt XP az XP-naplóból (prediction típusú események). */
   predictionXp(userId: string): Promise<Map<string, number>>;
+
+  // --- Küldetések: CSAK a jutalom átvételének ténye tárolódik (a haladás számított) ---
+  /** A megadott periódus-kulcsokhoz tartozó átvételek (mission_key → rekord). */
+  missionClaims(userId: string, periodKeys: string[]): Promise<Map<string, MissionClaim>>;
+  /**
+   * Jutalom átvételének rögzítése, ha még nincs. true = most jött létre,
+   * false = már átvette (ismételt kérés – nem jár újra jutalom).
+   */
+  claimMission(c: NewMissionClaim): Promise<boolean>;
 
   // --- Kötegelt olvasások: a ranglista EGYSZER kéri le az összes résztvevő adatát.
   //     Így a megjelenítendő profilok száma nem növeli a lekérdezések számát (nincs N+1).
@@ -94,7 +106,7 @@ export class PostgresProgressionStore implements ProgressionStore {
 
   async healthCheck(): Promise<string[]> {
     const missing: string[] = [];
-    for (const t of ['progression_events', 'user_achievements', 'user_profile_settings']) {
+    for (const t of ['progression_events', 'user_achievements', 'user_profile_settings', 'mission_claims']) {
       const { error } = await this.db.from(t).select('*').limit(1);
       if (error) missing.push(`${t} (${error.message})`);
     }
@@ -215,6 +227,34 @@ export class PostgresProgressionStore implements ProgressionStore {
     return out;
   }
 
+  async missionClaims(userId: string, periodKeys: string[]): Promise<Map<string, MissionClaim>> {
+    const out = new Map<string, MissionClaim>();
+    if (!periodKeys.length) return out;
+    const { data, error } = await this.db.from('mission_claims')
+      .select('mission_key, period_key, progress, xp_awarded, claimed_at')
+      .eq('user_id', userId).in('period_key', periodKeys);
+    this.fail('missionClaims', error);
+    for (const r of (data ?? []) as Row[]) {
+      out.set(r.mission_key, {
+        missionKey: r.mission_key, periodKey: r.period_key, progress: r.progress,
+        xpAwarded: r.xp_awarded, claimedAt: new Date(r.claimed_at).toISOString(),
+      });
+    }
+    return out;
+  }
+
+  async claimMission(c: NewMissionClaim): Promise<boolean> {
+    // ON CONFLICT DO NOTHING: ugyanaz a küldetés ugyanabban a periódusban csak egyszer jutalmaz
+    const { data, error } = await this.db.from('mission_claims')
+      .upsert({
+        user_id: c.userId, mission_key: c.missionKey, period_key: c.periodKey,
+        period_type: c.periodType, progress: c.progress, xp_awarded: c.xpAwarded,
+      }, { onConflict: 'user_id,mission_key,period_key', ignoreDuplicates: true })
+      .select('id').maybeSingle();
+    this.fail('claimMission', error);
+    return !!data;
+  }
+
   // ---------- Kötegelt olvasások (ranglista) ----------
 
   async getSettingsMany(userIds: string[]): Promise<Map<string, ProfileSettings>> {
@@ -311,6 +351,17 @@ export class SqliteProgressionStore implements ProgressionStore {
         achievement_key TEXT NOT NULL,
         unlocked_at TEXT NOT NULL,
         UNIQUE (user_id, achievement_key)
+      );
+      CREATE TABLE IF NOT EXISTS mission_claims (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        mission_key TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        period_type TEXT NOT NULL,
+        progress INTEGER NOT NULL,
+        xp_awarded INTEGER NOT NULL DEFAULT 0,
+        claimed_at TEXT NOT NULL,
+        UNIQUE (user_id, mission_key, period_key)
       );
       CREATE TABLE IF NOT EXISTS user_profile_settings (
         user_id TEXT PRIMARY KEY,
@@ -424,6 +475,30 @@ export class SqliteProgressionStore implements ProgressionStore {
     const out = new Map<string, number>();
     for (const r of rows) out.set(r.source_key, (out.get(r.source_key) ?? 0) + Number(r.xp ?? 0));
     return out;
+  }
+
+  async missionClaims(userId: string, periodKeys: string[]): Promise<Map<string, MissionClaim>> {
+    const out = new Map<string, MissionClaim>();
+    if (!periodKeys.length) return out;
+    const rows = this.db.prepare(`SELECT mission_key, period_key, progress, xp_awarded, claimed_at
+      FROM mission_claims WHERE user_id = ? AND period_key IN (${periodKeys.map(() => '?').join(',')})`)
+      .all(userId, ...periodKeys) as Row[];
+    for (const r of rows) {
+      out.set(r.mission_key, {
+        missionKey: r.mission_key, periodKey: r.period_key, progress: Number(r.progress),
+        xpAwarded: Number(r.xp_awarded), claimedAt: r.claimed_at,
+      });
+    }
+    return out;
+  }
+
+  async claimMission(c: NewMissionClaim): Promise<boolean> {
+    // ATOMI: az egyedi index dönt, a changes mondja meg, most jött-e létre
+    const r = this.db.prepare(`INSERT INTO mission_claims
+      (id, user_id, mission_key, period_key, period_type, progress, xp_awarded, claimed_at)
+      VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (user_id, mission_key, period_key) DO NOTHING`)
+      .run(randomUUID(), c.userId, c.missionKey, c.periodKey, c.periodType, c.progress, c.xpAwarded, new Date().toISOString());
+    return Number(r.changes) > 0;
   }
 
   // ---------- Kötegelt olvasások (ranglista) ----------

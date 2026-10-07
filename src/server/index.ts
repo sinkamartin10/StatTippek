@@ -12,6 +12,8 @@ import { adminCompetitionRouter, competitionRouter } from './routes/competition'
 import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
 import { progressionRouter } from './routes/progression';
+import { missionsRouter } from './routes/missions';
+import { MissionService } from './missions/service';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
@@ -27,6 +29,7 @@ const progressionService = new ProgressionService(
   // Kötegelt PRO-ellenőrzés a ranglistához: N felhasználó → EGY lekérdezés
   (userIds) => proUserIds(userIds),
 );
+const missionService = new MissionService(container.progression, async (userId) => profileIsPro(await getProfile(userId)));
 const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames, progressionService);
 const app = express();
 app.disable('x-powered-by');
@@ -99,6 +102,8 @@ app.use('/api/competition', competitionRouter(competitionService));
 app.use('/api/profile', profileRouter(container.displayNames));
 // Progression: saját XP/achievement állapot olvasása és a testreszabás mentése (PRO)
 app.use('/api/progression', progressionRouter(progressionService));
+// Küldetések: a haladás számított, a jutalom idempotens és a meglévő XP-rendszerbe kerül
+app.use('/api/missions', missionsRouter(missionService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -149,7 +154,7 @@ app.listen(port, async () => {
       const missingProgression = await container.progression.healthCheck();
       if (missingProgression.length) {
         console.warn('Progression táblák hiányoznak:', missingProgression.join(', '));
-        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql');
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql és 0007_missions.sql');
       }
     }
     const pruned = container.db.pruneCache();

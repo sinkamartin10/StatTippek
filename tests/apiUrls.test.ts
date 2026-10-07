@@ -47,6 +47,8 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       () => api.submitCompetitionPrediction(UUID, UUID, 2, 1),
       () => api.progressionStats(),
       () => api.progressionHistory(10),
+      () => api.missions(),
+      () => api.claimMission('daily_exact_1'),
     ];
     for (const fn of fns) {
       calls = [];
@@ -54,6 +56,7 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       expect(url, url).not.toContain('/competition/competition');
       expect(url, url).not.toContain('/profile/profile');
       expect(url, url).not.toContain('/progression/progression');
+      expect(url, url).not.toContain('/missions/missions');
       expect(url, url).not.toContain('//api');
     }
   });
@@ -125,6 +128,14 @@ describe('Kliens API – profil és a meglévő végpontok', () => {
     expect((await urlOf(() => api.progressionHistory())).url).toBe('/api/progression/history');
     calls = [];
     expect((await urlOf(() => api.progressionHistory(25))).url).toBe('/api/progression/history?limit=25');
+  });
+
+  it('a küldetés-hívások a /api/missions alá mennek', async () => {
+    expect((await urlOf(() => api.missions())).url).toBe('/api/missions');
+    calls = [];
+    const post = await urlOf(() => api.claimMission('daily_exact_1'));
+    expect(post.url).toBe('/api/missions/daily_exact_1/claim');
+    expect(post.method).toBe('POST');
   });
 
   it('a korábbi végpontok változatlanul a /api alá mennek', async () => {

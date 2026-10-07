@@ -10,6 +10,7 @@ import type {
   LeaderboardRow, RewardStatus, UserPrediction,
 } from '@shared/competition';
 import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
+import type { MissionPeriodView, MissionView } from '@shared/missions';
 import { supabase } from './supabase';
 
 export interface MatchWithTeams extends Match {
@@ -62,6 +63,9 @@ export interface ProgressionProfileResponse {
     maxShowcase: number;
   };
 }
+
+export interface MissionsResponse { pro: boolean; daily: MissionPeriodView; weekly: MissionPeriodView; claimedTotal: number }
+export interface MissionClaimResponse { mission: MissionView; xpAwarded: number; alreadyClaimed: boolean }
 
 export interface PredictionHistoryResponse { entries: HistoryEntry[]; total: number; limit: number }
 
@@ -155,6 +159,11 @@ export const api = {
   /** Saját tipp-előzmény, legfrissebb elöl; a limitet a szerver korlátozza. */
   progressionHistory: (limit?: number) =>
     request<PredictionHistoryResponse>(`/history${limit ? `?limit=${limit}` : ''}`, {}, '/api/progression'),
+
+  // ---------- Küldetések (a haladást és a jutalmat a szerver számolja) ----------
+  missions: () => request<MissionsResponse>('', {}, '/api/missions'),
+  claimMission: (key: string) =>
+    request<MissionClaimResponse>(`/${encodeURIComponent(key)}/claim`, { method: 'POST' }, '/api/missions'),
 
   // ---------- Tippverseny (külön modul; a meglévő végpontokat nem érinti) ----------
   // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, a path pedig csak az azon belüli rész –
