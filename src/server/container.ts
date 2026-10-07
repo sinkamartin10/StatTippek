@@ -22,6 +22,7 @@ import { TheOddsApiProvider } from './odds/theOddsApi';
 import { PostgresCompetitionStore, SqliteCompetitionStore, type CompetitionStore } from './competition/store';
 import { InMemoryDisplayNameDirectory, SupabaseDisplayNameDirectory, type DisplayNameDirectory } from './profile/displayNameDirectory';
 import { PostgresProgressionStore, SqliteProgressionStore, type ProgressionStore } from './progression/store';
+import { PostgresBattleStore, SqliteBattleStore, type BattleStore } from './battles/store';
 
 export interface Container {
   data: MatchDataProvider;
@@ -35,6 +36,8 @@ export interface Container {
   displayNames: DisplayNameDirectory;
   /** Tipster progression tárolója – saját táblák, a Tippversenytől függetlenül */
   progression: ProgressionStore;
+  /** 1v1 Tipp Battle tárolója – saját táblák; a user_predictions-hez nem nyúl */
+  battles: BattleStore;
   status(): AppStatus;
 }
 
@@ -84,6 +87,10 @@ export function buildContainer(): Container {
     ? new PostgresProgressionStore(supabaseUrl, serviceRoleKey)
     : new SqliteProgressionStore(db.sqliteHandle());
 
+  const battles: BattleStore = supabaseUrl && serviceRoleKey
+    ? new PostgresBattleStore(supabaseUrl, serviceRoleKey)
+    : new SqliteBattleStore(db.sqliteHandle());
+
   return {
     data,
     research,
@@ -92,6 +99,7 @@ export function buildContainer(): Container {
     competitions,
     displayNames,
     progression,
+    battles,
     status: () => ({
       dataMode: data.origin,
       requestedMode,

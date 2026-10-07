@@ -49,6 +49,15 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       () => api.progressionHistory(10),
       () => api.missions(),
       () => api.claimMission('daily_exact_1'),
+      () => api.battles(),
+      () => api.battle(UUID),
+      () => api.battleEligibleOpponents(),
+      () => api.battleEligibleMatches(),
+      () => api.createBattle(UUID, [UUID, UUID, UUID]),
+      () => api.acceptBattle(UUID),
+      () => api.declineBattle(UUID),
+      () => api.cancelBattle(UUID),
+      () => api.submitBattlePrediction(UUID, UUID, 2, 1),
     ];
     for (const fn of fns) {
       calls = [];
@@ -57,6 +66,7 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       expect(url, url).not.toContain('/profile/profile');
       expect(url, url).not.toContain('/progression/progression');
       expect(url, url).not.toContain('/missions/missions');
+      expect(url, url).not.toContain('/battles/battles');
       expect(url, url).not.toContain('//api');
     }
   });
@@ -104,6 +114,48 @@ describe('Kliens API – admin Tippverseny útvonalak', () => {
     const patch = await urlOf(() => api.adminSetRewardStatus(UUID, UUID, 'granted'));
     expect(patch.url).toBe(`/api/admin/competition/${UUID}/rewards/${UUID}`);
     expect(patch.method).toBe('PATCH');
+  });
+});
+
+describe('Kliens API – 1v1 Battle útvonalak', () => {
+  it('pontosan a szerveren mountolt /api/battles útvonalakra mennek a hívások', async () => {
+    expect((await urlOf(() => api.battles())).url).toBe('/api/battles');
+    calls = [];
+    expect((await urlOf(() => api.battle(UUID))).url).toBe(`/api/battles/${UUID}`);
+    calls = [];
+    expect((await urlOf(() => api.battleEligibleOpponents())).url).toBe('/api/battles/eligible-opponents');
+    calls = [];
+    expect((await urlOf(() => api.battleEligibleMatches())).url).toBe('/api/battles/eligible-matches');
+    calls = [];
+    const create = await urlOf(() => api.createBattle(UUID, [UUID, UUID, UUID]));
+    expect(create.url).toBe('/api/battles');
+    expect(create.method).toBe('POST');
+    calls = [];
+    const accept = await urlOf(() => api.acceptBattle(UUID));
+    expect(accept.url).toBe(`/api/battles/${UUID}/accept`);
+    expect(accept.method).toBe('POST');
+    calls = [];
+    expect((await urlOf(() => api.declineBattle(UUID))).url).toBe(`/api/battles/${UUID}/decline`);
+    calls = [];
+    expect((await urlOf(() => api.cancelBattle(UUID))).url).toBe(`/api/battles/${UUID}/cancel`);
+    calls = [];
+    const pred = await urlOf(() => api.submitBattlePrediction(UUID, UUID, 2, 1));
+    expect(pred.url).toBe(`/api/battles/${UUID}/predictions`);
+    expect(pred.method).toBe('POST');
+  });
+
+  it('a battle hívások SOHA nem mennek a Tippverseny vagy a küldetés útvonalaira', async () => {
+    for (const fn of [
+      () => api.battles(), () => api.battle(UUID), () => api.createBattle(UUID, [UUID, UUID, UUID]),
+      () => api.submitBattlePrediction(UUID, UUID, 2, 1),
+    ]) {
+      calls = [];
+      const { url } = await urlOf(fn);
+      expect(url, url).toMatch(/^\/api\/battles(\/|$)/);
+      expect(url, url).not.toContain('/api/competition');
+      expect(url, url).not.toContain('/api/missions');
+      expect(url, url).not.toContain('/api/progression');
+    }
   });
 });
 

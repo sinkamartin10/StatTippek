@@ -3,6 +3,9 @@
  */
 import type { DailyQuota } from '@shared/freeQuota';
 import type {
+  BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
+} from '@shared/battles';
+import type {
   AppStatus, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
   FormSummary, StandingRow, LeagueAverages, MatchResult,
 } from '@shared/types';
@@ -86,7 +89,14 @@ export interface SearchResponse { teams: Team[]; leagues: League[]; matches: Mat
 export interface HistoryResponse { predictions: PredictionRecord[]; summary: HistorySummary; origin: 'demo' | 'live' }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  constructor(
+    message: string,
+    public status: number,
+    /** A szerver gépi hibakódja (pl. PRO_REQUIRED, CHALLENGE_EXPIRED) – a felület erre ágazhat. */
+    public code?: string,
+    /** A hibaválasz további, szerver által számolt mezői (pl. kvóta-állapot). */
+    public details?: Record<string, unknown>,
+  ) { super(message); }
 }
 
 /** A bejelentkezett felhasználó access tokenje (a szerver ebből azonosít; a PRO/FREE állapotot a szerver dönti el). */
@@ -111,8 +121,10 @@ async function request<T>(path: string, init?: RequestInit, prefix = '/api'): Pr
   let body: unknown = null;
   try { body = text ? JSON.parse(text) : null; } catch { /* nem JSON */ }
   if (!res.ok) {
-    const msg = (body as { error?: string } | null)?.error ?? `Hiba (${res.status})`;
-    throw new ApiError(msg, res.status);
+    const b = (body ?? {}) as { error?: string; code?: string } & Record<string, unknown>;
+    const msg = b.error ?? `Hiba (${res.status})`;
+    const { error: _e, code, ...rest } = b;
+    throw new ApiError(msg, res.status, code, rest);
   }
   return body as T;
 }
@@ -168,6 +180,26 @@ export const api = {
 
   // ---------- Küldetések (a haladást és a jutalmat a szerver számolja) ----------
   missions: () => request<MissionsResponse>('', {}, '/api/missions'),
+
+  // --- 1v1 Tipp Battle. A 3. argumentum a TELJES mount-prefix: az útvonal
+  //     NEM tartalmazhatja újra a 'battles' szegmenst (lásd tests/apiUrls.test.ts).
+  battles: () => request<BattleListResponse>('', {}, '/api/battles'),
+  battle: (id: string) => request<BattleView>(`/${encodeURIComponent(id)}`, {}, '/api/battles'),
+  battleEligibleOpponents: () => request<EligibleOpponent[]>('/eligible-opponents', {}, '/api/battles'),
+  battleEligibleMatches: () => request<EligibleMatch[]>('/eligible-matches', {}, '/api/battles'),
+  createBattle: (opponentId: string, competitionMatchIds: string[]) =>
+    request<BattleView>('', { method: 'POST', body: JSON.stringify({ opponentId, competitionMatchIds }) }, '/api/battles'),
+  acceptBattle: (id: string) =>
+    request<BattleView>(`/${encodeURIComponent(id)}/accept`, { method: 'POST' }, '/api/battles'),
+  declineBattle: (id: string) =>
+    request<BattleView>(`/${encodeURIComponent(id)}/decline`, { method: 'POST' }, '/api/battles'),
+  cancelBattle: (id: string) =>
+    request<BattleView>(`/${encodeURIComponent(id)}/cancel`, { method: 'POST' }, '/api/battles'),
+  submitBattlePrediction: (id: string, competitionMatchId: string, predictedHomeScore: number, predictedAwayScore: number) =>
+    request<BattleView>(`/${encodeURIComponent(id)}/predictions`, {
+      method: 'POST',
+      body: JSON.stringify({ competitionMatchId, predictedHomeScore, predictedAwayScore }),
+    }, '/api/battles'),
   claimMission: (key: string) =>
     request<MissionClaimResponse>(`/${encodeURIComponent(key)}/claim`, { method: 'POST' }, '/api/missions'),
 

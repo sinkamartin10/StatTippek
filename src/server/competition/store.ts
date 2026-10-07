@@ -76,6 +76,11 @@ export interface CompetitionStore {
   upsertMatches(competitionId: string, matches: SyncMatch[]): Promise<{ inserted: number; updated: number }>;
   listMatches(competitionId: string): Promise<CompetitionMatch[]>;
   getMatch(id: string): Promise<CompetitionMatch | null>;
+  /**
+   * Több mérkőzés EGY lekérdezéssel, azonosítók szerint. Kötegelt olvasó: a hívónak
+   * nem kell meccsenként kérdeznie (nincs N+1). Csak olvas.
+   */
+  getMatchesByIds(ids: string[]): Promise<CompetitionMatch[]>;
 
   // Tippek
   upsertPrediction(userId: string, competitionMatchId: string, home: number, away: number): Promise<UserPrediction>;
@@ -238,6 +243,14 @@ export class PostgresCompetitionStore implements CompetitionStore {
     const { data, error } = await this.db.from('competition_matches').select('*').eq('id', id).maybeSingle();
     this.fail('getMatch', error);
     return data ? toMatch(data) : null;
+  }
+
+  async getMatchesByIds(ids: string[]): Promise<CompetitionMatch[]> {
+    if (!ids.length) return [];
+    const { data, error } = await this.db.from('competition_matches').select('*')
+      .in('id', [...new Set(ids)]).order('kickoff', { ascending: true });
+    this.fail('getMatchesByIds', error);
+    return (data ?? []).map(toMatch);
   }
 
   async upsertPrediction(userId: string, competitionMatchId: string, home: number, away: number): Promise<UserPrediction> {
@@ -491,6 +504,15 @@ export class SqliteCompetitionStore implements CompetitionStore {
       .run(randomUUID(), competitionMatchId, userId, home, away, now, now);
     const fresh = await this.getPrediction(userId, competitionMatchId);
     return fresh!;
+  }
+
+  async getMatchesByIds(ids: string[]): Promise<CompetitionMatch[]> {
+    if (!ids.length) return [];
+    const unique = [...new Set(ids)];
+    const rows = this.db.prepare(
+      `SELECT * FROM competition_matches WHERE id IN (${unique.map(() => '?').join(',')}) ORDER BY kickoff ASC`,
+    ).all(...unique) as Row[];
+    return rows.map(toMatch);
   }
 
   /**

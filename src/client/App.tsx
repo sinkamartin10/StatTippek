@@ -12,6 +12,8 @@ import Competitions from './pages/Competitions';
 import CompetitionDetail from './pages/CompetitionDetail';
 import AdminCompetitions from './pages/AdminCompetitions';
 import MyStats from './pages/MyStats';
+import Battles from './pages/Battles';
+import BattleDetail from './pages/BattleDetail';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Sources from './pages/Sources';
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="/pro" element={<Pro />} />
         <Route path="/profil" element={<Profile />} />
         <Route path="/statisztikaim" element={<RequireAuth><MyStats /></RequireAuth>} />
+        <Route path="/battles" element={<RequireAuth><Battles /></RequireAuth>} />
+        <Route path="/battles/:id" element={<RequireAuth><BattleDetail /></RequireAuth>} />
         <Route path="/tippverseny" element={<Competitions />} />
         <Route path="/tippverseny/:id" element={<CompetitionDetail />} />
         {/* A felületi védelem csak kényelmi – a jogosultságot a szerver ellenőrzi (ADMIN_EMAILS) */}

@@ -13,7 +13,9 @@ import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
 import { progressionRouter } from './routes/progression';
 import { missionsRouter } from './routes/missions';
+import { battlesRouter } from './routes/battles';
 import { MissionService } from './missions/service';
+import { BattleService } from './battles/service';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
@@ -37,6 +39,21 @@ const competitionService = new CompetitionService(
   // Supabase nélküli helyi módban nincs csomag-fogalom → nincs szűrés.
   supabaseConfigured ? (userIds) => proUserIds(userIds) : undefined,
 );
+/**
+ * 1v1 Tipp Battle. Saját táblák; a Tippverseny tárolójából KIZÁRÓLAG OLVAS
+ * (mérkőzésadat és a ranglista résztvevői köre). A user_predictions-hez nem nyúl,
+ * ezért a battle nem jelenik meg a Tippverseny ranglistán, nem fogyaszt FREE napi
+ * kvótát, nem számít küldetés-haladásba, és nem ad XP-t vagy helyezést.
+ */
+const battleService = new BattleService(
+  container.battles,
+  container.competitions,
+  container.displayNames,
+  async (userId) => profileIsPro(await getProfile(userId)),
+  (userIds) => proUserIds(userIds),
+  (userIds) => progressionService.publicProfiles(userIds),
+);
+
 const app = express();
 app.disable('x-powered-by');
 
@@ -110,6 +127,8 @@ app.use('/api/profile', profileRouter(container.displayNames));
 app.use('/api/progression', progressionRouter(progressionService));
 // Küldetések: a haladás számított, a jutalom idempotens és a meglévő XP-rendszerbe kerül
 app.use('/api/missions', missionsRouter(missionService));
+// 1v1 Tipp Battle: saját tipptábla; a Tippverseny adatait nem módosítja
+app.use('/api/battles', battlesRouter(battleService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -160,7 +179,7 @@ app.listen(port, async () => {
       const missingProgression = await container.progression.healthCheck();
       if (missingProgression.length) {
         console.warn('Progression táblák hiányoznak:', missingProgression.join(', '));
-        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql, 0007_missions.sql és 0008_free_daily_quota.sql');
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql, 0007_missions.sql, 0008_free_daily_quota.sql és 0009_battles.sql');
       }
     }
     const pruned = container.db.pruneCache();

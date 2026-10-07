@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
-  Search, Settings, Sparkles, Ticket, UserCircle2, UserPlus, X,
+  Search, Settings, Sparkles, Swords, Ticket, UserCircle2, UserPlus, X,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
 import { api } from '../lib/api';
@@ -18,6 +18,7 @@ const MAIN = [
   { to: '/elozmenyek', label: 'Előzmények', icon: History },
   { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
   { to: '/tippverseny', label: 'Tippverseny', icon: Trophy },
+  { to: '/battles', label: '1v1 Battle', icon: Swords },
   { to: '/pro', label: 'PRO', icon: Crown },
 ];
 
@@ -49,6 +50,7 @@ export default function Layout() {
   const moreRef = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
   const loc = useLocation();
+  const [pendingBattles, setPendingBattles] = useState(0);
   const auth = useAuth();
   const { pro } = usePlan();
 
@@ -56,6 +58,12 @@ export default function Layout() {
   useEffect(() => { if (auth.passwordRecovery && loc.pathname !== '/uj-jelszo') nav('/uj-jelszo', { replace: true }); }, [auth.passwordRecovery, loc.pathname, nav]);
 
   useEffect(() => { api.status().then(setStatus).catch(() => setStatus(null)); }, []);
+  // Nyitott 1v1 kihívások száma a menü jelvényéhez. Nincs külön értesítési
+  // rendszer: a /battles végpontot kérdezzük meg egyszer, bejelentkezés esetén.
+  useEffect(() => {
+    if (!auth.user) { setPendingBattles(0); return; }
+    api.battles().then((b) => setPendingBattles(b.pendingIncoming)).catch(() => setPendingBattles(0));
+  }, [auth.user, loc.pathname === '/battles']);
   useEffect(() => { setOpen(false); setMore(false); }, [loc.pathname]);
   useEffect(() => { document.body.style.overflow = open ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [open]);
 
@@ -88,6 +96,9 @@ export default function Layout() {
             {MAIN.map((n) => (
               <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <n.icon className="h-4 w-4" /> {n.label}
+                {n.to === '/battles' && pendingBattles > 0 && (
+                  <span className="badge badge-blue ml-1" aria-label={`${pendingBattles} nyitott kihívás`}>{pendingBattles}</span>
+                )}
               </NavLink>
             ))}
             <div className="relative" ref={moreRef}>
@@ -156,6 +167,9 @@ export default function Layout() {
               {MAIN.map((n) => (
                 <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link-mobile ${isActive ? 'active' : ''}`}>
                   <n.icon className="h-5 w-5" /> {n.label}
+                  {n.to === '/battles' && pendingBattles > 0 && (
+                    <span className="badge badge-blue ml-auto">{pendingBattles}</span>
+                  )}
                 </NavLink>
               ))}
               <div className="my-2 border-t border-border" />
