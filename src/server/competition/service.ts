@@ -13,6 +13,7 @@ import {
   type PublicProfile, type RewardStatus, type UserPrediction,
 } from '../../shared/competition';
 import type { CompetitionStore, SyncMatch } from './store';
+import { budapestDayWindow, quotaFrom, type DailyQuota } from '../../shared/freeQuota';
 
 /**
  * A progression-réteg felé mutató, szándékosan szűk felület.
@@ -31,7 +32,13 @@ export interface ProgressionHook {
 
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
 export class CompetitionError extends Error {
-  constructor(message: string, public status: number, public code?: string) { super(message); }
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    /** A hibaválaszba beolvasztandó, SZERVER által számolt extra mezők (pl. kvóta-állapot). */
+    public details?: Record<string, unknown>,
+  ) { super(message); }
 }
 
 export interface CreateCompetitionInput {
@@ -59,6 +66,13 @@ export class CompetitionService {
      * A verseny pontszámítását nem befolyásolja.
      */
     private progression?: ProgressionHook,
+    /**
+     * Kötegelt PRO-feloldó a JUTALOM-jogosultsághoz (nincs N+1).
+     * Kizárólag azt dönti el, ki kaphat jutalmat – a pontozást, a sorrendet és a
+     * nyilvános ranglistát NEM befolyásolja. Ha nincs megadva (Supabase nélküli
+     * helyi mód), mindenki jogosult: a működés bitre azonos a korábbival.
+     */
+    private proUsers?: (userIds: string[]) => Promise<Set<string>>,
   ) {}
 
   /** A tárolt név, vagy – ha valamiért nincs – állandó álnév (soha nem e-mail). */
@@ -137,6 +151,12 @@ export class CompetitionService {
     now = new Date(),
     /** false csak a Supabase nélküli, egyfelhasználós helyi módban */
     requireDisplayName = true,
+    /**
+     * A FREE csomag napi ÚJ tipp limitje, vagy null, ha nincs limit (PRO).
+     * A FREE/PRO döntést a hívó réteg hozza a meglévő entitlement rendszerből –
+     * a kliens által küldött plan / quota mezőt sosem olvassuk.
+     */
+    dailyLimit: number | null = null,
   ): Promise<UserPrediction> {
     // Részvételi feltétel: a hitelesített felhasználóhoz TÉNYLEGESEN tartozzon megjelenítési név.
     // A kérésben küldött display_name mezőt sosem vesszük figyelembe.
@@ -160,7 +180,30 @@ export class CompetitionService {
     if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0 || home > 99 || away > 99) {
       throw new CompetitionError('Érvénytelen tipp: a gólszám 0 és 99 közötti egész szám lehet.', 400);
     }
-    return this.store.upsertPrediction(userId, competitionMatchId, home, away);
+
+    // A napi kvóta az UTOLSÓ, atomikus lépés: érvénytelen vagy zárolt kérés
+    // soha nem fogyaszthat kvótát, mert addig el sem jutunk.
+    const window = budapestDayWindow(now);
+    const r = await this.store.createOrUpdatePrediction(userId, competitionMatchId, home, away, dailyLimit, window);
+
+    if (r.outcome === 'limit_reached') {
+      const quota = quotaFrom(r.used, window, dailyLimit!);
+      throw new CompetitionError(
+        `Elérted a mai tippkeretet (${quota.limit} tipp naponta). A keret a következő napon újraindul – PRO előfizetéssel nincs napi korlát.`,
+        403, 'FREE_DAILY_LIMIT_REACHED', { ...quota },
+      );
+    }
+    return r.prediction!;
+  }
+
+  /**
+   * A felhasználó mai kvóta-állapota. `dailyLimit = null` (PRO) esetén nincs kvóta → null.
+   * Kizárólag tájékoztató adat a felületnek; a tényleges kikényszerítés a beküldésnél történik.
+   */
+  async dailyQuota(userId: string, dailyLimit: number | null, now = new Date()): Promise<DailyQuota | null> {
+    if (dailyLimit == null) return null;
+    const window = budapestDayWindow(now);
+    return quotaFrom(await this.store.countPredictionsCreatedIn(userId, window), window, dailyLimit);
   }
 
   // -------------------------------------------------------------------------
@@ -258,8 +301,31 @@ export class CompetitionService {
     }));
   }
 
+  /**
+   * JUTALOM-sorrend: a normál ranglistával AZONOS pontozással és holtverseny-szabállyal,
+   * de kizárólag a PRO résztvevőkkel. A FREE felhasználó pontja és ranglistás helye
+   * változatlan marad – csak jutalomra nem jogosult.
+   *
+   * Példa: PRO A 18 / FREE B 17 / PRO C 15 / PRO D 12
+   *   normál ranglista : 1. A, 2. B, 3. C, 4. D   (változatlan)
+   *   jutalom-sorrend  : 1. A, 2. C, 3. D
+   */
+  async rewardRanking(competitionId: string): Promise<AdminLeaderboardRow[]> {
+    const ranked = await this.adminLeaderboard(competitionId);
+    if (!this.proUsers) return ranked; // helyi mód: nincs csomag-fogalom, mindenki jogosult
+    const pro = await this.proUsers(ranked.map((r) => r.userId));
+    // A szűrés megőrzi a már kialakult sorrendet, csak a helyezéseket zárja fel 1..n-re
+    return ranked.filter((r) => pro.has(r.userId)).map((r, i) => ({ ...r, rank: i + 1 }));
+  }
+
   /** A bejelentkezett felhasználó saját összesítője az adott versenyben. */
-  async myStats(competitionId: string, userId: string): Promise<{ rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean }> {
+  async myStats(
+    competitionId: string,
+    userId: string,
+    /** FREE napi limit, vagy null, ha nincs (PRO). A hívó entitlement rétege adja. */
+    dailyLimit: number | null = null,
+    now = new Date(),
+  ): Promise<{ rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean; dailyQuota: DailyQuota | null }> {
     const ranked = rankEntries(await this.entries(competitionId));
     const me = ranked.find((e) => e.userId === userId);
     const displayName = await this.names.get(userId);
@@ -271,6 +337,7 @@ export class CompetitionService {
       predictions: me?.predictions ?? 0,
       exactHits: me?.exactHits ?? 0,
       participants: ranked.length,
+      dailyQuota: await this.dailyQuota(userId, dailyLimit, now),
     };
   }
 
@@ -387,10 +454,12 @@ export class CompetitionService {
 
     await this.settle(id);
     const ranked = await this.adminLeaderboard(id);
+    // A jutalom CSAK PRO résztvevőnek jár; a normál ranglista (ranked) ettől független és változatlan.
+    const eligible = await this.rewardRanking(id);
 
     let createdRewards = 0;
     for (const tier of REWARD_TIERS) {
-      const winner = ranked.find((r) => r.rank === tier.placement);
+      const winner = eligible.find((r) => r.rank === tier.placement);
       if (!winner) continue;
       const created = await this.store.createRewardIfAbsent({
         competitionId: id, userId: winner.userId, placement: tier.placement,

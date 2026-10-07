@@ -1,7 +1,8 @@
 /**
- * Tippverseny részvételi állapot: bejelentkezés → PRO → megjelenítési név.
- * A felületi jelzés CSAK tájékoztatás: a tényleges feltételeket a szerver ellenőrzi
- * (401 / 403 PRO_REQUIRED / 403 DISPLAY_NAME_REQUIRED).
+ * Tippverseny részvételi állapot: bejelentkezés → megjelenítési név.
+ * FREE csomaggal is részt lehet venni, napi tippkerettel; a keretet a szerver
+ * kényszeríti ki. A felületi jelzés CSAK tájékoztatás: a tényleges feltételeket
+ * a szerver ellenőrzi (401 / 403 DISPLAY_NAME_REQUIRED / 403 FREE_DAILY_LIMIT_REACHED).
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -19,7 +20,7 @@ export interface Participation {
   loggedIn: boolean;
   pro: boolean;
   displayName: string | null;
-  /** csak akkor true, ha minden feltétel teljesül */
+  /** csak akkor true, ha minden részvételi feltétel teljesül (a napi keret ettől független) */
   canPlay: boolean;
   reload: () => void;
 }
@@ -36,7 +37,9 @@ export function useParticipation(): Participation {
     loggedIn,
     pro,
     displayName,
-    canPlay: pro && (!configured || loggedIn) && nameOk,
+    // A csomag NEM zárja ki a részvételt: a FREE felhasználó is tippelhet,
+    // csak napi keret mellett (azt a szerver tartja nyilván és kényszeríti ki).
+    canPlay: (!configured || loggedIn) && nameOk,
     reload: me.reload,
   };
 }
@@ -51,15 +54,6 @@ export function ParticipationBox({ p }: { p: Participation }) {
       <Note>
         <Lock className="mr-1 inline h-4 w-4" /> A Tippversenyben való részvételhez jelentkezz be. A versenyt és a ranglistát enélkül is megnézheted.
         <Link to="/bejelentkezes" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0">Bejelentkezés</Link>
-      </Note>
-    );
-  }
-
-  if (!p.pro) {
-    return (
-      <Note tone="warn">
-        🔒 A Tippverseny PRO előfizetők számára érhető el. A versenyt, a mérkőzéseket és a ranglistát továbbra is megnézheted.
-        <Link to="/pro" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0">PRO megtekintése</Link>
       </Note>
     );
   }
@@ -91,6 +85,12 @@ export function ParticipationBox({ p }: { p: Participation }) {
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-sm font-bold text-text">
       <Check className="h-4 w-4 text-success" /> Részt vehetsz a Tippversenyben.
       {p.displayName && <span className="font-semibold text-text-muted">A ranglistán így jelensz meg: <b className="text-text">{p.displayName}</b></span>}
+      {!p.pro && p.configured && (
+        <span className="font-semibold text-text-muted">
+          FREE csomagban naponta 3 új tippet adhatsz le, és a verseny jutalmaira nem vagy jogosult.
+          <Link to="/pro" className="btn btn-sm btn-primary ml-2">PRO megtekintése</Link>
+        </span>
+      )}
       <Link to="/profil" className="btn btn-sm btn-ghost ml-auto">Név módosítása</Link>
     </div>
   );

@@ -9,11 +9,15 @@
  *    a kérés törzsében küldött user_id / userId mezőt SOHA nem olvassuk ki,
  *  - a points / rank / total_points / result / status mezőket a kérésből figyelmen kívül hagyjuk,
  *    ezeket kizárólag a szerver számolja és írja,
- *  - a FREE felhasználó olvashat, de nem tippelhet (requirePro → 403),
+ *  - a FREE felhasználó is tippelhet, de naponta legfeljebb FREE_DAILY_PREDICTION_LIMIT
+ *    ÚJ tippet adhat le (user-szintű, versenyfüggetlen kvóta); a limit kikényszerítése
+ *    a szerveren, atomikusan történik – a kliens által küldött plan / quota mezőt
+ *    sosem olvassuk ki,
  *  - az admin jogot a meglévő ADMIN_EMAILS alapú requireAdmin dönti el, nem a kliens.
  */
 import { Router, type Response } from 'express';
-import { planOf, requirePro } from '../billing/entitlement';
+import { planOf, requireAuthenticated } from '../billing/entitlement';
+import { FREE_DAILY_PREDICTION_LIMIT } from '../../shared/freeQuota';
 import { CompetitionError, type CompetitionService } from '../competition/service';
 import { SCORING_RULES, TIE_BREAK_RULES, type RewardStatus } from '../../shared/competition';
 
@@ -31,8 +35,21 @@ function ownerId(res: Response): string | null {
 const needAuth = (res: Response) => res.status(401).json({ error: 'Bejelentkezés szükséges.', code: 'AUTH_REQUIRED' });
 const badId = (res: Response) => res.status(400).json({ error: 'Érvénytelen azonosító.' });
 
+/**
+ * A kérésre érvényes napi ÚJ tipp limit: PRO-nak nincs (null), FREE-nek a rögzített keret.
+ * A csomagot KIZÁRÓLAG a szerveroldali entitlement adja (profiles + cache);
+ * a kérés törzséből / query-jéből érkező plan, subscription, dailyCount, remaining
+ * értékeket soha nem olvassuk ki.
+ */
+function dailyLimitFor(res: Response): number | null {
+  return planOf(res).pro ? null : FREE_DAILY_PREDICTION_LIMIT;
+}
+
 function handle(res: Response, e: unknown): void {
-  if (e instanceof CompetitionError) { res.status(e.status).json({ error: e.message, code: e.code }); return; }
+  if (e instanceof CompetitionError) {
+    res.status(e.status).json({ error: e.message, code: e.code, ...(e.details ?? {}) });
+    return;
+  }
   console.error('[competition]', e);
   res.status(500).json({ error: 'Szerverhiba a tippverseny feldolgozásakor.' });
 }
@@ -101,15 +118,23 @@ export function competitionRouter(svc: CompetitionService): Router {
     if (!userId) return needAuth(res);
     try {
       await svc.getPublic(req.params.id);
-      res.json(await svc.myStats(req.params.id, userId));
+      res.json(await svc.myStats(req.params.id, userId, dailyLimitFor(res)));
     } catch (e) { handle(res, e); }
   });
 
   /**
-   * Tipp leadása / módosítása. PRO-only (requirePro: bejelentkezés nélkül 401, FREE-ként 403).
+   * Tipp leadása / módosítása.
+   *
+   * Bejelentkezés kötelező (requireAuthenticated → 401). A csomag nem zár ki:
+   *  - PRO  : nincs napi korlát (a korábbi működés változatlan),
+   *  - FREE : naponta legfeljebb 3 ÚJ tipp; a limit elérése után 403
+   *           FREE_DAILY_LIMIT_REACHED, a válaszban limit / used / remaining / resetAt.
+   * Meglévő tipp módosítása nem fogyaszt kvótát. A részvétel további feltételei
+   * (megjelenítési név, verseny állapota, kickoff-zárolás) változatlanok.
+   *
    * A törzsből KIZÁRÓLAG a competitionMatchId és a két gólszám olvasódik ki.
    */
-  r.post('/:id/predictions', requirePro, async (req, res) => {
+  r.post('/:id/predictions', requireAuthenticated, async (req, res) => {
     const competitionId = typeof req.params.id === 'string' ? req.params.id : '';
     if (!UUID.test(competitionId)) return badId(res);
     const userId = ownerId(res);
@@ -123,7 +148,9 @@ export function competitionRouter(svc: CompetitionService): Router {
 
     try {
       // Helyi, Supabase nélküli módban nincs profil, ezért ott nem követelünk megjelenítési nevet
-      const saved = await svc.submitPrediction(competitionId, userId, matchId, home, away, new Date(), planOf(res).enforced);
+      const saved = await svc.submitPrediction(
+        competitionId, userId, matchId, home, away, new Date(), planOf(res).enforced, dailyLimitFor(res),
+      );
       res.json(saved);
     } catch (e) { handle(res, e); }
   });

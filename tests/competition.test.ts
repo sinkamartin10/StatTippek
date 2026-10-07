@@ -221,15 +221,18 @@ describe('Tippverseny – hitelesítés', () => {
 // ===========================================================================
 
 describe('Tippverseny – FREE és PRO', () => {
-  it('3. FREE felhasználó tippbeküldése → 403', async () => {
+  // Phase 3 óta a FREE felhasználó is tippelhet – napi kerettel. A korábbi,
+  // csomag alapú teljes tiltást (403 PRO_REQUIRED) az új üzleti szabály váltotta fel;
+  // a napi keret kikényszerítését a „FREE napi tippkeret" blokk tesztjei fedik.
+  it('3. FREE felhasználó tippbeküldése a napi kereten belül → 200', async () => {
     const { id, matches } = await activeCompetition(h);
     const r = await call(h, 'POST', `/api/competition/${id}/predictions`, { user: USER_A, email: 'free@example.com' }, {
       competitionMatchId: matches[0].id, predictedHomeScore: 2, predictedAwayScore: 1,
     });
-    expect(r.status).toBe(403);
-    expect(r.body.code).toBe('PRO_REQUIRED');
-    // és valóban nem jött létre tipp
-    expect(await h.store.getPrediction(USER_A, matches[0].id)).toBeNull();
+    expect(r.status).toBe(200);
+    const saved = await h.store.getPrediction(USER_A, matches[0].id);
+    expect(saved?.predictedHomeScore).toBe(2);
+    expect(saved?.predictedAwayScore).toBe(1);
   });
 
   it('3b. FREE felhasználó a versenyt és a ranglistát látja', async () => {
@@ -615,13 +618,12 @@ describe('Display Name – részvételi feltétel', () => {
     expect(r.status).toBe(200);
   });
 
-  it('DN3. FREE felhasználó érvényes névvel is 403-at kap', async () => {
+  it('DN3. FREE felhasználó érvényes névvel tippelhet (a névkövetelmény változatlan)', async () => {
     const { id, matches } = await activeCompetition(h);
     const r = await call(h, 'POST', `/api/competition/${id}/predictions`, { user: USER_A }, {
       competitionMatchId: matches[0].id, predictedHomeScore: 1, predictedAwayScore: 1,
     });
-    expect(r.status).toBe(403);
-    expect(r.body.code).toBe('PRO_REQUIRED'); // a PRO-ellenőrzés előbb fut
+    expect(r.status).toBe(200); // USER_A-nak a harness beállított nevet
   });
 });
 

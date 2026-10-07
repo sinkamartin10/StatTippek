@@ -8,6 +8,7 @@ import { Lock, Trophy } from 'lucide-react';
 import type { CompetitionMatchView } from '@shared/competition';
 import { api } from '../lib/api';
 import { fmtDateTime, fmtTime, useAsync } from '../lib/format';
+import { quotaLabel } from '@shared/freeQuota';
 import { Card, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { usePlan } from '../auth/PlanContext';
 import { ParticipationBox, useParticipation } from '../components/Participation';
@@ -31,6 +32,9 @@ export default function CompetitionDetail() {
   if (!detail.data) return <EmptyState emoji="🏁" title="A tippverseny nem található" />;
 
   const c = detail.data.competition;
+  // A napi tippkeretet a SZERVER adja (PRO-nál null). Itt csak megjelenítjük.
+  const quota = me.data?.dailyQuota ?? null;
+  const quotaUsedUp = !!quota && quota.remaining <= 0;
 
   return (
     <div className="space-y-6">
@@ -50,6 +54,17 @@ export default function CompetitionDetail() {
 
       <ParticipationBox p={participation} />
 
+      {/* FREE napi tippkeret – tájékoztatás; a kikényszerítés a szerveren történik */}
+      {quota && (
+        <Note tone={quotaUsedUp ? 'warn' : 'info'}>
+          <b>{quotaLabel(quota)}</b>{' '}
+          {quotaUsedUp
+            ? 'Új mérkőzésre ma már nem tudsz tippet leadni, a meglévő tippjeidet viszont a kezdésig módosíthatod. A keret holnap újraindul.'
+            : `Még ${quota.remaining} új tippet adhatsz le ma. A már leadott tippek módosítása nem fogyasztja a keretet.`}
+          <Link to="/pro" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0">PRO: korlátlan tippelés</Link>
+        </Note>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* Mérkőzések */}
         <section className="space-y-3">
@@ -57,7 +72,7 @@ export default function CompetitionDetail() {
           {matches.loading ? <Card><Loading /></Card>
             : matches.error ? <ErrorBox message={matches.error} onRetry={matches.reload} />
               : !matches.data?.length ? <EmptyState emoji="⚽" title="Még nincsenek mérkőzések" text="Az adminisztrátor hamarosan szinkronizálja a verseny mérkőzéseit." />
-                : matches.data.map((m) => <MatchRow key={m.id} competitionId={id} m={m} canPlay={canPlay} onSaved={reload} />)}
+                : matches.data.map((m) => <MatchRow key={m.id} competitionId={id} m={m} canPlay={canPlay} quotaUsedUp={quotaUsedUp} onSaved={reload} />)}
         </section>
 
         {/* Ranglista és szabályok */}
@@ -102,7 +117,12 @@ export default function CompetitionDetail() {
 }
 
 /** Egy mérkőzés sora: eredmény, saját tipp, tippelő mezők vagy zárolás. */
-function MatchRow({ competitionId, m, canPlay, onSaved }: { competitionId: string; m: CompetitionMatchView; canPlay: boolean; onSaved: () => void }) {
+function MatchRow({ competitionId, m, canPlay, quotaUsedUp, onSaved }: {
+  competitionId: string; m: CompetitionMatchView; canPlay: boolean;
+  /** a mai FREE tippkeret elfogyott – ÚJ tipp nem adható le, a meglévő módosítható */
+  quotaUsedUp: boolean;
+  onSaved: () => void;
+}) {
   const [home, setHome] = useState(String(m.myPrediction?.predictedHomeScore ?? ''));
   const [away, setAway] = useState(String(m.myPrediction?.predictedAwayScore ?? ''));
   const [busy, setBusy] = useState(false);
@@ -141,7 +161,7 @@ function MatchRow({ competitionId, m, canPlay, onSaved }: { competitionId: strin
 
       {/* Saját tipp / tippelő mezők */}
       <div className="mt-3 border-t border-border pt-3">
-        {canPlay && !m.locked && editing ? (
+        {canPlay && !m.locked && editing && !(quotaUsedUp && !m.myPrediction) ? (
           <div className="flex flex-wrap items-center justify-center gap-2">
             <input className="input !w-16 text-center" inputMode="numeric" value={home} onChange={(e) => setHome(e.target.value.replace(/\D/g, '').slice(0, 2))} aria-label={`${m.homeTeam} tippelt gólszáma`} />
             <span className="font-extrabold text-text-muted">–</span>
@@ -161,7 +181,13 @@ function MatchRow({ competitionId, m, canPlay, onSaved }: { competitionId: strin
           </div>
         ) : (
           <p className="text-center text-sm font-semibold text-text-muted">
-            {m.locked ? (m.lockReason ?? 'Erre a mérkőzésre már nem lehet tippelni.') : canPlay ? 'Még nem tippeltél erre a mérkőzésre.' : 'Ez a funkció PRO előfizetők számára érhető el.'}
+            {m.locked
+              ? (m.lockReason ?? 'Erre a mérkőzésre már nem lehet tippelni.')
+              : !canPlay
+                ? 'A részvételhez jelentkezz be, és állíts be egy megjelenítési nevet.'
+                : quotaUsedUp
+                  ? 'Mai tippkereted elfogyott – erre a mérkőzésre holnap tudsz tippelni.'
+                  : 'Még nem tippeltél erre a mérkőzésre.'}
           </p>
         )}
         {msg && <div className="mt-2"><Note tone={msg.tone}>{msg.text}</Note></div>}

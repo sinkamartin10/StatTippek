@@ -1,6 +1,7 @@
 /**
  * API kliens. Minden hívás a szerver /api végpontjaira megy; a frontend nem tartalmaz és nem is kap API kulcsot.
  */
+import type { DailyQuota } from '@shared/freeQuota';
 import type {
   AppStatus, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
   FormSummary, StandingRow, LeagueAverages, MatchResult,
@@ -70,7 +71,12 @@ export interface MissionClaimResponse { mission: MissionView; xpAwarded: number;
 export interface PredictionHistoryResponse { entries: HistoryEntry[]; total: number; limit: number }
 
 export interface CompetitionDetail { competition: Competition; scoring: { label: string; points: number; text: string }[]; tieBreak: string[] }
-export interface CompetitionMyStats { rank: number | null; points: number; predictions: number; exactHits: number; participants: number; displayName: string | null; canPredict: boolean }
+export interface CompetitionMyStats {
+  rank: number | null; points: number; predictions: number; exactHits: number;
+  participants: number; displayName: string | null; canPredict: boolean;
+  /** FREE napi tippkeret – PRO esetén null. A SZERVER számolja; a kliens csak megjeleníti. */
+  dailyQuota: DailyQuota | null;
+}
 export interface CompetitionLeague { leagueKey: string; leagueName: string; country: string; provider: string }
 export interface CompetitionSyncResult { inserted: number; updated: number; total: number; scoredPredictions: number }
 export interface CompetitionFinishResult { competition: Competition; rewards: CompetitionReward[]; createdRewards: number; warnings: string[] }

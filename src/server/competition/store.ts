@@ -16,6 +16,18 @@ import type {
   Competition, CompetitionMatch, CompetitionMatchStatus, CompetitionReward, CompetitionStatus,
   RewardStatus, RewardType, UserPrediction,
 } from '../../shared/competition';
+import type { DayWindow } from '../../shared/freeQuota';
+
+/** Mi történt a tippbeküldéskor. A 'limit_reached' esetben NEM keletkezett írás. */
+export type PredictionSubmitOutcome = 'created' | 'updated' | 'limit_reached';
+
+export interface PredictionSubmitResult {
+  outcome: PredictionSubmitOutcome;
+  /** a napi ablakban létrehozott tippek száma a művelet UTÁN */
+  used: number;
+  /** a mentett tipp; 'limit_reached' esetén null */
+  prediction: UserPrediction | null;
+}
 
 export interface NewCompetition {
   name: string;
@@ -67,6 +79,23 @@ export interface CompetitionStore {
 
   // Tippek
   upsertPrediction(userId: string, competitionMatchId: string, home: number, away: number): Promise<UserPrediction>;
+  /**
+   * ATOMIKUS tipp-létrehozás vagy -módosítás napi kvótával.
+   *
+   *  - meglévő tipp (user + meccs) → 'updated', a kvóta NEM fogy, a submitted_at nem változik,
+   *  - új tipp és `dailyLimit` elérve → 'limit_reached', írás NEM történik,
+   *  - egyébként → 'created'.
+   *
+   * `dailyLimit = null` → nincs napi limit (PRO).
+   * A feltétel és az írás nem választható szét: ugyanazon felhasználó párhuzamos
+   * kérései sem tudják átlépni a limitet (lásd az implementációk megjegyzéseit).
+   */
+  createOrUpdatePrediction(
+    userId: string, competitionMatchId: string, home: number, away: number,
+    dailyLimit: number | null, window: DayWindow,
+  ): Promise<PredictionSubmitResult>;
+  /** A megadott napi ablakban LÉTREHOZOTT tippek száma (a submitted_at alapján). */
+  countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number>;
   getPrediction(userId: string, competitionMatchId: string): Promise<UserPrediction | null>;
   listPredictionsForUser(userId: string, competitionId: string): Promise<UserPrediction[]>;
   listPredictionsForCompetition(competitionId: string): Promise<UserPrediction[]>;
@@ -135,6 +164,18 @@ export class PostgresCompetitionStore implements CompetitionStore {
     for (const t of ['competition_rounds', 'competition_matches', 'user_predictions', 'competition_rewards']) {
       const { error } = await this.db.from(t).select('*').limit(1);
       if (error) missing.push(`${t} (${error.message})`);
+    }
+    // A 0008 migráció függvénye: szándékosan érvénytelen időablakkal hívjuk, így a
+    // függvény az ELSŐ ellenőrzésén elbukik, és egyetlen sort sem ír. Ha hiányzik,
+    // a PostgREST 'PGRST202' (nincs ilyen függvény) hibát ad – ezt jelezzük.
+    const probe = await this.db.rpc('submit_competition_prediction', {
+      p_user_id: '00000000-0000-0000-0000-000000000000',
+      p_match_id: '00000000-0000-0000-0000-000000000000',
+      p_home: 0, p_away: 0, p_daily_limit: null,
+      p_day_start: new Date(0).toISOString(), p_day_end: new Date(0).toISOString(),
+    });
+    if (probe.error && (probe.error as { code?: string }).code === 'PGRST202') {
+      missing.push('submit_competition_prediction() függvény (0008_free_daily_quota.sql)');
     }
     return missing;
   }
@@ -206,6 +247,47 @@ export class PostgresCompetitionStore implements CompetitionStore {
     }, { onConflict: 'user_id,competition_match_id' }).select('*').single();
     this.fail('upsertPrediction', error);
     return toPrediction(data!);
+  }
+
+  /**
+   * Atomikus beküldés a 0008 migrációban létrehozott SQL-függvénnyel.
+   * A függvénytörzs egy tranzakcióban fut és user-szintű advisory lockot fog,
+   * ezért a párhuzamos kérések nem tudják átlépni a napi limitet.
+   * A limitet és a napablakot MI adjuk be – az üzleti szabály nem az adatbázisban lakik.
+   */
+  async createOrUpdatePrediction(
+    userId: string, competitionMatchId: string, home: number, away: number,
+    dailyLimit: number | null, window: DayWindow,
+  ): Promise<PredictionSubmitResult> {
+    const { data, error } = await this.db.rpc('submit_competition_prediction', {
+      p_user_id: userId,
+      p_match_id: competitionMatchId,
+      p_home: home,
+      p_away: away,
+      p_daily_limit: dailyLimit,
+      p_day_start: window.start,
+      p_day_end: window.end,
+    });
+    this.fail('createOrUpdatePrediction', error);
+    const r = (data ?? {}) as { outcome?: string; used?: number; prediction?: Row | null };
+    if (r.outcome !== 'created' && r.outcome !== 'updated' && r.outcome !== 'limit_reached') {
+      throw new Error(`[competition] createOrUpdatePrediction: váratlan válasz (${JSON.stringify(data)})`);
+    }
+    return {
+      outcome: r.outcome,
+      used: r.used ?? 0,
+      prediction: r.prediction ? toPrediction(r.prediction) : null,
+    };
+  }
+
+  async countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number> {
+    const { count, error } = await this.db.from('user_predictions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('submitted_at', window.start)
+      .lt('submitted_at', window.end);
+    this.fail('countPredictionsCreatedIn', error);
+    return count ?? 0;
   }
 
   async getPrediction(userId: string, competitionMatchId: string): Promise<UserPrediction | null> {
@@ -409,6 +491,58 @@ export class SqliteCompetitionStore implements CompetitionStore {
       .run(randomUUID(), competitionMatchId, userId, home, away, now, now);
     const fresh = await this.getPrediction(userId, competitionMatchId);
     return fresh!;
+  }
+
+  /**
+   * Atomikus beküldés helyi tárolón.
+   *
+   * MIÉRT ATOMIKUS: a `node:sqlite` API szinkron, és ebben a metódusban a döntés és
+   * az írás között NINCS await-pont, ezért az egyprocesszes Node eseményciklusa nem
+   * tud közéfűzni másik kérést. A beszúrás ráadásul EGYETLEN utasítás, amelynek
+   * WHERE feltétele maga a kvóta-ellenőrzés, így a számlálás és az írás elválaszthatatlan.
+   * Ugyanarra a mérkőzésre a (user_id, competition_match_id) UNIQUE index zárja ki a duplikációt.
+   */
+  async createOrUpdatePrediction(
+    userId: string, competitionMatchId: string, home: number, away: number,
+    dailyLimit: number | null, window: DayWindow,
+  ): Promise<PredictionSubmitResult> {
+    const countToday = (): number => (this.db
+      .prepare('SELECT COUNT(*) AS n FROM user_predictions WHERE user_id = ? AND submitted_at >= ? AND submitted_at < ?')
+      .get(userId, window.start, window.end) as Row).n as number;
+
+    const existing = this.db
+      .prepare('SELECT id FROM user_predictions WHERE user_id = ? AND competition_match_id = ?')
+      .get(userId, competitionMatchId) as Row | undefined;
+
+    // 1) Módosítás – a kvóta nem fogy, a submitted_at és a points érintetlen
+    if (existing) {
+      this.db.prepare(`UPDATE user_predictions
+          SET predicted_home_score = ?, predicted_away_score = ?, updated_at = ?
+        WHERE id = ?`)
+        .run(home, away, new Date().toISOString(), existing.id as string);
+      return { outcome: 'updated', used: countToday(), prediction: await this.getPrediction(userId, competitionMatchId) };
+    }
+
+    // 2) Új tipp – a kvóta-ellenőrzés a beszúrás WHERE feltétele (egyetlen utasítás)
+    const now = new Date().toISOString();
+    const limit = dailyLimit ?? Number.MAX_SAFE_INTEGER;
+    const res = this.db.prepare(`INSERT INTO user_predictions
+        (id, competition_match_id, user_id, predicted_home_score, predicted_away_score, points, submitted_at, updated_at)
+      SELECT ?, ?, ?, ?, ?, NULL, ?, ?
+       WHERE (SELECT COUNT(*) FROM user_predictions
+               WHERE user_id = ? AND submitted_at >= ? AND submitted_at < ?) < ?`)
+      .run(randomUUID(), competitionMatchId, userId, home, away, now, now,
+           userId, window.start, window.end, limit);
+
+    if (res.changes === 0) return { outcome: 'limit_reached', used: countToday(), prediction: null };
+    return { outcome: 'created', used: countToday(), prediction: await this.getPrediction(userId, competitionMatchId) };
+  }
+
+  async countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number> {
+    const r = this.db
+      .prepare('SELECT COUNT(*) AS n FROM user_predictions WHERE user_id = ? AND submitted_at >= ? AND submitted_at < ?')
+      .get(userId, window.start, window.end) as Row;
+    return r.n as number;
   }
 
   async getPrediction(userId: string, competitionMatchId: string): Promise<UserPrediction | null> {

@@ -52,6 +52,17 @@ export async function requirePro(req: Request, res: Response, next: NextFunction
   res.status(403).json({ error: 'Ez a funkció PRO előfizetéssel érhető el.', code: 'PRO_REQUIRED' });
 }
 
+/**
+ * Bejelentkezést igénylő végpontok, csomagtól FÜGGETLENÜL.
+ * A FREE/PRO közti különbséget a hívó útvonal üzleti logikája dönti el
+ * (pl. napi kvóta), nem ez az őr. A `requirePro` változatlan marad.
+ */
+export async function requireAuthenticated(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const plan = res.locals.plan ? planOf(res) : await resolvePlan(req);
+  if (!plan.enforced || plan.user) { next(); return; }
+  res.status(401).json({ error: 'Bejelentkezés szükséges.', code: 'AUTH_REQUIRED' });
+}
+
 /** Globális beállításokat módosító végpontok: csak ADMIN_EMAILS-ben felsorolt fiók. */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   const plan = res.locals.plan ? planOf(res) : await resolvePlan(req);

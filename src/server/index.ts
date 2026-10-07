@@ -30,7 +30,13 @@ const progressionService = new ProgressionService(
   (userIds) => proUserIds(userIds),
 );
 const missionService = new MissionService(container.progression, async (userId) => profileIsPro(await getProfile(userId)));
-const competitionService = new CompetitionService(container.competitions, container.data, container.displayNames, progressionService);
+const competitionService = new CompetitionService(
+  container.competitions, container.data, container.displayNames, progressionService,
+  // Jutalom-jogosultság: a Tippverseny PRO jutalmaira CSAK PRO résztvevő jogosult.
+  // A pontozást, a sorrendet és a nyilvános ranglistát ez NEM befolyásolja.
+  // Supabase nélküli helyi módban nincs csomag-fogalom → nincs szűrés.
+  supabaseConfigured ? (userIds) => proUserIds(userIds) : undefined,
+);
 const app = express();
 app.disable('x-powered-by');
 
@@ -154,7 +160,7 @@ app.listen(port, async () => {
       const missingProgression = await container.progression.healthCheck();
       if (missingProgression.length) {
         console.warn('Progression táblák hiányoznak:', missingProgression.join(', '));
-        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql és 0007_missions.sql');
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql, 0007_missions.sql és 0008_free_daily_quota.sql');
       }
     }
     const pruned = container.db.pruneCache();
