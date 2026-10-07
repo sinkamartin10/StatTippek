@@ -16,6 +16,7 @@ import Battles from './pages/Battles';
 import BattleDetail from './pages/BattleDetail';
 import Notifications from './pages/Notifications';
 import Shop from './pages/Shop';
+import PublicProfile from './pages/PublicProfile';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Sources from './pages/Sources';
@@ -51,6 +52,8 @@ export default function App() {
         <Route path="/szelvenyek" element={<Slips />} />
         <Route path="/pro" element={<Pro />} />
         <Route path="/profil" element={<Profile />} />
+        {/* Nyilvános játékosprofil – a megjelenítési név az azonosító, user_id SOHA */}
+        <Route path="/jatekos/:name" element={<PublicProfile />} />
         <Route path="/statisztikaim" element={<RequireAuth><MyStats /></RequireAuth>} />
         <Route path="/ertesitesek" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/shop" element={<RequireAuth><Shop /></RequireAuth>} />

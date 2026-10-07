@@ -361,11 +361,28 @@ export default function Shop() {
     );
   }
 
-  /** Kategória-tudatos előnézet – a MEGLÉVŐ rendererrel, nem hat külön rendszer. */
+  /**
+   * Kategória-tudatos előnézet – a MEGLÉVŐ rendererrel, nincs külön rendszer.
+   * Keret/avatar/háttér: figura; névszín/effekt/cím: a név kezelése.
+   */
   function ItemPreview({ item }: { item: ShopItemView }) {
     const one: Partial<ShopEquips> = { [slotOf(item)]: item.itemKey };
-    const needsName = item.category === 'name_color' || item.category === 'name_effect' || item.category === 'title';
-    if (needsName) {
+
+    if (item.category === 'profile_background') {
+      return (
+        <CosmeticProfile
+          displayName={displayName}
+          avatar={earned.avatar}
+          borderKey={earned.borderKey}
+          shop={one}
+          lookup={lookup}
+          size={46}
+          className="h-full w-full !rounded-xl !border-0"
+        />
+      );
+    }
+
+    if (item.category === 'name_color' || item.category === 'name_effect' || item.category === 'title') {
       return (
         <CosmeticProfile
           displayName={displayName}
@@ -373,10 +390,11 @@ export default function Shop() {
           lookup={lookup}
           size={0}
           variant="row"
-          className="shop-card-nameonly"
+          className="justify-center px-2 text-center"
         />
       );
     }
+
     return (
       <CosmeticProfile
         displayName={displayName}
@@ -384,9 +402,8 @@ export default function Shop() {
         borderKey={item.category === 'frame' ? 'none' : earned.borderKey}
         shop={one}
         lookup={lookup}
-        size={64}
-        variant="row"
-        className="shop-card-figure"
+        size={60}
+        figureOnly
       />
     );
   }

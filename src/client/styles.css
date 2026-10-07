@@ -305,58 +305,133 @@ body {
   @apply h-56 animate-pulse rounded-2xl border border-border bg-card-2;
 }
 
-/* Shop keret az avatar körül */
-.shop-frame {
-  @apply relative inline-flex items-center justify-center rounded-full;
-  padding: 3px;
-  background: var(--shop-ring);
-}
-.shop-frame-flame, .shop-frame-pulse, .shop-frame-glow {
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--shop-ring) 45%, transparent);
-  animation: avatar-glow 3s ease-in-out infinite;
-}
-.shop-frame-sweep, .shop-frame-shimmer { animation: avatar-spin 7s linear infinite; }
-.shop-frame-sweep > *, .shop-frame-shimmer > * { animation: avatar-spin 7s linear infinite reverse; }
-@media (prefers-reduced-motion: reduce) {
-  .shop-frame-flame, .shop-frame-pulse, .shop-frame-glow,
-  .shop-frame-sweep, .shop-frame-shimmer,
-  .shop-frame-sweep > *, .shop-frame-shimmer > * { animation: none; }
-}
+/* ---------------------------------------------------------------------------
+   Kozmetikumok V2 – figura, keret, embléma, név, cím, háttér
+   A mozgás visszafogott, és prefers-reduced-motion esetén teljesen leáll.
+   --------------------------------------------------------------------------- */
 
-/* Avatar-embléma (a meglévő avatar accessory rétegére) */
-.shop-emblem {
-  @apply pointer-events-none absolute -bottom-0.5 -right-0.5 flex h-[1.9em] w-[1.9em] items-center justify-center rounded-full border-2 border-card bg-card leading-none;
+.cos-figure { @apply relative inline-flex shrink-0 items-center justify-center; }
+.cos-figure-frame {
+  @apply pointer-events-none absolute inset-0 flex items-center justify-center;
+}
+.cos-frame { @apply overflow-visible; }
+
+/* Keret-mozgások */
+@keyframes cos-spin { to { transform: rotate(360deg); } }
+@keyframes cos-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+@keyframes cos-flicker { 0%, 100% { opacity: 1; } 45% { opacity: 0.82; } 70% { opacity: 0.93; } }
+.cos-spin-rotate { animation: cos-spin 18s linear infinite; }
+.cos-spin-sweep { animation: cos-spin 9s linear infinite; }
+.cos-pulse { animation: cos-breathe 3.4s ease-in-out infinite; }
+.cos-flicker { animation: cos-flicker 2.2s ease-in-out infinite; }
+
+/* Avatar-embléma: kis jelvény a figura jobb alsó sarkában */
+.cos-emblem {
+  @apply pointer-events-none absolute bottom-0 right-0 flex items-center justify-center rounded-full border-2 border-card;
   box-shadow: var(--shadow-soft);
 }
+.cos-emblem-elevated { @apply border-[2.5px]; box-shadow: var(--shadow-lift); }
 
-/* Név: shop névszín + effekt */
-.shop-name { @apply font-extrabold; }
-.shop-name-gradient {
+/* Név: szín + effekt */
+.cos-name { @apply font-extrabold; }
+.cos-name-gradient, .cos-name-spectrum > span {
   background-clip: text;
   -webkit-background-clip: text;
-  color: transparent;
 }
-.shop-effect-glow { text-shadow: 0 0 10px color-mix(in srgb, var(--shop-name-glow) 70%, transparent); }
-.shop-effect-fire { text-shadow: 0 0 8px color-mix(in srgb, #f5533d 75%, transparent); }
-.shop-effect-ice { text-shadow: 0 0 8px color-mix(in srgb, #7dd3fc 80%, transparent); }
-.shop-effect-electric { text-shadow: 0 0 8px color-mix(in srgb, #38bdf8 80%, transparent); }
-.shop-effect-shimmer, .shop-effect-rainbow {
+.cos-name-gradient { color: transparent; }
+.cos-name-sheen {
+  background-size: 220% 100%;
+  animation: cos-sheen 5s linear infinite;
+}
+@keyframes cos-sheen { to { background-position: 220% 0; } }
+
+.cos-effect-glow { text-shadow: 0 0 10px color-mix(in srgb, var(--cos-glow) 65%, transparent); }
+.cos-effect-sparkle {
+  text-shadow: 0 0 6px color-mix(in srgb, var(--cos-glow) 45%, transparent);
+  animation: cos-breathe 2.8s ease-in-out infinite;
+}
+.cos-effect-burning {
+  text-shadow: 0 -1px 7px color-mix(in srgb, #f5533d 80%, transparent), 0 0 14px color-mix(in srgb, #f0b429 45%, transparent);
+  animation: cos-flicker 1.9s ease-in-out infinite;
+}
+.cos-effect-frost {
+  text-shadow: 0 0 8px color-mix(in srgb, #7dd3fc 80%, transparent), 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.cos-effect-electric {
+  text-shadow: 1px 0 4px color-mix(in srgb, #38bdf8 85%, transparent), -1px 0 4px color-mix(in srgb, #818cf8 70%, transparent);
+  animation: cos-flicker 1.4s steps(3, end) infinite;
+}
+.cos-effect-rainbow {
   background-image: linear-gradient(90deg, #f5533d, #f0b429, #17b877, #4f6ef7, #8b5cf6, #f5533d);
   background-size: 300% 100%;
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: shop-name-slide 6s linear infinite;
+  animation: cos-rainbow 6s linear infinite;
 }
-@keyframes shop-name-slide { to { background-position: 300% 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .shop-effect-shimmer, .shop-effect-rainbow { animation: none; }
+@keyframes cos-rainbow { to { background-position: 300% 0; } }
+
+/* Cím – a ritkasággal erősödő plakett */
+.cos-title { @apply inline-flex items-center gap-1 text-xs font-bold text-text-muted; }
+.cos-title.cos-on-dark { color: rgba(255, 255, 255, 0.82); }
+.cos-title-badge {
+  @apply rounded-md px-1.5 py-0.5 font-extrabold;
+  color: var(--cos-title-a);
+  background: color-mix(in srgb, var(--cos-title-a) 12%, transparent);
+}
+.cos-title-plate {
+  @apply rounded-md border px-2 py-0.5 font-extrabold;
+  color: var(--cos-title-a);
+  border-color: color-mix(in srgb, var(--cos-title-a) 35%, transparent);
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--cos-title-a) 14%, transparent),
+    color-mix(in srgb, var(--cos-title-b) 14%, transparent));
+}
+.cos-title-elite {
+  @apply rounded-md border px-2 py-0.5 text-[11px] font-black uppercase tracking-wide;
+  color: #5a3c00;
+  border-color: color-mix(in srgb, var(--cos-title-b) 70%, transparent);
+  background: linear-gradient(100deg, var(--cos-title-a), var(--cos-title-b), var(--cos-title-a));
+  background-size: 220% 100%;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--cos-title-b) 45%, transparent);
+  animation: cos-sheen 6s linear infinite;
 }
 
-/* Profilkártya (élő előnézet és profil oldal) */
-.shop-profile-card {
-  @apply flex flex-col items-center rounded-2xl border border-border bg-card-2 p-4;
+/* Profilkártya háttér-jelenettel */
+.cos-card { @apply relative overflow-hidden rounded-2xl border border-border bg-card-2; }
+.cos-card-dark { @apply border-transparent; }
+.cos-card-body { @apply relative flex flex-col items-center p-4; }
+.cos-scene { @apply absolute inset-0 h-full w-full; }
+.cos-card-dark .cos-title:not([class*="cos-title-"]) { color: rgba(255, 255, 255, 0.82); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cos-spin-rotate, .cos-spin-sweep, .cos-pulse, .cos-flicker,
+  .cos-name-sheen, .cos-effect-sparkle, .cos-effect-burning,
+  .cos-effect-electric, .cos-effect-rainbow, .cos-title-elite {
+    animation: none !important;
+  }
 }
-.shop-profile-card-bg { @apply border-transparent text-white; }
-.shop-profile-card-bg .text-text-muted { color: rgba(255, 255, 255, 0.78); }
-.shop-profile-card-bg .shop-name:not(.shop-name-gradient) { color: #ffffff; }
+
+/* A shop kártya előnézet-területe a figurát középre teszi */
+.shop-card-figure { @apply justify-center; }
+
+/* ---------------------------------------------------------------------------
+   Navigáció V2 – csoportosító legördülő, kattintható ranglista-sor
+   --------------------------------------------------------------------------- */
+
+.nav-menu {
+  @apply absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-border bg-card p-1.5 shadow-lift;
+}
+.nav-menu-item {
+  @apply flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-text-muted transition;
+}
+.nav-menu-item:hover { @apply bg-surface text-text; }
+.nav-menu-item.active { @apply bg-primary-soft text-primary-strong; }
+.nav-menu-item:focus-visible { @apply outline-2 outline-offset-[-2px] outline-primary; }
+
+/* Kattintható ranglista-sor */
+.lb-row {
+  @apply flex items-center gap-3 rounded-xl px-2 py-3 transition;
+}
+.lb-row:hover { @apply bg-surface; }
+.lb-row:focus-visible { @apply outline-2 outline-offset-[-2px] outline-primary; }

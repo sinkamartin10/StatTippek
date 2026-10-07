@@ -1,11 +1,13 @@
 /**
- * Kozmetikum-megjelenítő: EGY renderer, amit a shop előnézete, a profil oldal
- * és a ranglista egyaránt használ. Nincs külön „shop renderer".
+ * Kozmetikum-megjelenítő – EGY renderer az egész alkalmazásban.
+ *
+ * Használja: a Shop előnézete és kártyái, a profil oldal, a nyilvános
+ * játékosprofil és a ranglista. Nincs külön „shop renderer”.
  *
  * RÉTEGSORREND (hátulról előre):
  *   profil-háttér (shop)  →  avatar (a MEGSZOLGÁLT kompozícióval, benne az
- *   avatar saját háttere)  →  keret (shop vagy megszolgált)  →  név (shop
- *   névszín + név-effekt)  →  cím (shop vagy megszolgált)
+ *   avatar saját háttere)  →  keret (shop vagy megszolgált)  →  embléma  →
+ *   név (shop névszín + név-effekt)  →  cím (shop vagy megszolgált)
  *
  * A két rendszer KÜLÖN marad:
  *   - a megszolgált keret (`borderKey`) és cím (`titleKey`) a progression
@@ -13,13 +15,22 @@
  *   - a shop kozmetikum a `shop` rétegből jön, és FREE felhasználónál is látszik.
  * Ha mindkettő adott, a SHOP item az aktív megjelenítés – a megszolgált adatot
  * viszont nem írjuk felül, és a felület jelezheti mindkettőt.
+ *
+ * A konkrét látvány (sziluett, részecskék, jelenet) a `lib/cosmeticVisuals.ts`
+ * regiszteréből jön; a katalógus adatait ez a komponens sem módosítja.
  */
+import { Bot, Brain, CircleDot, Crown, Flame, Gem, Target, Trophy, type LucideIcon } from 'lucide-react';
 import { TITLES, type AvatarSlot } from '@shared/progression';
 import { SHOP_SEED, type ShopEquips, type ShopItem } from '@shared/shop';
+import {
+  backgroundVisual, effectVisual, emblemVisual, frameVisual, nameVisual, titleVisual,
+  type EmblemIcon,
+} from '../lib/cosmeticVisuals';
 import { Avatar } from './Avatar';
+import { FrameRing } from './cosmetics/FrameRing';
+import { BackgroundScene } from './cosmetics/BackgroundScene';
 
-/** A megjelenítéshez szükséges item-adat. A metadata opcionális: a vetőmag
- *  egyes elemein (pl. címeken) nincs megjelenítési kiegészítő. */
+/** A megjelenítéshez szükséges item-adat. */
 type VisualItem = Pick<ShopItem, 'itemKey' | 'category' | 'name'> & { metadata?: Record<string, unknown> };
 
 /**
@@ -38,9 +49,9 @@ export function makeLookup(items: VisualItem[]): ItemLookup {
   return (key) => map.get(key) ?? SEED_BY_KEY.get(key);
 }
 
-const meta = (i: VisualItem | undefined) => (i?.metadata ?? {}) as {
-  color?: string; gradient?: string[]; animation?: string; effect?: string;
-  emblem?: string; perCharacter?: boolean; crown?: boolean;
+const EMBLEM_ICON: Record<EmblemIcon, LucideIcon> = {
+  football: CircleDot, target: Target, brain: Brain, flame: Flame,
+  bot: Bot, gem: Gem, trophy: Trophy, crown: Crown,
 };
 
 /** A megszolgált cím megjelenítendő neve; `none`/ismeretlen esetén nincs cím. */
@@ -50,65 +61,89 @@ function earnedTitleName(key: string | undefined): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Részek
+// Név: shop névszín + név-effekt
 // ---------------------------------------------------------------------------
 
-/** Shop keret: színes/gradiens gyűrű az avatar körül. */
-function ShopFrame({ item, size, children }: { item: VisualItem | undefined; size: number; children: React.ReactNode }) {
-  const m = meta(item);
-  if (!item) return <>{children}</>;
-  const ring = m.gradient?.length
-    ? `conic-gradient(from 0deg, ${[...m.gradient, m.gradient[0]].join(', ')})`
-    : (m.color ?? 'var(--color-border-strong)');
-  const anim = m.animation ? `shop-frame-${m.animation}` : '';
-  return (
-    <span
-      className={`shop-frame ${anim}`}
-      style={{ width: size + 10, height: size + 10, ['--shop-ring' as string]: ring }}
-      aria-hidden
-    >
-      {children}
-    </span>
-  );
-}
-
-/** Shop avatar-embléma: kis jelvény az avatar jobb alsó sarkában. */
-function Emblem({ item, size }: { item: VisualItem | undefined; size: number }) {
-  if (!item) return null;
-  const GLYPH: Record<string, string> = {
-    football: '⚽', tipster: '🎯', brain: '🧠', fire: '🔥',
-    ai: '🤖', diamond: '💎', champion: '🏆', goat: '🐐',
-  };
-  const glyph = GLYPH[meta(item).emblem ?? ''] ?? '★';
-  return (
-    <span className="shop-emblem" style={{ fontSize: Math.max(10, Math.round(size * 0.26)) }} title={item.name}>
-      {glyph}
-    </span>
-  );
-}
-
-/** A név a shop névszínével és név-effektjével. */
 function Name({
-  children, color, effect,
-}: { children: string; color: VisualItem | undefined; effect: VisualItem | undefined }) {
-  const c = meta(color);
-  const e = meta(effect);
+  children, colorKey, effectKey, onDark,
+}: { children: string; colorKey?: string | null; effectKey?: string | null; onDark: boolean }) {
+  const color = nameVisual(colorKey);
+  const effect = effectVisual(effectKey);
+
   const style: React.CSSProperties = {};
-  let className = 'shop-name';
+  const set = (k: string, v: string) => { (style as Record<string, string>)[k] = v; };
+  let cls = 'cos-name';
 
-  if (c.gradient?.length) {
-    style.backgroundImage = `linear-gradient(90deg, ${c.gradient.join(', ')})`;
-    className += ' shop-name-gradient';
-  } else if (c.color) {
-    style.color = c.color;
-  }
-  if (e.effect) className += ` shop-effect-${e.effect}`;
-  // Az effekt derengése a névszínt követi (vagy az alapértelmezett szöveget)
-  if (e.effect) {
-    (style as Record<string, string>)['--shop-name-glow'] = c.color ?? (c.gradient?.[0] ?? 'var(--color-primary)');
+  if (color?.perCharacter) {
+    cls += ' cos-name-spectrum';
+  } else if (color && color.colors.length > 1) {
+    style.backgroundImage = `linear-gradient(100deg, ${color.colors.join(', ')})`;
+    cls += ' cos-name-gradient';
+    if (color.sheen) cls += ' cos-name-sheen';
+  } else if (color) {
+    style.color = color.colors[0];
+  } else if (onDark) {
+    style.color = '#ffffff';
   }
 
-  return <span className={className} style={style}>{children}</span>;
+  if (effect) {
+    cls += ` cos-effect-${effect.kind}`;
+    set('--cos-glow', effect.color ?? color?.colors[0] ?? 'var(--color-primary)');
+  }
+
+  // Szivárvány: karakterenkénti szín, de szóközöket épségben hagyva
+  if (color?.perCharacter) {
+    const chars = [...children];
+    return (
+      <span className={cls} style={style}>
+        {chars.map((ch, i) => (
+          <span key={i} style={{ color: color.colors[i % color.colors.length] }}>{ch}</span>
+        ))}
+      </span>
+    );
+  }
+
+  return <span className={cls} style={style}>{children}</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Cím: shop plakett vagy megszolgált szöveg
+// ---------------------------------------------------------------------------
+
+function TitleLine({
+  shopKey, earnedKey, lookup, onDark,
+}: { shopKey?: string | null; earnedKey?: string; lookup: ItemLookup; onDark: boolean }) {
+  const visual = titleVisual(shopKey);
+  const shopName = shopKey ? lookup(shopKey)?.name ?? shopKey : null;
+  const earned = earnedTitleName(earnedKey);
+  const label = shopName ?? earned;
+  if (!label) return null;
+
+  if (!visual) {
+    return <span className={`cos-title ${onDark ? 'cos-on-dark' : ''}`}>{label}</span>;
+  }
+
+  const Icon = visual.icon ? EMBLEM_ICON[
+    visual.icon === 'sparkles' ? 'gem'
+      : visual.icon === 'star' ? 'trophy'
+      : visual.icon === 'zap' ? 'flame'
+      : visual.icon === 'target' ? 'target'
+      : visual.icon === 'brain' ? 'brain'
+      : visual.icon === 'crown' ? 'crown'
+      : visual.icon === 'trophy' ? 'trophy'
+      : 'flame'
+  ] : null;
+
+  const style: React.CSSProperties = {};
+  (style as Record<string, string>)['--cos-title-a'] = visual.colors[0];
+  (style as Record<string, string>)['--cos-title-b'] = visual.colors[visual.colors.length - 1];
+
+  return (
+    <span className={`cos-title cos-title-${visual.tier} ${onDark ? 'cos-on-dark' : ''}`} style={style}>
+      {Icon && <Icon className="h-3 w-3 shrink-0" aria-hidden />}
+      {label}
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -130,38 +165,56 @@ export interface CosmeticProfileProps {
   size?: number;
   /** `card` = profilkártya háttérrel, `row` = kompakt sor (ranglista) */
   variant?: 'card' | 'row';
+  /** csak a figurát rajzolja (shop kártya-előnézet) */
+  figureOnly?: boolean;
   className?: string;
 }
 
 export function CosmeticProfile({
   displayName, avatar, borderKey = 'classic', titleKey, shop, lookup = seedLookup,
-  size = 96, variant = 'card', className = '',
+  size = 96, variant = 'card', figureOnly = false, className = '',
 }: CosmeticProfileProps) {
-  const frame = shop?.frame ? lookup(shop.frame) : undefined;
-  const nameColor = shop?.nameColor ? lookup(shop.nameColor) : undefined;
-  const nameEffect = shop?.nameEffect ? lookup(shop.nameEffect) : undefined;
-  const shopTitle = shop?.title ? lookup(shop.title) : undefined;
-  const emblem = shop?.avatar ? lookup(shop.avatar) : undefined;
-  const background = shop?.profileBackground ? lookup(shop.profileBackground) : undefined;
-
-  // A shop cím elsőbbséget kap a MEGJELENÍTÉSBEN, de a megszolgált adat marad
-  const title = shopTitle?.name ?? earnedTitleName(titleKey);
-  const bg = meta(background);
-  const bgStyle: React.CSSProperties = bg.gradient?.length
-    ? { backgroundImage: `linear-gradient(150deg, ${bg.gradient.join(', ')})` }
-    : {};
+  const frame = frameVisual(shop?.frame);
+  const emblem = emblemVisual(shop?.avatar);
+  const background = backgroundVisual(shop?.profileBackground);
+  const onDark = variant === 'card' && !!background;
 
   // Shop keret esetén a megszolgált keretet nem rajzoljuk kétszer
   const avatarBorder = frame ? 'none' : borderKey;
+  const EmblemIconCmp = emblem ? EMBLEM_ICON[emblem.icon] : null;
 
-  const figure = (
-    <span className="relative inline-flex shrink-0">
-      <ShopFrame item={frame} size={size}>
-        <Avatar avatar={avatar} border={avatarBorder} size={size} />
-      </ShopFrame>
-      <Emblem item={emblem} size={size} />
+  const figure = size > 0 ? (
+    <span className="cos-figure" style={{ width: size, height: size }}>
+      <Avatar avatar={avatar} border={avatarBorder} size={size} />
+      {frame && (
+        <span className="cos-figure-frame">
+          <FrameRing visual={frame} size={size * 1.22} />
+        </span>
+      )}
+      {emblem && EmblemIconCmp && (
+        <span
+          className={`cos-emblem ${emblem.elevated ? 'cos-emblem-elevated' : ''}`}
+          style={{
+            width: Math.max(18, size * 0.34),
+            height: Math.max(18, size * 0.34),
+            background: `linear-gradient(140deg, ${emblem.colors[0]}, ${emblem.colors[1] ?? emblem.colors[0]})`,
+          }}
+          title={lookup(shop!.avatar!)?.name}
+        >
+          <EmblemIconCmp
+            style={{ width: '58%', height: '58%' }}
+            strokeWidth={2.4}
+            color={emblem.elevated ? '#1d2539' : '#2b3245'}
+            aria-hidden
+          />
+        </span>
+      )}
     </span>
-  );
+  ) : null;
+
+  if (figureOnly) {
+    return <span className={`inline-flex ${className}`}>{figure}</span>;
+  }
 
   if (variant === 'row') {
     return (
@@ -169,25 +222,29 @@ export function CosmeticProfile({
         {figure}
         <span className="min-w-0">
           <span className="block truncate text-sm font-extrabold">
-            <Name color={nameColor} effect={nameEffect}>{displayName}</Name>
+            <Name colorKey={shop?.nameColor} effectKey={shop?.nameEffect} onDark={false}>{displayName}</Name>
           </span>
-          {title && <span className="block truncate text-xs font-bold text-text-muted">{title}</span>}
+          <span className="block truncate">
+            <TitleLine shopKey={shop?.title} earnedKey={titleKey} lookup={lookup} onDark={false} />
+          </span>
         </span>
       </span>
     );
   }
 
   return (
-    <div
-      className={`shop-profile-card ${background ? 'shop-profile-card-bg' : ''} ${className}`}
-      style={bgStyle}
-    >
-      {figure}
-      <div className="mt-3 text-center">
-        <div className="text-base font-extrabold">
-          <Name color={nameColor} effect={nameEffect}>{displayName}</Name>
+    <div className={`cos-card ${onDark ? 'cos-card-dark' : ''} ${className}`}>
+      {background && <BackgroundScene visual={background} />}
+      <div className="cos-card-body">
+        {figure}
+        <div className="mt-3 text-center">
+          <div className="text-base font-extrabold">
+            <Name colorKey={shop?.nameColor} effectKey={shop?.nameEffect} onDark={onDark}>{displayName}</Name>
+          </div>
+          <div className="mt-1 flex justify-center">
+            <TitleLine shopKey={shop?.title} earnedKey={titleKey} lookup={lookup} onDark={onDark} />
+          </div>
         </div>
-        <div className="mt-0.5 text-xs font-bold text-text-muted">{title ?? 'Nincs cím'}</div>
       </div>
     </div>
   );

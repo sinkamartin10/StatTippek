@@ -372,8 +372,10 @@ describe('Shop UI – a két kozmetikum-rendszer külön', () => {
     const src = require('node:fs').readFileSync('src/client/components/CosmeticProfile.tsx', 'utf8') as string;
     // megszolgált: borderKey / titleKey / avatar – shop: shop
     for (const prop of ['borderKey', 'titleKey', 'avatar?', 'shop?']) expect(src).toContain(prop);
-    // a shop cím nem írja át a megszolgált kulcsot, csak a megjelenítésben nyer
-    expect(src).toContain('shopTitle?.name ?? earnedTitleName(titleKey)');
+    // a shop cím nem írja át a megszolgált kulcsot, csak a megjelenítésben nyer:
+    // a TitleLine a shop nevét preferálja, de a megszolgált kulcsot is megkapja
+    expect(src).toContain('shopName ?? earned');
+    expect(src).toContain('earnedTitleName(earnedKey)');
   });
 
   it('G38. a ranglista a MEGLÉVŐ megjelenítőt használja (nincs külön shop-renderer)', () => {

@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
   Bell, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, X,
+  type LucideIcon,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
 import { api } from '../lib/api';
@@ -14,27 +15,84 @@ import { PlanBadge } from '../auth/ProfileCard';
 import { NotificationBell } from './NotificationBell';
 import { CoinBalancePill, CoinsProvider } from './CoinsProvider';
 
-/** Elsődleges menü – mindig látszik (desktopon vízszintesen, mobilon a fiókban). */
-const MAIN = [
+/**
+ * Navigáció – CSOPORTOSÍTVA, hogy a sáv ne legyen zsúfolt.
+ *
+ * Három elsődleges célpont marad kint; minden más két témacsoportba kerül.
+ * EGYETLEN útvonal sem veszett el: ami korábban a sávban volt, az itt a
+ * megfelelő csoportban szerepel, és mobilon továbbra is mind látszik.
+ */
+const PRIMARY = [
   { to: '/tippek', label: 'Tippek', icon: Lightbulb },
-  { to: '/elozmenyek', label: 'Előzmények', icon: History },
-  { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
   { to: '/tippverseny', label: 'Tippverseny', icon: Trophy },
-  { to: '/battles', label: '1v1 Battle', icon: Swords },
   { to: '/shop', label: 'Shop', icon: ShoppingBag },
-  { to: '/pro', label: 'PRO', icon: Crown },
 ];
 
-/** Másodlagos menü – desktopon a „Továbbiak” legördülőben, mobilon a listában. */
-const MORE = [
+/** „Játék” – amit a felhasználó SAJÁT magáról és a játékmenetről néz. */
+const PLAY = [
   { to: '/dashboard', label: 'Áttekintés', icon: LayoutDashboard },
+  { to: '/battles', label: '1v1 Battle', icon: Swords },
   { to: '/statisztikaim', label: 'Statisztikáim', icon: ChartLine },
+  { to: '/elozmenyek', label: 'Előzmények', icon: History },
+  { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
+];
+
+/** „Felfedezés” – adat, elemzés, beállítások. */
+const EXPLORE = [
   { to: '/meccsek', label: 'Mai meccsek', icon: CalendarDays },
   { to: '/elemzes', label: 'Elemzés', icon: Sparkles },
   { to: '/statisztikak', label: 'Statisztikák', icon: BarChart3 },
   { to: '/forrasok', label: 'Források', icon: BookOpen },
   { to: '/beallitasok', label: 'Beállítások', icon: Settings },
 ];
+
+/** A mobil fiók teljes listája – minden útvonal egy helyen. */
+const MOBILE_GROUPS: { label: string; items: typeof PRIMARY }[] = [
+  { label: 'Fő', items: PRIMARY },
+  { label: 'Játék', items: PLAY },
+  { label: 'Felfedezés', items: EXPLORE },
+];
+
+/**
+ * Csoportosító legördülő a navigációban. Billentyűzetről is használható:
+ * a gomb `aria-expanded`/`aria-haspopup` jelzésű, a menü Escape-re zár, és a
+ * fókusz a gombon marad.
+ */
+function NavMenu({
+  label, items, openKey, current, onToggle,
+}: {
+  label: string;
+  items: { to: string; label: string; icon: LucideIcon }[];
+  openKey: string;
+  current: string | null;
+  onToggle: (key: string | null) => void;
+}) {
+  const open = current === openKey;
+  const active = items.some((i) => location.pathname.startsWith(i.to));
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className={`nav-link ${active ? 'active' : ''}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => onToggle(open ? null : openKey)}
+      >
+        {label}
+        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {open && (
+        <div role="menu" aria-label={label} className="nav-menu">
+          {items.map((n) => (
+            <NavLink key={n.to} to={n.to} role="menuitem" className={({ isActive }) => `nav-menu-item ${isActive ? 'active' : ''}`}>
+              <n.icon className="h-4 w-4 shrink-0" aria-hidden /> {n.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Logo() {
   return (
@@ -47,10 +105,10 @@ export function Logo() {
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
-  const [more, setMore] = useState(false);
+  const [menu, setMenu] = useState<string | null>(null);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [q, setQ] = useState('');
-  const moreRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const nav = useNavigate();
   const loc = useLocation();
   const auth = useAuth();
@@ -60,18 +118,18 @@ export default function Layout() {
   useEffect(() => { if (auth.passwordRecovery && loc.pathname !== '/uj-jelszo') nav('/uj-jelszo', { replace: true }); }, [auth.passwordRecovery, loc.pathname, nav]);
 
   useEffect(() => { api.status().then(setStatus).catch(() => setStatus(null)); }, []);
-  useEffect(() => { setOpen(false); setMore(false); }, [loc.pathname]);
+  useEffect(() => { setOpen(false); setMenu(null); }, [loc.pathname]);
   useEffect(() => { document.body.style.overflow = open ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [open]);
 
-  // „Továbbiak” legördülő zárása kívülre kattintásra / Escape-re
+  // Legördülő zárása kívülre kattintásra / Escape-re
   useEffect(() => {
-    if (!more) return;
-    const onDown = (e: MouseEvent) => { if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMore(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMore(false); };
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => { if (navRef.current && !navRef.current.contains(e.target as Node)) setMenu(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [more]);
+  }, [menu]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -90,40 +148,34 @@ export default function Layout() {
           <NavLink to="/" className="shrink-0" aria-label="TippStats – kezdőlap"><Logo /></NavLink>
 
           {/* Desktop menü */}
-          {/* A teljes fomenu xl-tol; 1024–1280 kozott a hamburger menu veszi at,
-              igy het elem + coin-jelveny mellett sincs vizszintes tulcsordulas. */}
-          <nav className="ml-2 hidden items-center gap-1 xl:flex">
-            {MAIN.map((n) => (
+          {/* Elsődleges célpontok + két csoportosított legördülő.
+              Így lg-től is kényelmesen elfér, levegősebben. */}
+          <nav ref={navRef} className="ml-3 hidden items-center gap-1 lg:flex" aria-label="Fő navigáció">
+            {PRIMARY.map((n) => (
               <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                <n.icon className="h-4 w-4" /> {n.label}
+                <n.icon className="h-4 w-4" aria-hidden /> {n.label}
               </NavLink>
             ))}
-            <div className="relative" ref={moreRef}>
-              <button type="button" className="nav-link" aria-expanded={more} aria-haspopup="menu" onClick={() => setMore(!more)}>
-                Továbbiak <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${more ? 'rotate-180' : ''}`} />
-              </button>
-              {more && (
-                <div role="menu" className="absolute left-0 top-full mt-2 w-56 overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-lift">
-                  {MORE.map((n) => (
-                    <NavLink key={n.to} to={n.to} role="menuitem" className={({ isActive }) => `nav-link w-full !justify-start !rounded-xl ${isActive ? 'active' : ''}`}>
-                      <n.icon className="h-4 w-4" /> {n.label}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-            </div>
+            <span className="mx-1.5 h-5 w-px bg-border" aria-hidden />
+            <NavMenu label="Játék" items={PLAY} openKey="play" current={menu} onToggle={setMenu} />
+            <NavMenu label="Felfedezés" items={EXPLORE} openKey="explore" current={menu} onToggle={setMenu} />
           </nav>
 
           <div className="flex-1" />
 
           {/* Keresés – desktopon mindig látszik */}
-          <form onSubmit={submit} className="relative hidden w-56 2xl:block">
+          <form onSubmit={submit} className="relative hidden w-52 xl:block">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <input className="input !py-2 pl-10" placeholder="Keresés…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Globális keresés" />
           </form>
 
+          {/* PRO – kiemelt, de nem a menüsorban foglal helyet */}
+          <NavLink to="/pro" className="btn btn-sm hidden lg:inline-flex" aria-label="PRO előfizetés">
+            <Crown className="h-3.5 w-3.5" aria-hidden /> PRO
+          </NavLink>
+
           {/* Coin egyenleg – az érték MINDIG a szerverről jön (nincs kliens-authority) */}
-          {(auth.user || !auth.configured) && <CoinBalancePill className="hidden sm:inline-flex" />}
+          {(auth.user || !auth.configured) && <CoinBalancePill />}
 
           {/* Értesítések – egyetlen GET szolgálja ki a jelvényt és a legördülőt */}
           {auth.user && <NotificationBell />}
@@ -131,7 +183,7 @@ export default function Layout() {
           {/* Fiók */}
           {!auth.loading && (
             auth.user ? (
-              <NavLink to="/profil" className="hidden items-center gap-2 xl:inline-flex">
+              <NavLink to="/profil" className="hidden items-center gap-2 lg:inline-flex">
                 {({ isActive }) => (
                   <span className={`nav-link ${isActive ? 'active' : ''}`}>
                     <UserCircle2 className="h-4 w-4" /> Profil <PlanBadge pro={pro} />
@@ -139,15 +191,25 @@ export default function Layout() {
                 )}
               </NavLink>
             ) : (
-              <div className="hidden items-center gap-2 xl:flex">
-                <NavLink to="/bejelentkezes" className="btn btn-sm"><LogIn className="h-3.5 w-3.5" /> Bejelentkezés</NavLink>
-                <NavLink to="/regisztracio" className="btn btn-sm btn-primary"><UserPlus className="h-3.5 w-3.5" /> Regisztráció</NavLink>
+              <div className="hidden items-center gap-2 lg:flex">
+                {/* 1024–1280 között egyetlen kompakt gomb: a két teljes gomb
+                    ebben a sávban túlcsordulást okozna. A regisztráció a
+                    bejelentkező oldalról és a mobil menüből is elérhető. */}
+                <NavLink to="/bejelentkezes" className="btn btn-sm btn-primary xl:hidden">
+                  <LogIn className="h-3.5 w-3.5" aria-hidden /> Belépés
+                </NavLink>
+                <NavLink to="/bejelentkezes" className="btn btn-sm hidden xl:inline-flex">
+                  <LogIn className="h-3.5 w-3.5" aria-hidden /> Bejelentkezés
+                </NavLink>
+                <NavLink to="/regisztracio" className="btn btn-sm btn-primary hidden xl:inline-flex">
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden /> Regisztráció
+                </NavLink>
               </div>
             )
           )}
 
           {/* Hamburger – mobilon */}
-          <button className="btn btn-sm xl:hidden" onClick={() => setOpen(true)} aria-label="Menü megnyitása" aria-expanded={open}>
+          <button className="btn btn-sm lg:hidden" onClick={() => setOpen(true)} aria-label="Menü megnyitása" aria-expanded={open}>
             <Menu className="h-5 w-5" />
           </button>
         </div>
@@ -156,8 +218,8 @@ export default function Layout() {
       {/* ----------------------------- Mobil fiók ----------------------------- */}
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-[#1d2539]/40 xl:hidden" onClick={() => setOpen(false)} />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-[85%] max-w-sm flex-col overflow-y-auto border-l border-border bg-card xl:hidden">
+          <div className="fixed inset-0 z-40 bg-[#1d2539]/40 lg:hidden" onClick={() => setOpen(false)} />
+          <div className="fixed inset-y-0 right-0 z-50 flex w-[85%] max-w-sm flex-col overflow-y-auto border-l border-border bg-card lg:hidden">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
               <Logo />
               <button className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} aria-label="Menü bezárása"><X className="h-5 w-5" /></button>
@@ -166,18 +228,22 @@ export default function Layout() {
               <Search className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input className="input pl-10" placeholder="Keresés: csapat, meccs, bajnokság…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Globális keresés" />
             </form>
-            <nav className="space-y-1 p-4">
-              {MAIN.map((n) => (
-                <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link-mobile ${isActive ? 'active' : ''}`}>
-                  <n.icon className="h-5 w-5" /> {n.label}
-                </NavLink>
+            <nav className="space-y-4 p-4" aria-label="Mobil navigáció">
+              {MOBILE_GROUPS.map((group) => (
+                <div key={group.label} className="space-y-1">
+                  <p className="px-2 text-[11px] font-extrabold uppercase tracking-wide text-text-muted">{group.label}</p>
+                  {group.items.map((n) => (
+                    <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link-mobile ${isActive ? 'active' : ''}`}>
+                      <n.icon className="h-5 w-5" aria-hidden /> {n.label}
+                    </NavLink>
+                  ))}
+                </div>
               ))}
-              <div className="my-2 border-t border-border" />
-              {MORE.map((n) => (
-                <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link-mobile ${isActive ? 'active' : ''}`}>
-                  <n.icon className="h-5 w-5" /> {n.label}
+              <div className="space-y-1">
+                <NavLink to="/pro" className={({ isActive }) => `nav-link-mobile ${isActive ? 'active' : ''}`}>
+                  <Crown className="h-5 w-5" aria-hidden /> PRO
                 </NavLink>
-              ))}
+              </div>
             </nav>
             <div className="mt-auto space-y-3 border-t border-border p-4">
               {!auth.loading && (auth.user ? (
