@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
-  Bell, Search, Settings, Sparkles, Swords, Ticket, UserCircle2, UserPlus, X,
+  Bell, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, X,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
 import { api } from '../lib/api';
@@ -12,6 +12,7 @@ import { useAuth } from '../auth/AuthContext';
 import { usePlan } from '../auth/PlanContext';
 import { PlanBadge } from '../auth/ProfileCard';
 import { NotificationBell } from './NotificationBell';
+import { CoinBalancePill, CoinsProvider } from './CoinsProvider';
 
 /** Elsődleges menü – mindig látszik (desktopon vízszintesen, mobilon a fiókban). */
 const MAIN = [
@@ -20,6 +21,7 @@ const MAIN = [
   { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
   { to: '/tippverseny', label: 'Tippverseny', icon: Trophy },
   { to: '/battles', label: '1v1 Battle', icon: Swords },
+  { to: '/shop', label: 'Shop', icon: ShoppingBag },
   { to: '/pro', label: 'PRO', icon: Crown },
 ];
 
@@ -79,6 +81,8 @@ export default function Layout() {
   const logout = () => auth.signOut().then(() => { setOpen(false); nav('/bejelentkezes'); });
 
   return (
+    // A coin-egyenleg a fejlécben ÉS a Shop oldalon ugyanazt a szerverállapotot látja
+    <CoinsProvider>
     <div className="flex min-h-screen flex-col bg-background">
       {/* ----------------------------- Felső sáv ----------------------------- */}
       <header className="sticky top-0 z-40 border-b border-border bg-card">
@@ -86,7 +90,9 @@ export default function Layout() {
           <NavLink to="/" className="shrink-0" aria-label="TippStats – kezdőlap"><Logo /></NavLink>
 
           {/* Desktop menü */}
-          <nav className="ml-2 hidden items-center gap-1 lg:flex">
+          {/* A teljes fomenu xl-tol; 1024–1280 kozott a hamburger menu veszi at,
+              igy het elem + coin-jelveny mellett sincs vizszintes tulcsordulas. */}
+          <nav className="ml-2 hidden items-center gap-1 xl:flex">
             {MAIN.map((n) => (
               <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <n.icon className="h-4 w-4" /> {n.label}
@@ -111,10 +117,13 @@ export default function Layout() {
           <div className="flex-1" />
 
           {/* Keresés – desktopon mindig látszik */}
-          <form onSubmit={submit} className="relative hidden w-56 xl:block">
+          <form onSubmit={submit} className="relative hidden w-56 2xl:block">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <input className="input !py-2 pl-10" placeholder="Keresés…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Globális keresés" />
           </form>
+
+          {/* Coin egyenleg – az érték MINDIG a szerverről jön (nincs kliens-authority) */}
+          {(auth.user || !auth.configured) && <CoinBalancePill className="hidden sm:inline-flex" />}
 
           {/* Értesítések – egyetlen GET szolgálja ki a jelvényt és a legördülőt */}
           {auth.user && <NotificationBell />}
@@ -122,7 +131,7 @@ export default function Layout() {
           {/* Fiók */}
           {!auth.loading && (
             auth.user ? (
-              <NavLink to="/profil" className="hidden items-center gap-2 lg:inline-flex">
+              <NavLink to="/profil" className="hidden items-center gap-2 xl:inline-flex">
                 {({ isActive }) => (
                   <span className={`nav-link ${isActive ? 'active' : ''}`}>
                     <UserCircle2 className="h-4 w-4" /> Profil <PlanBadge pro={pro} />
@@ -130,7 +139,7 @@ export default function Layout() {
                 )}
               </NavLink>
             ) : (
-              <div className="hidden items-center gap-2 lg:flex">
+              <div className="hidden items-center gap-2 xl:flex">
                 <NavLink to="/bejelentkezes" className="btn btn-sm"><LogIn className="h-3.5 w-3.5" /> Bejelentkezés</NavLink>
                 <NavLink to="/regisztracio" className="btn btn-sm btn-primary"><UserPlus className="h-3.5 w-3.5" /> Regisztráció</NavLink>
               </div>
@@ -138,7 +147,7 @@ export default function Layout() {
           )}
 
           {/* Hamburger – mobilon */}
-          <button className="btn btn-sm lg:hidden" onClick={() => setOpen(true)} aria-label="Menü megnyitása" aria-expanded={open}>
+          <button className="btn btn-sm xl:hidden" onClick={() => setOpen(true)} aria-label="Menü megnyitása" aria-expanded={open}>
             <Menu className="h-5 w-5" />
           </button>
         </div>
@@ -147,8 +156,8 @@ export default function Layout() {
       {/* ----------------------------- Mobil fiók ----------------------------- */}
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-[#1d2539]/40 lg:hidden" onClick={() => setOpen(false)} />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-[85%] max-w-sm flex-col overflow-y-auto border-l border-border bg-card lg:hidden">
+          <div className="fixed inset-0 z-40 bg-[#1d2539]/40 xl:hidden" onClick={() => setOpen(false)} />
+          <div className="fixed inset-y-0 right-0 z-50 flex w-[85%] max-w-sm flex-col overflow-y-auto border-l border-border bg-card xl:hidden">
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
               <Logo />
               <button className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} aria-label="Menü bezárása"><X className="h-5 w-5" /></button>
@@ -224,5 +233,6 @@ export default function Layout() {
         </div>
       </footer>
     </div>
+    </CoinsProvider>
   );
 }

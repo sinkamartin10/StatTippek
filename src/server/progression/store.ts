@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { PredictionRecordRow, ProfileSettings, SettledPrediction } from '../../shared/progression';
+import { EMPTY_EQUIPS, PROFILE_SLOTS, type ProfileSlot, type ShopEquips } from '../../shared/shop';
 
 export type ProgressionEventType = 'prediction' | 'streak_bonus' | 'exact_milestone' | 'placement' | 'mission';
 
@@ -66,10 +67,59 @@ export interface ProgressionStore {
   // --- Kötegelt olvasások: a ranglista EGYSZER kéri le az összes résztvevő adatát.
   //     Így a megjelenítendő profilok száma nem növeli a lekérdezések számát (nincs N+1).
   getSettingsMany(userIds: string[]): Promise<Map<string, ProfileSettings>>;
+
+  // --- Shop-kozmetikumok FELVÉTELE (0012) ---------------------------------
+  // KÜLÖN oszlopok a megszolgált testreszabástól: a shop sosem írja felül a
+  // `border_key`, `title_key` vagy `avatar` mezőt, és fordítva sem.
+
+  /** A felhasználó felvett shop itemei slotonként (nincs sor → minden null). */
+  getShopEquips(userId: string): Promise<ShopEquips>;
+  /** Kötegelt olvasás a ranglistához (nincs N+1). */
+  getShopEquipsMany(userIds: string[]): Promise<Map<string, ShopEquips>>;
+  /**
+   * A felvett shop itemek mentése EGY írással. A megszolgált testreszabás
+   * mezőihez nem nyúl – ha a felhasználónak még nincs sora, az alapértelmezett
+   * megszolgált értékekkel jön létre.
+   */
+  saveShopEquips(userId: string, equips: ShopEquips): Promise<void>;
   listAchievementsMany(userIds: string[]): Promise<Map<string, string[]>>;
   totalXpMany(userIds: string[]): Promise<Map<string, number>>;
   settledPredictionsMany(userIds: string[]): Promise<Map<string, SettledPrediction[]>>;
   placementsMany(userIds: string[]): Promise<Map<string, Placement[]>>;
+}
+
+/**
+ * A hat shop-equip oszlop és a slotok megfeleltetése. A MEGSZOLGÁLT
+ * kozmetikumok oszlopait (avatar, border_key, title_key, showcase) ez a
+ * leképezés nem érinti – a két rendszer szándékosan külön oszlopokban él.
+ */
+const EQUIP_COLUMN: Record<ProfileSlot, string> = {
+  frame: 'shop_frame_key',
+  nameColor: 'shop_name_color_key',
+  nameEffect: 'shop_name_effect_key',
+  title: 'shop_title_key',
+  avatar: 'shop_avatar_key',
+  profileBackground: 'shop_profile_background_key',
+};
+
+const EQUIP_COLUMNS = Object.values(EQUIP_COLUMN);
+
+/** Egy sor shop-oszlopaiból `ShopEquips` (ismeretlen/üres érték → null). */
+function toEquips(r: Row | null | undefined): ShopEquips {
+  const out: ShopEquips = { ...EMPTY_EQUIPS };
+  if (!r) return out;
+  for (const slot of PROFILE_SLOTS) {
+    const v = r[EQUIP_COLUMN[slot]];
+    out[slot] = typeof v === 'string' && v ? v : null;
+  }
+  return out;
+}
+
+/** `ShopEquips` → adatbázis-oszlopok. */
+function fromEquips(e: ShopEquips): Record<string, string | null> {
+  const row: Record<string, string | null> = {};
+  for (const slot of PROFILE_SLOTS) row[EQUIP_COLUMN[slot]] = e[slot];
+  return row;
 }
 
 /** Üres kötegelt eredmény – üres bemenetre felesleges lekérdezni. */
@@ -160,6 +210,32 @@ export class PostgresProgressionStore implements ProgressionStore {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' });
     this.fail('saveSettings', error);
+  }
+
+  async getShopEquips(userId: string): Promise<ShopEquips> {
+    const { data, error } = await this.db.from('user_profile_settings')
+      .select(EQUIP_COLUMNS.join(', ')).eq('user_id', userId).maybeSingle();
+    this.fail('getShopEquips', error);
+    return toEquips(data as Row | null);
+  }
+
+  async getShopEquipsMany(userIds: string[]): Promise<Map<string, ShopEquips>> {
+    if (!userIds.length) return emptyMap();
+    const { data, error } = await this.db.from('user_profile_settings')
+      .select(['user_id', ...EQUIP_COLUMNS].join(', ')).in('user_id', userIds);
+    this.fail('getShopEquipsMany', error);
+    const out = new Map<string, ShopEquips>();
+    for (const r of (data ?? []) as Row[]) out.set(r.user_id, toEquips(r));
+    return out;
+  }
+
+  async saveShopEquips(userId: string, equips: ShopEquips): Promise<void> {
+    // A megszolgált mezőket NEM adjuk meg: ha a sor már létezik, változatlanok
+    // maradnak; ha most jön létre, a tábla alapértelmezéseit kapják.
+    const { error } = await this.db.from('user_profile_settings').upsert({
+      user_id: userId, ...fromEquips(equips), updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    this.fail('saveShopEquips', error);
   }
 
   async settledPredictions(userId: string): Promise<SettledPrediction[]> {
@@ -369,6 +445,14 @@ export class SqliteProgressionStore implements ProgressionStore {
         border_key TEXT NOT NULL,
         title_key TEXT NOT NULL,
         showcase TEXT NOT NULL,
+        -- A 0012 migracio hat shop-oszlopa. NULL = ebben a slotban nincs
+        -- felvett shop item. KULON a megszolgalt mezoktol.
+        shop_frame_key TEXT,
+        shop_name_color_key TEXT,
+        shop_name_effect_key TEXT,
+        shop_title_key TEXT,
+        shop_avatar_key TEXT,
+        shop_profile_background_key TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -422,6 +506,38 @@ export class SqliteProgressionStore implements ProgressionStore {
         avatar = excluded.avatar, border_key = excluded.border_key,
         title_key = excluded.title_key, showcase = excluded.showcase, updated_at = excluded.updated_at`)
       .run(userId, JSON.stringify(s.avatar), s.border, s.title, JSON.stringify(s.showcase), now, now);
+  }
+
+  async getShopEquips(userId: string): Promise<ShopEquips> {
+    const r = this.db.prepare(
+      `SELECT ${EQUIP_COLUMNS.join(', ')} FROM user_profile_settings WHERE user_id = ?`,
+    ).get(userId) as Row | undefined;
+    return toEquips(r);
+  }
+
+  async getShopEquipsMany(userIds: string[]): Promise<Map<string, ShopEquips>> {
+    if (!userIds.length) return emptyMap();
+    const rows = this.db.prepare(
+      `SELECT user_id, ${EQUIP_COLUMNS.join(', ')} FROM user_profile_settings
+        WHERE user_id IN (${this.marks(userIds.length)})`,
+    ).all(...userIds) as Row[];
+    const out = new Map<string, ShopEquips>();
+    for (const r of rows) out.set(r.user_id as string, toEquips(r));
+    return out;
+  }
+
+  async saveShopEquips(userId: string, equips: ShopEquips): Promise<void> {
+    const now = new Date().toISOString();
+    const cols = EQUIP_COLUMNS;
+    const values = PROFILE_SLOTS.map((slot) => equips[slot]);
+    // A megszolgalt mezoket NEM irjuk at: uj sornal az alapertelmezes kerul be,
+    // letezo sornal csak a shop-oszlopok frissulnek.
+    this.db.prepare(`INSERT INTO user_profile_settings
+      (user_id, avatar, border_key, title_key, showcase, ${cols.join(', ')}, created_at, updated_at)
+      VALUES (?, '{}', 'classic', 'none', '[]', ${cols.map(() => '?').join(', ')}, ?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET
+        ${cols.map((c) => `${c} = excluded.${c}`).join(', ')}, updated_at = excluded.updated_at`)
+      .run(userId, ...values as never[], now, now);
   }
 
   async settledPredictions(userId: string): Promise<SettledPrediction[]> {

@@ -22,6 +22,10 @@ import {
   type TipsterStats,
 } from '../../shared/progression';
 import type { PublicProfile } from '../../shared/competition';
+import {
+  EMPTY_EQUIPS, SLOT_TO_CATEGORY, isProfileSlot, isValidItemKey, sanitizeShopEquips,
+  type ProfileSlot, type ShopCategory, type ShopEquips,
+} from '../../shared/shop';
 import type { ProgressionStore } from './store';
 
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
@@ -46,6 +50,11 @@ export interface AchievementView {
 export interface ProgressionProfile {
   /** false esetén a progression zárolva van (FREE csomag) */
   pro: boolean;
+  /**
+   * A felvett SHOP kozmetikumok slotonként. KÜLÖN réteg a megszolgált
+   * `settings` mezőtől; FREE felhasználónál is kitöltött lehet.
+   */
+  shop: ShopEquips;
   xp: number;
   level: number;
   levelTier: string;
@@ -77,7 +86,82 @@ export class ProgressionService {
      * Ha nincs megadva, az egyesével történő ellenőrzésre esik vissza.
      */
     private proUserIds?: (userIds: string[]) => Promise<Set<string>>,
+    /**
+     * Opcionális shop-birtoklás feloldó: `userId → (itemKey → kategória)`.
+     * SZÁNDÉKOSAN szűk felület, hogy a progression ne függjön a coin-modultól.
+     * Ha nincs megadva, a shop-réteg üres, és a működés bitre azonos a
+     * korábbival.
+     */
+    private shopOwnership?: (userIds: string[]) => Promise<Map<string, Map<string, ShopCategory>>>,
   ) {}
+
+  // -------------------------------------------------------------------------
+  // Shop kozmetikumok FELVÉTELE (equip)
+  //
+  // KÜLÖN RENDSZER a megszolgált testreszabástól:
+  //   - saját oszlopok (0012), saját slotok, saját ellenőrzés,
+  //   - a `sanitizeSettings()`-et NEM hívja és nem gyengíti,
+  //   - NINCS PRO-kapu: a coin FREE-vel is megszerezhető, ezért a megvásárolt
+  //     kozmetikum FREE felhasználónak is felvehető (jóváhagyott döntés).
+  //     A MEGSZOLGÁLT kozmetikumok PRO-kapuja (`saveSettings`) változatlan.
+  // -------------------------------------------------------------------------
+
+  /** A hívó birtokolt itemei kategóriával – a felvétel authority-ja. */
+  private async ownedCategories(userId: string): Promise<Map<string, ShopCategory>> {
+    if (!this.shopOwnership) return new Map();
+    return (await this.shopOwnership([userId])).get(userId) ?? new Map();
+  }
+
+  /**
+   * A hívó felvett shop itemei. A tárolt értéket MINDEN olvasásnál újra
+   * ellenőrizzük a jelenlegi birtoklás ellen – ugyanaz az elv, mint a
+   * megszolgált kozmetikumoknál: a tárolt választás nem authority.
+   */
+  async shopCustomization(userId: string): Promise<ShopEquips> {
+    const [stored, owned] = await Promise.all([
+      this.store.getShopEquips(userId),
+      this.ownedCategories(userId),
+    ]);
+    return sanitizeShopEquips(stored, owned).equips;
+  }
+
+  /**
+   * Egy slot felvétele vagy levétele. `itemKey === null` → levétel.
+   *
+   * CSAK a profil-beállítást módosítja: coint nem von le és nem ad, készletet
+   * nem hoz létre és nem módosít, tranzakciót nem naplóz. A birtoklás és a
+   * kategória-egyezés ellenőrzése a MENTÉS ELŐTT történik, ezért elutasított
+   * kérés után a tárolt állapot bitre változatlan.
+   */
+  async equipShopItem(userId: string, slot: unknown, itemKey: unknown): Promise<{ equips: ShopEquips; slot: ProfileSlot }> {
+    if (!isProfileSlot(slot)) {
+      throw new ProgressionError('Érvénytelen slot.', 400, 'INVALID_SLOT');
+    }
+    if (itemKey !== null && itemKey !== undefined && !isValidItemKey(itemKey)) {
+      throw new ProgressionError('Érvénytelen item azonosító.', 400, 'INVALID_ITEM_KEY');
+    }
+
+    const owned = await this.ownedCategories(userId);
+
+    if (itemKey !== null && itemKey !== undefined) {
+      const category = owned.get(itemKey);
+      if (!category) {
+        throw new ProgressionError('Ez az elem nincs a készletedben.', 403, 'ITEM_NOT_OWNED');
+      }
+      if (SLOT_TO_CATEGORY[slot] !== category) {
+        throw new ProgressionError('Ez az elem nem ebbe a slotba tartozik.', 422, 'SLOT_CATEGORY_MISMATCH');
+      }
+    }
+
+    // A tárolt állapotból indulunk, és CSAK a kért slotot írjuk át
+    const current = await this.store.getShopEquips(userId);
+    const wanted: ShopEquips = { ...current, [slot]: itemKey ?? null };
+    // Védőháló: a többi slot is átmegy a birtoklás-ellenőrzésen, így egy
+    // korábban felvett, de már érvénytelen kulcs sem íródik vissza.
+    const { equips } = sanitizeShopEquips(wanted, owned);
+    await this.store.saveShopEquips(userId, equips);
+    return { equips, slot };
+  }
 
   private async proSet(userIds: string[]): Promise<Set<string>> {
     if (!userIds.length) return new Set();
@@ -174,6 +258,8 @@ export class ProgressionService {
   /** A bejelentkezett felhasználó teljes progression-állapota (saját adat). */
   async profile(userId: string): Promise<ProgressionProfile> {
     const pro = await this.isPro(userId);
+    // A shop-réteg FREE felhasználónál is kitöltött lehet (külön rendszer)
+    const shop = await this.shopCustomization(userId);
     const xp = await this.store.totalXp(userId);
     const level = levelFromXp(xp);
     const stats = pro || xp > 0 ? await this.statsFor(userId) : { ...EMPTY_STATS };
@@ -191,6 +277,7 @@ export class ProgressionService {
 
     return {
       pro,
+      shop,
       xp,
       level: level.level,
       levelTier: level.tier,
@@ -264,8 +351,32 @@ export class ProgressionService {
     const pro = await this.proSet(unique);
     const proIds = unique.filter((id) => pro.has(id));
 
-    // FREE felhasználó: nincs testreszabás, mindig az alapértelmezett megjelenés
+    // FREE felhasználó: MEGSZOLGÁLT testreszabás nincs – marad az alapértelmezés
     for (const id of unique) out.set(id, fallback);
+
+    // SHOP-RÉTEG: a megvásárolt és felvett kozmetikum FREE és PRO
+    // felhasználónál EGYARÁNT látszik (jóváhagyott döntés). Külön réteg: a
+    // megszolgált kozmetikumok jogosultságát nem kerüli meg, mert csak a
+    // SHOP-slotokat tölti, és minden kulcsot a birtoklás ellen ellenőriz.
+    if (this.shopOwnership) {
+      try {
+        const [equips, owned] = await Promise.all([
+          this.store.getShopEquipsMany(unique),
+          this.shopOwnership(unique),
+        ]);
+        for (const id of unique) {
+          const stored = equips.get(id);
+          if (!stored) continue;
+          const { equips: safe } = sanitizeShopEquips(stored, owned.get(id) ?? new Map());
+          if (Object.values(safe).every((v) => v === null)) continue;
+          out.set(id, { ...(out.get(id) ?? fallback), shop: safe });
+        }
+      } catch (e) {
+        // A shop-réteg hibája NEM törheti meg a ranglistát
+        console.error('[progression] shop-réteg hiba:', (e as Error).message);
+      }
+    }
+
     if (!proIds.length) return out;
 
     const [settings, achievements, xp, predictions, placements] = await Promise.all([
@@ -282,7 +393,12 @@ export class ProgressionService {
       const stats = computeStats(predictions.get(id) ?? [], placements.get(id) ?? [], xp.get(id) ?? 0);
       const unlocked = new Set(achievements.get(id) ?? []);
       const { settings: safe } = sanitizeSettings(stored, stats, unlocked);
-      out.set(id, { avatar: safe.avatar, borderKey: safe.border, titleKey: safe.title });
+      // A shop-réteget MEGTARTJUK: a megszolgált réteg csak a saját mezőit írja
+      const shop = out.get(id)?.shop;
+      out.set(id, {
+        avatar: safe.avatar, borderKey: safe.border, titleKey: safe.title,
+        ...(shop ? { shop } : {}),
+      });
     }
     return out;
   }

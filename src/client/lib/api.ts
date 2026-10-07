@@ -16,6 +16,10 @@ import type {
 } from '@shared/competition';
 import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
 import type { MissionPeriodView, MissionView } from '@shared/missions';
+import type {
+  CoinBalance, CoinHistoryPage, CoinTransactionType, ProfileSlot, ShopCatalogResponse,
+  ShopEquips, ShopInventoryResponse, ShopPurchaseResponse,
+} from '@shared/shop';
 import { supabase } from './supabase';
 
 export interface MatchWithTeams extends Match {
@@ -247,6 +251,36 @@ export const api = {
     request<CompetitionReward>(`/${encodeURIComponent(id)}/rewards/${encodeURIComponent(rewardId)}`, {
       method: 'PATCH', body: JSON.stringify({ status }),
     }, '/api/admin/competition'),
+
+  // ---------- Coin + Shop ----------
+  // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, az útvonal pedig csak
+  // az azon belüli rész – a 'coins' / 'shop' szegmens itt NEM ismételhető meg
+  // (lásd tests/apiUrls.test.ts).
+
+  /** A hitelesített felhasználó egyenlege. A DB az authority; a kliens csak megjeleníti. */
+  coinBalance: () => request<CoinBalance>('/balance', {}, '/api/coins'),
+  /** Tranzakciós napló lapozva; a limitet a szerver korlátozza. */
+  coinHistory: (opts: { limit?: number; before?: string; type?: CoinTransactionType[] } = {}) =>
+    request<CoinHistoryPage>(`/history${qs({
+      limit: opts.limit, before: opts.before,
+      type: opts.type?.length ? opts.type.join(',') : undefined,
+    })}`, {}, '/api/coins'),
+
+  /** Az aktív katalógus. Az ÁR, a ritkaság és a birtoklás mind a szerverről jön. */
+  shopItems: () => request<ShopCatalogResponse>('/items', {}, '/api/shop'),
+  /** A saját készlet (kötegelt – elemenként nincs külön kérés). */
+  shopInventory: () => request<ShopInventoryResponse>('/inventory', {}, '/api/shop'),
+  /** Vásárlás. A törzsben KIZÁRÓLAG az item kulcsát küldjük – árat sosem. */
+  purchaseShopItem: (itemKey: string) =>
+    request<ShopPurchaseResponse>('/purchase', { method: 'POST', body: JSON.stringify({ itemKey }) }, '/api/shop'),
+
+  /** A felvett shop kozmetikumok. */
+  customization: () => request<{ shop: ShopEquips; slots: ProfileSlot[] }>('/customization', {}, '/api/profile'),
+  /** Felvétel / levétel (`itemKey: null`). A szerver ellenőrzi a birtoklást és a slotot. */
+  equipShopItem: (slot: ProfileSlot, itemKey: string | null) =>
+    request<{ shop: ShopEquips; slot: ProfileSlot }>('/customization', {
+      method: 'PUT', body: JSON.stringify({ slot, itemKey }),
+    }, '/api/profile'),
 
   settings: () => request<{ shrinkageK: number; status: AppStatus }>('/settings'),
   saveSettings: (shrinkageK: number) => request<{ shrinkageK: number }>('/settings', { method: 'POST', body: JSON.stringify({ shrinkageK }) }),

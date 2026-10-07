@@ -15,6 +15,7 @@ import MyStats from './pages/MyStats';
 import Battles from './pages/Battles';
 import BattleDetail from './pages/BattleDetail';
 import Notifications from './pages/Notifications';
+import Shop from './pages/Shop';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import Sources from './pages/Sources';
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/profil" element={<Profile />} />
         <Route path="/statisztikaim" element={<RequireAuth><MyStats /></RequireAuth>} />
         <Route path="/ertesitesek" element={<RequireAuth><Notifications /></RequireAuth>} />
+        <Route path="/shop" element={<RequireAuth><Shop /></RequireAuth>} />
         <Route path="/battles" element={<RequireAuth><Battles /></RequireAuth>} />
         <Route path="/battles/:id" element={<RequireAuth><BattleDetail /></RequireAuth>} />
         <Route path="/tippverseny" element={<Competitions />} />

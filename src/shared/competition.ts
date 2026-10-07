@@ -64,6 +64,15 @@ export interface PublicProfile {
   avatar: Record<string, string>;
   borderKey: string;
   titleKey: string;
+  /**
+   * A felvett SHOP kozmetikumok slotonként (keret, névszín, név-effekt, cím,
+   * avatar-embléma, profil-háttér), vagy `undefined`, ha nincs ilyen.
+   *
+   * KÜLÖN RÉTEG a megszolgált `borderKey` / `titleKey` / `avatar` mezőktől:
+   * egyik sem írja felül a másikat. Szándékosan opcionális, hogy a korábbi
+   * ranglista-válaszalak változatlan maradjon.
+   */
+  shop?: Partial<Record<'frame' | 'nameColor' | 'nameEffect' | 'title' | 'avatar' | 'profileBackground', string | null>>;
 }
 
 /** Nyilvános ranglista-sor. SZÁNDÉKOSAN nem tartalmaz e-mailt és user_id-t. */

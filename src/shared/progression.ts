@@ -194,16 +194,21 @@ export function computeStats(
 
 /**
  * A sorozat-bónuszt kiváltó tippek azonosítói: azok, amelyeknél a futó sorozat
- * ÉPPEN eléri az 5-öt. Minden sorozat legfeljebb egyszer ad bónuszt.
+ * ÉPPEN eléri a megadott hosszt. Minden sorozat legfeljebb egyszer ad bónuszt.
+ *
+ * Az `at` alapértéke az XP-rendszer 5-ös küszöbe, ezért a paraméter nélküli
+ * hívás bitre a korábbi viselkedést adja. A coin-jutalom (5c) egy RÖVIDEBB,
+ * 3-as sorozatra fizet, és ezt a MEGLÉVŐ algoritmus újrahasznosításával teszi –
+ * nincs második sorozatszámító rendszer.
  */
-export function streakBonusPredictionIds(settled: SettledPrediction[]): string[] {
+export function streakBonusPredictionIds(settled: SettledPrediction[], at: number = STREAK_BONUS_AT): string[] {
   const ordered = [...settled].sort((a, b) => (a.kickoff === b.kickoff ? a.predictionId.localeCompare(b.predictionId) : a.kickoff.localeCompare(b.kickoff)));
   const ids: string[] = [];
   let streak = 0;
   for (const p of ordered) {
     if (isCorrect(p.points)) {
       streak++;
-      if (streak === STREAK_BONUS_AT) ids.push(p.predictionId);
+      if (streak === at) ids.push(p.predictionId);
     } else {
       streak = 0;
     }

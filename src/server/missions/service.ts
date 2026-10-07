@@ -15,6 +15,7 @@ import {
   type Mission, type MissionPeriod, type MissionPeriodView, type MissionView,
 } from '../../shared/missions';
 import type { ProgressionStore } from '../progression/store';
+import type { MissionCoinHook } from '../coins/rewards';
 
 export class MissionError extends Error {
   constructor(message: string, public status: number, public code?: string) { super(message); }
@@ -36,6 +37,13 @@ export class MissionService {
   constructor(
     private store: ProgressionStore,
     private isPro: (userId: string) => Promise<boolean>,
+    /**
+     * Opcionális coin jutalom-hook (5c). CSAK RÁÉPÜL az átvételre: a haladás
+     * számítását, a teljesítés feltételét és az XP-t nem befolyásolja, és a
+     * hibája nem bukhatja meg az átvételt. Ha nincs megadva, a küldetések
+     * működése bitre azonos a korábbival.
+     */
+    private coins?: MissionCoinHook,
   ) {}
 
   /** A küldetésekhez szükséges tipp-sorok (egyetlen lekérdezés). */
@@ -143,6 +151,13 @@ export class MissionService {
       // A MEGLÉVŐ XP-rendszer: a forráskulcs egyedisége itt is kizárja a duplázást
       await this.store.claimEvent(userId, 'mission', missionSourceKey(mission.key, periodKey), xp);
     }
+
+    // COIN (5c): csak MOST létrejött átvételnél, és csak a két mennyiségi
+    // küldetésnél (napi 3 tipp, heti 10 tipp). A periódus-kulcs ugyanaz, mint
+    // a küldetésé (Europe/Budapest), ezért nincs második napi/heti számláló.
+    // FREE felhasználó XP-t nem kap, coint IGEN – ez a jóváhagyott D2 döntés.
+    try { await this.coins?.onMissionClaimed(userId, mission.key, periodKey); }
+    catch (e) { console.error('[missions] coin jutalom hiba:', (e as Error).message); }
 
     const fresh = await this.store.missionClaims(userId, [periodKey]);
     return { mission: this.view(mission, rows, fresh, pro, now), xpAwarded: xp, alreadyClaimed: false };

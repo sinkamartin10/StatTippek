@@ -14,6 +14,8 @@ import {
 } from '../../shared/competition';
 import type { CompetitionStore, SyncMatch } from './store';
 import { budapestDayWindow, quotaFrom, type DailyQuota } from '../../shared/freeQuota';
+import type { CoinRewardHook } from '../coins/rewards';
+import { TOP10_PLACEMENT } from '../../shared/shop';
 
 /**
  * A progression-réteg felé mutató, szándékosan szűk felület.
@@ -73,6 +75,13 @@ export class CompetitionService {
      * helyi mód), mindenki jogosult: a működés bitre azonos a korábbival.
      */
     private proUsers?: (userIds: string[]) => Promise<Set<string>>,
+    /**
+     * Opcionális coin jutalom-hook (5c). CSAK RÁÉPÜL: a pontszámítást, a
+     * rangsort, a holtverseny-feloldást és a jutalom-jogosultságot nem
+     * befolyásolja, és a hibája nem bukhatja meg a kiértékelést. Ha nincs
+     * megadva, a Tippverseny működése bitre azonos a korábbival.
+     */
+    private coins?: CoinRewardHook,
   ) {}
 
   /** A tárolt név, vagy – ha valamiért nincs – állandó álnév (soha nem e-mail). */
@@ -193,6 +202,14 @@ export class CompetitionService {
         403, 'FREE_DAILY_LIMIT_REACHED', { ...quota },
       );
     }
+
+    // COIN (5c): a tipp ekkor MÁR létezik az adatbázisban (a beküldő RPC
+    // commitolt), ezért érvénytelen, zárolt vagy kvótán kívüli kérés sosem
+    // fizet. A forráskulcs a tipp azonosítója, így a MÓDOSÍTÁS nem fizet újra.
+    // A hook elnyeli a saját hibáját, és az elmaradt jóváírást a következő
+    // kiértékelés (settle → reconcileUser) pótolja.
+    await this.coins?.onPredictionSubmitted(userId, r.prediction!.id);
+
     return r.prediction!;
   }
 
@@ -238,6 +255,11 @@ export class CompetitionService {
     for (const userId of touched) {
       try { await this.progression?.syncUser(userId); }
       catch (e) { console.error('[competition] progression szinkron hiba:', (e as Error).message); }
+      // COIN (5c): a kiértékelés ESEMÉNYÉHEZ kötve, nem oldalmegtekintéshez.
+      // A pont ekkor már ki van írva, ezért a jutalom bizonyított eredményre
+      // épül. Idempotens; a hibája nem bukhatja meg a kiértékelést.
+      try { await this.coins?.reconcileUser(userId); }
+      catch (e) { console.error('[competition] coin jutalom hiba:', (e as Error).message); }
     }
     return { scoredMatches: finished.length, scoredPredictions: scored };
   }
@@ -474,6 +496,22 @@ export class CompetitionService {
     // 'finished' is szerepel a megengedett kiinduló állapotok közt → az ismételt lezárás nem hibázik
     const updated = await this.store.setCompetitionStatus(id, 'finished', ['draft', 'scheduled', 'active', 'finished']);
     if (!updated) throw new CompetitionError('A verseny nem zárható le a jelenlegi állapotában.', 409);
+
+    // COIN (5c): KIZÁRÓLAG a sikeres 'finished' átmenet UTÁN. Érvénytelenített
+    // verseny ide nem jut el (fentebb 409-cel elszáll), nem lezárható állapotban
+    // sem. A helyezés a NYILVÁNOS ranglistából jön, amely FREE és PRO
+    // résztvevőt egyaránt tartalmaz – a PRO-only `competition_rewards`
+    // jutalomrangsor ettől külön rendszer, és változatlan.
+    for (const row of ranked) {
+      // A lezárás GARANTÁLT utánvezetési pont: itt MINDEN résztvevő tipp-alapú
+      // jutalmát pótoljuk, mert a `settle()` csak azokat vezeti utána, akiknek
+      // a pontja éppen változott. Idempotens, ezért felesleges jóváírást nem ad.
+      try { await this.coins?.reconcileUser(row.userId); }
+      catch (e) { console.error('[competition] coin utánvezetés hiba:', (e as Error).message); }
+      if (row.rank > TOP10_PLACEMENT) continue;
+      try { await this.coins?.onCompetitionFinished(row.userId, id, row.rank); }
+      catch (e) { console.error('[competition] coin helyezés hiba:', (e as Error).message); }
+    }
 
     const warnings: string[] = [];
     const pending = matches.length - withResult.length;

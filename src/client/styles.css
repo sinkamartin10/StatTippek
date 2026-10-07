@@ -223,3 +223,140 @@ body {
 .cosmetic-tile:hover:not(:disabled) { @apply border-border-strong; }
 .cosmetic-tile-active { @apply border-primary bg-primary-soft text-primary-strong; }
 .cosmetic-tile:disabled { @apply cursor-not-allowed opacity-45; }
+
+/* ===========================================================================
+   Shop – kozmetikumok coinból
+   A meglévő tokeneket és osztályokat használja (card, btn, chip, badge).
+   Szándékosan visszafogott: a ritkaság színnel és keretvastagsággal jelez,
+   nem folyamatos glow-val vagy agresszív gradienssel.
+   =========================================================================== */
+
+/* Ritkaság-tokenek – a meglévő paletta árnyalatai */
+:root {
+  --rarity-common: var(--color-text-muted);
+  --rarity-uncommon: var(--color-success);
+  --rarity-rare: var(--color-primary);
+  --rarity-epic: #8b5cf6;
+  --rarity-legendary: var(--color-secondary);
+}
+
+.rarity-common { --rarity: var(--rarity-common); }
+.rarity-uncommon { --rarity: var(--rarity-uncommon); }
+.rarity-rare { --rarity: var(--rarity-rare); }
+.rarity-epic { --rarity: var(--rarity-epic); }
+.rarity-legendary { --rarity: var(--rarity-legendary); }
+
+.rarity-badge {
+  @apply inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide;
+  color: var(--rarity);
+  border-color: color-mix(in srgb, var(--rarity) 35%, transparent);
+  background: color-mix(in srgb, var(--rarity) 10%, transparent);
+}
+
+/* Coin-jelvény és ár */
+.coin-pill {
+  @apply inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-sm font-extrabold transition;
+  color: var(--color-text);
+}
+.coin-pill:hover { @apply border-border-strong bg-card-2; }
+.coin-pill:focus-visible { @apply outline-2 outline-offset-2 outline-primary; }
+.coin-pill svg { color: var(--color-secondary); }
+.coin-pill-lg { @apply px-3 py-2 text-base; }
+
+.coin-price {
+  @apply inline-flex items-center gap-1 text-sm font-extrabold;
+}
+.coin-price svg { color: var(--color-secondary); }
+
+/* Eszköztár: szűrők + rendezés. Mobilon a szűrő vízszintesen csúsztatható. */
+.shop-toolbar { @apply flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between; }
+.shop-filters {
+  @apply flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0;
+  scrollbar-width: thin;
+}
+.shop-filters .chip { @apply shrink-0; }
+.shop-sort { @apply shrink-0 sm:w-44; }
+
+/* Rács: mobil 1–2, tablet 2–3, desktop 3–4 oszlop */
+.shop-grid {
+  @apply grid gap-3;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+}
+
+.shop-card {
+  @apply flex h-full flex-col rounded-2xl border bg-card p-3 transition;
+  border-color: color-mix(in srgb, var(--rarity) 28%, var(--color-border));
+  box-shadow: var(--shadow-soft);
+}
+.shop-card:hover { box-shadow: var(--shadow-lift); border-color: color-mix(in srgb, var(--rarity) 55%, var(--color-border)); }
+.shop-card:focus-within { @apply outline-2 outline-offset-2 outline-primary; }
+.shop-card-equipped { border-color: var(--color-primary); background: var(--color-primary-soft); }
+
+.shop-card-preview {
+  @apply flex h-24 items-center justify-center overflow-hidden rounded-xl;
+  background: color-mix(in srgb, var(--rarity) 7%, var(--color-card-2));
+}
+.shop-card-figure > span:last-child { @apply hidden; }
+.shop-card-nameonly { @apply justify-center px-2 text-center; }
+/* Név/cím előnézetnél nincs figura – csak a név és a cím látszik */
+.shop-card-nameonly > span:first-child { @apply hidden; }
+
+.shop-skeleton {
+  @apply h-56 animate-pulse rounded-2xl border border-border bg-card-2;
+}
+
+/* Shop keret az avatar körül */
+.shop-frame {
+  @apply relative inline-flex items-center justify-center rounded-full;
+  padding: 3px;
+  background: var(--shop-ring);
+}
+.shop-frame-flame, .shop-frame-pulse, .shop-frame-glow {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--shop-ring) 45%, transparent);
+  animation: avatar-glow 3s ease-in-out infinite;
+}
+.shop-frame-sweep, .shop-frame-shimmer { animation: avatar-spin 7s linear infinite; }
+.shop-frame-sweep > *, .shop-frame-shimmer > * { animation: avatar-spin 7s linear infinite reverse; }
+@media (prefers-reduced-motion: reduce) {
+  .shop-frame-flame, .shop-frame-pulse, .shop-frame-glow,
+  .shop-frame-sweep, .shop-frame-shimmer,
+  .shop-frame-sweep > *, .shop-frame-shimmer > * { animation: none; }
+}
+
+/* Avatar-embléma (a meglévő avatar accessory rétegére) */
+.shop-emblem {
+  @apply pointer-events-none absolute -bottom-0.5 -right-0.5 flex h-[1.9em] w-[1.9em] items-center justify-center rounded-full border-2 border-card bg-card leading-none;
+  box-shadow: var(--shadow-soft);
+}
+
+/* Név: shop névszín + effekt */
+.shop-name { @apply font-extrabold; }
+.shop-name-gradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+.shop-effect-glow { text-shadow: 0 0 10px color-mix(in srgb, var(--shop-name-glow) 70%, transparent); }
+.shop-effect-fire { text-shadow: 0 0 8px color-mix(in srgb, #f5533d 75%, transparent); }
+.shop-effect-ice { text-shadow: 0 0 8px color-mix(in srgb, #7dd3fc 80%, transparent); }
+.shop-effect-electric { text-shadow: 0 0 8px color-mix(in srgb, #38bdf8 80%, transparent); }
+.shop-effect-shimmer, .shop-effect-rainbow {
+  background-image: linear-gradient(90deg, #f5533d, #f0b429, #17b877, #4f6ef7, #8b5cf6, #f5533d);
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shop-name-slide 6s linear infinite;
+}
+@keyframes shop-name-slide { to { background-position: 300% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .shop-effect-shimmer, .shop-effect-rainbow { animation: none; }
+}
+
+/* Profilkártya (élő előnézet és profil oldal) */
+.shop-profile-card {
+  @apply flex flex-col items-center rounded-2xl border border-border bg-card-2 p-4;
+}
+.shop-profile-card-bg { @apply border-transparent text-white; }
+.shop-profile-card-bg .text-text-muted { color: rgba(255, 255, 255, 0.78); }
+.shop-profile-card-bg .shop-name:not(.shop-name-gradient) { color: #ffffff; }

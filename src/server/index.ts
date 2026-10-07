@@ -15,9 +15,12 @@ import { progressionRouter } from './routes/progression';
 import { missionsRouter } from './routes/missions';
 import { battlesRouter } from './routes/battles';
 import { notificationsRouter } from './routes/notifications';
+import { coinsRouter, shopRouter } from './routes/coins';
 import { MissionService } from './missions/service';
 import { BattleService } from './battles/service';
 import { NotificationService } from './notifications/service';
+import { CoinService } from './coins/service';
+import { CoinRewardService } from './coins/rewards';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
@@ -27,19 +30,43 @@ import { supabaseConfigured } from './billing/supabaseAdmin';
 const container = buildContainer();
 const service = new AnalysisService(container);
 // A PRO-állapot KIZÁRÓLAG szerveroldalról, a meglévő profiles/Stripe adatból jön
-const progressionService = new ProgressionService(
+const progressionService: ProgressionService = new ProgressionService(
   container.progression,
   async (userId) => profileIsPro(await getProfile(userId)),
   // Kötegelt PRO-ellenőrzés a ranglistához: N felhasználó → EGY lekérdezés
   (userIds) => proUserIds(userIds),
+  // SHOP-birtoklás a kozmetikumok felvételéhez. KÉSŐI KÖTÉS: a closure csak
+  // kéréskor fut le, ezért a coinService később is definiálható.
+  (userIds) => coinService.ownedCategoriesMany(userIds),
 );
-const missionService = new MissionService(container.progression, async (userId) => profileIsPro(await getProfile(userId)));
+/**
+ * Coin szolgáltatás. Sem a Tippversenytől, sem a progressiontől nem függ:
+ * a pénzmozgás-szerű műveletek authority-ja az adatbázis. Route-ja ebben a
+ * szakaszban még szándékosan nincs (5d).
+ */
+const coinService: CoinService = new CoinService(container.coins);
+
+/**
+ * Coin jutalom-hookok. EGYETLEN hely, ahol a meglévő TippStats eseményekből
+ * coin keletkezik; minden jóváírás a CoinService-en és a 0011 migráció
+ * `award_coins()` függvényén megy át. FREE és PRO ugyanannyit kap: a coin
+ * szándékosan nem ismétli meg az XP PRO-kapuját (a jóváhagyott gazdasági
+ * modell egy aktív FREE felhasználóra készült).
+ */
+const coinRewards = new CoinRewardService(coinService, container.progression);
+
+const missionService = new MissionService(
+  container.progression,
+  async (userId) => profileIsPro(await getProfile(userId)),
+  coinRewards,
+);
 const competitionService = new CompetitionService(
   container.competitions, container.data, container.displayNames, progressionService,
   // Jutalom-jogosultság: a Tippverseny PRO jutalmaira CSAK PRO résztvevő jogosult.
   // A pontozást, a sorrendet és a nyilvános ranglistát ez NEM befolyásolja.
   // Supabase nélküli helyi módban nincs csomag-fogalom → nincs szűrés.
   supabaseConfigured ? (userIds) => proUserIds(userIds) : undefined,
+  coinRewards,
 );
 /**
  * 1v1 Tipp Battle. Saját táblák; a Tippverseny tárolójából KIZÁRÓLAG OLVAS
@@ -139,7 +166,7 @@ app.delete('/api/matches/:id/odds', requireAdmin);
 app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competitionService));
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
-app.use('/api/profile', profileRouter(container.displayNames));
+app.use('/api/profile', profileRouter(container.displayNames, progressionService));
 // Progression: saját XP/achievement állapot olvasása és a testreszabás mentése (PRO)
 app.use('/api/progression', progressionRouter(progressionService));
 // Küldetések: a haladás számított, a jutalom idempotens és a meglévő XP-rendszerbe kerül
@@ -148,6 +175,10 @@ app.use('/api/missions', missionsRouter(missionService));
 app.use('/api/battles', battlesRouter(battleService));
 // Értesítések: pull-alapú, in-app. FREE és PRO egyaránt használhatja.
 app.use('/api/notifications', notificationsRouter(notificationService));
+// Coin + Shop: kozmetikum-vásárlás. FREE és PRO egyaránt használhatja (a coin
+// semmilyen kompetitív előnyt nem ad), minden írás a hitelesített userhez kötve.
+app.use('/api/coins', coinsRouter(coinService));
+app.use('/api/shop', shopRouter(coinService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -194,6 +225,11 @@ app.listen(port, async () => {
       if (missingCompetition.length) {
         console.warn('Tippverseny táblák hiányoznak:', missingCompetition.join(', '));
         console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0004_prediction_league.sql');
+      }
+      const missingCoins = await container.coins.healthCheck();
+      if (missingCoins.length) {
+        console.warn('Coin/shop táblák vagy függvények hiányoznak:', missingCoins.join(', '));
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0011_coins_shop.sql');
       }
       const missingProgression = await container.progression.healthCheck();
       if (missingProgression.length) {

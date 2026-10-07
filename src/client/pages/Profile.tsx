@@ -12,6 +12,7 @@ import { api } from '../lib/api';
 import { useAsync } from '../lib/format';
 import { DisplayNameEditor } from '../components/DisplayNameEditor';
 import { ProgressionCard } from '../components/ProgressionCard';
+import { ShopCosmeticsCard } from '../components/ShopCosmeticsCard';
 
 export default function Profile() {
   const auth = useAuth();
@@ -109,6 +110,8 @@ export default function Profile() {
       </Card>
 
       {/* Tipster progression – külön modul, a meglévő profilfunkciókat nem érinti */}
+      <ShopCosmeticsCard displayName={me.data?.displayName ?? null} />
+
       <ProgressionCard displayName={me.data?.displayName ?? null} />
 
       <Card title="Előfizetés kezelése">
