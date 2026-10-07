@@ -23,6 +23,7 @@ import { PostgresCompetitionStore, SqliteCompetitionStore, type CompetitionStore
 import { InMemoryDisplayNameDirectory, SupabaseDisplayNameDirectory, type DisplayNameDirectory } from './profile/displayNameDirectory';
 import { PostgresProgressionStore, SqliteProgressionStore, type ProgressionStore } from './progression/store';
 import { PostgresBattleStore, SqliteBattleStore, type BattleStore } from './battles/store';
+import { PostgresNotificationStore, SqliteNotificationStore, type NotificationStore } from './notifications/store';
 
 export interface Container {
   data: MatchDataProvider;
@@ -38,6 +39,8 @@ export interface Container {
   progression: ProgressionStore;
   /** 1v1 Tipp Battle tárolója – saját táblák; a user_predictions-hez nem nyúl */
   battles: BattleStore;
+  /** In-app értesítések tárolója – saját tábla, általános (nem Battle-specifikus) */
+  notifications: NotificationStore;
   status(): AppStatus;
 }
 
@@ -91,6 +94,10 @@ export function buildContainer(): Container {
     ? new PostgresBattleStore(supabaseUrl, serviceRoleKey)
     : new SqliteBattleStore(db.sqliteHandle());
 
+  const notifications: NotificationStore = supabaseUrl && serviceRoleKey
+    ? new PostgresNotificationStore(supabaseUrl, serviceRoleKey)
+    : new SqliteNotificationStore(db.sqliteHandle());
+
   return {
     data,
     research,
@@ -100,6 +107,7 @@ export function buildContainer(): Container {
     displayNames,
     progression,
     battles,
+    notifications,
     status: () => ({
       dataMode: data.origin,
       requestedMode,

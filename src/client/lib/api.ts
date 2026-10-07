@@ -5,6 +5,7 @@ import type { DailyQuota } from '@shared/freeQuota';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
 } from '@shared/battles';
+import type { NotificationListResponse, NotificationRow } from '@shared/notifications';
 import type {
   AppStatus, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
   FormSummary, StandingRow, LeagueAverages, MatchResult,
@@ -202,6 +203,18 @@ export const api = {
     }, '/api/battles'),
   claimMission: (key: string) =>
     request<MissionClaimResponse>(`/${encodeURIComponent(key)}/claim`, { method: 'POST' }, '/api/missions'),
+
+  // --- Értesítések. A 3. argumentum a TELJES mount-prefix: az útvonal NEM
+  //     tartalmazhatja újra a 'notifications' szegmenst (lásd tests/apiUrls.test.ts).
+  notifications: (opts: { limit?: number; before?: string } = {}) =>
+    request<NotificationListResponse>(qs({
+      limit: opts.limit != null ? String(opts.limit) : undefined,
+      before: opts.before,
+    }), {}, '/api/notifications'),
+  markNotificationRead: (id: string) =>
+    request<{ notification: NotificationRow }>(`/${encodeURIComponent(id)}/read`, { method: 'POST' }, '/api/notifications'),
+  markAllNotificationsRead: () =>
+    request<{ updated: number }>('/read-all', { method: 'POST' }, '/api/notifications'),
 
   // ---------- Tippverseny (külön modul; a meglévő végpontokat nem érinti) ----------
   // FIGYELEM: a harmadik paraméter a TELJES mount-prefix, a path pedig csak az azon belüli rész –

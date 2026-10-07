@@ -14,8 +14,10 @@ import { profileRouter } from './routes/profile';
 import { progressionRouter } from './routes/progression';
 import { missionsRouter } from './routes/missions';
 import { battlesRouter } from './routes/battles';
+import { notificationsRouter } from './routes/notifications';
 import { MissionService } from './missions/service';
 import { BattleService } from './battles/service';
+import { NotificationService } from './notifications/service';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
@@ -45,13 +47,28 @@ const competitionService = new CompetitionService(
  * ezért a battle nem jelenik meg a Tippverseny ranglistán, nem fogyaszt FREE napi
  * kvótát, nem számít küldetés-haladásba, és nem ad XP-t vagy helyezést.
  */
-const battleService = new BattleService(
+/**
+ * In-app értesítések. ÁLTALÁNOS szolgáltatás: nem ismeri a Battle-t – a
+ * „mit kellene még látnia a felhasználónak" kérdést injektált
+ * újraszármaztatók válaszolják meg (itt: a párbajok terminális állapotai).
+ * Értesítésért nem jár XP, nincs Stripe-kapcsolat, és nincs e-mail/push/ütemező.
+ */
+// A két szolgáltatás kölcsönösen hivatkozik egymásra, de KÉSŐI KÖTÉSSEL: mindkét
+// closure csak kéréskor fut le, ezért futásidőben nincs körkörösség. A típust
+// explicit megadjuk, mert a következtetés egy ilyen körön nem jut át.
+const notificationService: NotificationService = new NotificationService(container.notifications, [
+  (userId) => battleService.notificationCandidates(userId),
+]);
+
+const battleService: BattleService = new BattleService(
   container.battles,
   container.competitions,
   container.displayNames,
   async (userId) => profileIsPro(await getProfile(userId)),
   (userIds) => proUserIds(userIds),
   (userIds) => progressionService.publicProfiles(userIds),
+  // Az értesítés SOHA nem törheti meg a párbaj műveletét: az emit() elnyeli a hibát
+  (n) => notificationService.emit(n),
 );
 
 const app = express();
@@ -129,6 +146,8 @@ app.use('/api/progression', progressionRouter(progressionService));
 app.use('/api/missions', missionsRouter(missionService));
 // 1v1 Tipp Battle: saját tipptábla; a Tippverseny adatait nem módosítja
 app.use('/api/battles', battlesRouter(battleService));
+// Értesítések: pull-alapú, in-app. FREE és PRO egyaránt használhatja.
+app.use('/api/notifications', notificationsRouter(notificationService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal

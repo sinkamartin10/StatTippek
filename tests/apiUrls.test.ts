@@ -58,6 +58,10 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       () => api.declineBattle(UUID),
       () => api.cancelBattle(UUID),
       () => api.submitBattlePrediction(UUID, UUID, 2, 1),
+      () => api.notifications(),
+      () => api.notifications({ limit: 5 }),
+      () => api.markNotificationRead(UUID),
+      () => api.markAllNotificationsRead(),
     ];
     for (const fn of fns) {
       calls = [];
@@ -67,6 +71,7 @@ describe('Kliens API – nyilvános Tippverseny útvonalak', () => {
       expect(url, url).not.toContain('/progression/progression');
       expect(url, url).not.toContain('/missions/missions');
       expect(url, url).not.toContain('/battles/battles');
+      expect(url, url).not.toContain('/notifications/notifications');
       expect(url, url).not.toContain('//api');
     }
   });
@@ -155,6 +160,38 @@ describe('Kliens API – 1v1 Battle útvonalak', () => {
       expect(url, url).not.toContain('/api/competition');
       expect(url, url).not.toContain('/api/missions');
       expect(url, url).not.toContain('/api/progression');
+    }
+  });
+});
+
+describe('Kliens API – értesítés útvonalak', () => {
+  it('pontosan a szerveren mountolt /api/notifications útvonalakra mennek a hívások', async () => {
+    expect((await urlOf(() => api.notifications())).url).toBe('/api/notifications');
+    calls = [];
+    expect((await urlOf(() => api.notifications({ limit: 5 }))).url).toBe('/api/notifications?limit=5');
+    calls = [];
+    expect((await urlOf(() => api.notifications({ before: '2026-10-07T10:00:00.000Z' }))).url)
+      .toBe('/api/notifications?before=2026-10-07T10%3A00%3A00.000Z');
+    calls = [];
+    const read = await urlOf(() => api.markNotificationRead(UUID));
+    expect(read.url).toBe(`/api/notifications/${UUID}/read`);
+    expect(read.method).toBe('POST');
+    calls = [];
+    const all = await urlOf(() => api.markAllNotificationsRead());
+    expect(all.url).toBe('/api/notifications/read-all');
+    expect(all.method).toBe('POST');
+  });
+
+  it('az értesítés-hívások SOHA nem mennek más modul útvonalaira', async () => {
+    for (const fn of [
+      () => api.notifications(), () => api.markNotificationRead(UUID), () => api.markAllNotificationsRead(),
+    ]) {
+      calls = [];
+      const { url } = await urlOf(fn);
+      expect(url, url).toMatch(/^\/api\/notifications(\/|\?|$)/);
+      expect(url, url).not.toContain('/api/battles');
+      expect(url, url).not.toContain('/api/competition');
+      expect(url, url).not.toContain('/api/missions');
     }
   });
 });

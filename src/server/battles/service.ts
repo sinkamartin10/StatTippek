@@ -21,6 +21,11 @@ import {
   type EligibleOpponent, type PredictionView,
 } from '../../shared/battles';
 import { displayNameFor, type PublicProfile } from '../../shared/competition';
+import {
+  battleChallengeAccepted, battleChallengeDeclined, battleChallengeExpired,
+  battleChallengeReceived, battleSettled, battleSourceKey,
+  type BattleNotificationEvent, type NewNotification,
+} from '../../shared/notifications';
 import type { CompetitionStore } from '../competition/store';
 import type { DisplayNameDirectory } from '../profile/displayNameDirectory';
 import type { BattleStore } from './store';
@@ -50,7 +55,115 @@ export class BattleService {
     private proUsers: (userIds: string[]) => Promise<Set<string>>,
     /** Opcionális: avatar / border / title a meglévő progression rendszerből. */
     private publicProfiles?: (userIds: string[]) => Promise<Map<string, PublicProfile>>,
+    /**
+     * Opcionális értesítés-kibocsátó. SOHA nem dobhat: az értesítés mellékes a
+     * párbaj állapotátmenetéhez képest, ezért hibája nem bukhat vissza ide.
+     * Ha nincs megadva, a párbaj működése bitre azonos a Phase 4-belivel.
+     */
+    private notify?: (n: NewNotification) => Promise<unknown>,
   ) {}
+
+  // -------------------------------------------------------------------------
+  // Értesítések (Phase 5) – mindig a feltételes írás GYŐZTESE bocsát ki,
+  // ezért egy esemény egyszer keletkezik. A duplikációt ettől függetlenül a
+  // (user_id, source_key) egyedi index is kizárja.
+  // -------------------------------------------------------------------------
+
+  /** A megjelenítendő név egy felhasználóhoz. SOHA nem e-mail vagy azonosító. */
+  private async nameOf(userId: string): Promise<string> {
+    try { return (await this.names.get(userId)) ?? displayNameFor(userId); }
+    catch { return displayNameFor(userId); }
+  }
+
+  /** Értesítés összeállítása és kibocsátása. Hibát nem engedünk ki innen. */
+  private async emit(
+    userId: string,
+    battleId: string,
+    event: BattleNotificationEvent,
+    text: { type: NewNotification['type']; title: string; body: string },
+    metadata: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (!this.notify) return;
+    try {
+      await this.notify({
+        userId,
+        type: text.type,
+        title: text.title,
+        body: text.body,
+        entityType: 'battle',
+        entityId: battleId,
+        sourceKey: battleSourceKey(battleId, event),
+        metadata,
+      });
+    } catch (e) {
+      // Az értesítés SOHA nem törheti meg a párbaj műveletét
+      console.error('[battles] értesítés kibocsátása sikertelen:', battleId, event, (e as Error).message);
+    }
+  }
+
+  /** A lezárás értesítése mindkét játékosnak, a saját szempontjából. */
+  private async emitSettled(b: BattleRow): Promise<void> {
+    if (!this.notify || b.challengerPoints == null || b.opponentPoints == null) return;
+    const [cName, oName] = await Promise.all([this.nameOf(b.challengerId), this.nameOf(b.opponentId)]);
+    const sides: [string, string, number, number][] = [
+      [b.challengerId, oName, b.challengerPoints, b.opponentPoints],
+      [b.opponentId, cName, b.opponentPoints, b.challengerPoints],
+    ];
+    for (const [userId, otherName, mine, theirs] of sides) {
+      const outcome = outcomeFor(b, userId) ?? 'draw';
+      await this.emit(userId, b.id, 'settled',
+        battleSettled(outcome as 'win' | 'loss' | 'draw', otherName, mine, theirs),
+        { opponentName: otherName, myPoints: mine, opponentPoints: theirs, outcome });
+    }
+  }
+
+  /**
+   * ÚJRASZÁRMAZTATÁS (Phase 5 / D2): milyen értesítések tartoznának a
+   * felhasználóhoz a párbajok JELENLEGI állapota szerint. Tisztán olvasó.
+   *
+   * Miért kell: a kibocsátást a feltételes írás győztese végzi, de ha az a
+   * kérés az értesítés beírása ELŐTT elhasal, az átmenetet senki nem nyerheti
+   * meg újra – az értesítés véglegesen elveszne. Ez a metódus a terminális
+   * állapotokból (settled, expired) pótolja. Az idempotenciát a
+   * (user_id, source_key) egyedi index adja.
+   */
+  async notificationCandidates(userId: string, now: Date = new Date()): Promise<NewNotification[]> {
+    const rows = await this.store.listBattlesForUser(userId);
+    const out: NewNotification[] = [];
+
+    for (const b of rows) {
+      const status = effectiveStatus(b, now);
+
+      if (status === 'settled' && b.challengerPoints != null && b.opponentPoints != null) {
+        const iAmChallenger = b.challengerId === userId;
+        const otherId = iAmChallenger ? b.opponentId : b.challengerId;
+        const mine = iAmChallenger ? b.challengerPoints : b.opponentPoints;
+        const theirs = iAmChallenger ? b.opponentPoints : b.challengerPoints;
+        const outcome = (outcomeFor(b, userId) ?? 'draw') as 'win' | 'loss' | 'draw';
+        const otherName = await this.nameOf(otherId);
+        const text = battleSettled(outcome, otherName, mine, theirs);
+        out.push({
+          userId, type: text.type, title: text.title, body: text.body,
+          entityType: 'battle', entityId: b.id,
+          sourceKey: battleSourceKey(b.id, 'settled'),
+          metadata: { opponentName: otherName, myPoints: mine, opponentPoints: theirs, outcome },
+        });
+      }
+
+      // A lejárat értesítése KIZÁRÓLAG a kihívót érinti
+      if (status === 'expired' && b.challengerId === userId) {
+        const otherName = await this.nameOf(b.opponentId);
+        const text = battleChallengeExpired(otherName);
+        out.push({
+          userId, type: text.type, title: text.title, body: text.body,
+          entityType: 'battle', entityId: b.id,
+          sourceKey: battleSourceKey(b.id, 'expired'),
+          metadata: { opponentName: otherName },
+        });
+      }
+    }
+    return out;
+  }
 
   // -------------------------------------------------------------------------
   // Segédek
@@ -214,6 +327,10 @@ export class BattleService {
       winnerUserId: battleWinner(b.challengerId, b.opponentId, challengerPoints, opponentPoints),
       settledAt: now.toISOString(),
     });
+    // Értesítés: KIZÁROLAG az a kérés bocsát ki, amelyik megnyerte a lezárást.
+    // A párhuzamos vesztes null-t kap, és nem jut el ide.
+    if (settled) await this.emitSettled(settled);
+
     // null = egy másik, párhuzamos kérés már lezárta; akkor annak az eredménye érvényes
     return settled ?? (await this.store.getBattle(b.id)) ?? b;
   }
@@ -223,6 +340,12 @@ export class BattleService {
     if (!isInviteExpired(b, now)) return b;
     const t = BATTLE_TRANSITIONS.expire;
     const updated = await this.store.transition(b.id, t.to, t.from);
+    if (updated) {
+      // A lejárat a KIHÍVÓT érinti: ő várt a válaszra
+      await this.emit(updated.challengerId, updated.id, 'expired',
+        battleChallengeExpired(await this.nameOf(updated.opponentId)),
+        { opponentName: await this.nameOf(updated.opponentId) });
+    }
     return updated ?? b;
   }
 
@@ -345,6 +468,12 @@ export class BattleService {
         409, 'ALREADY_CHALLENGED',
       );
     }
+
+    // Értesítés a KIHÍVOTTNAK – a kihívó nevével
+    const challengerName = await this.nameOf(userId);
+    await this.emit(opponentId, r.battle!.id, 'challenge',
+      battleChallengeReceived(challengerName), { opponentName: challengerName });
+
     return this.get(userId, r.battle!.id, now);
   }
 
@@ -375,6 +504,12 @@ export class BattleService {
         409, 'BATTLE_INVALID_STATE',
       );
     }
+
+    // Értesítés a KIHÍVÓNAK – az elfogadó nevével
+    const accepterName = await this.nameOf(userId);
+    await this.emit(updated.challengerId, updated.id, 'accepted',
+      battleChallengeAccepted(accepterName), { opponentName: accepterName });
+
     return this.get(userId, b.id, now);
   }
 
@@ -387,6 +522,12 @@ export class BattleService {
     const t = BATTLE_TRANSITIONS.decline;
     const updated = await this.store.transition(b.id, t.to, t.from, { expectOpponent: userId });
     if (!updated) throw this.invalidState(await this.store.getBattle(b.id), 'már nem utasítható el');
+
+    // Értesítés a KIHÍVÓNAK – az elutasító nevével
+    const declinerName = await this.nameOf(userId);
+    await this.emit(updated.challengerId, updated.id, 'declined',
+      battleChallengeDeclined(declinerName), { opponentName: declinerName });
+
     return this.get(userId, b.id, now);
   }
 
