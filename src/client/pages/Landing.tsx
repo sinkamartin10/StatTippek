@@ -1,40 +1,113 @@
 /**
- * Nyitóoldal – ezt látja először a látogató. Önálló elrendezés (nincs app-navigáció),
- * a cél, hogy azonnal érthető legyen: mit ad a platform, miért ajánl, mennyire megbízható,
- * mi az ingyenes és mi a PRO.
- * Bejelentkezett felhasználót a HomeGate a dashboardra irányítja.
+ * Nyitóoldal – ezt látja először a látogató. Önálló elrendezés (nincs app-navigáció);
+ * bejelentkezett felhasználót a HomeGate a dashboardra irányítja.
+ *
+ * A cél, hogy öt másodperc alatt kiderüljön: a TippStats nem egy tipp-lista, hanem
+ * verseny – tippelsz, pontot szerzel, 1v1-ben kiállsz másokkal és felmászol a ranglistán.
+ *
+ * KÉT SZABÁLY, AMI MINDEN SZÖVEGRE VONATKOZIK:
+ *  1. Csak olyan állítás szerepelhet, ami a jelenlegi productionben IGAZ. A FREE/PRO
+ *     bontás a tényleges szerveroldali kapukat tükrözi (kvóta, requirePro, XP-kapu),
+ *     nem marketing-kívánságot.
+ *  2. Nincs kitalált adat: se felhasználószám, se sikersztori, se álstatisztika. A
+ *     termék-előnézet a VALÓDI, nyilvános Tippverseny-ranglistát mutatja, vagy ha
+ *     nincs mit mutatni, egyszerűen nem jelenik meg.
  */
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, Clock, Crown, LogIn, Lock, ShieldAlert, UserPlus, X } from 'lucide-react';
+import {
+  ArrowRight, Check, ChevronDown, Crown, LogIn, Menu, ShieldAlert, Swords, Trophy, UserPlus, X,
+} from 'lucide-react';
+import type { LeaderboardRow } from '@shared/competition';
+import { POINTS_EXACT, POINTS_OUTCOME } from '@shared/competition';
+import { BATTLE_MATCH_COUNT } from '@shared/battles';
+import { FREE_DAILY_PREDICTION_LIMIT } from '@shared/freeQuota';
 import { api } from '../lib/api';
-import { todayKey, useAsync } from '../lib/format';
+import { useAsync } from '../lib/format';
 import { useAuth } from '../auth/AuthContext';
 import { Logo } from '../components/Layout';
-import { ConfidenceMeter } from '../components/ui';
-import { FREE_DAILY_TIPS } from '../auth/PlanContext';
+import { Accordion } from '../components/ui';
+import { LeaderboardList } from '../components/LeaderboardList';
 import { PRO_PRICE } from './Pro';
 
-const PILLARS = [
-  { emoji: '📊', title: 'Valódi adat, nem sejtés', text: 'Mérkőzések, eredmények és oddsok nyilvános forrásokból; hírek és hiányzók valós idejű keresésből – minden tétel forrással és linkkel.' },
-  { emoji: '🧠', title: 'Átlátható modell', text: 'Várható gól (xG-jellegű) és Poisson-modell. A képletek, a minta mérete és a bizonytalanság minden elemzésnél látszik. Nincs „fekete doboz”.' },
-  { emoji: '🧾', title: 'Indoklás, nem ígéret', text: 'Minden tipp mellett ott van, mi szól mellette, mi ellene, mik a kockázatok. A vesztes tippek is bent maradnak az előzményekben.' },
+/** Hány sort mutatunk az élő ranglistából – rövid, hogy ne nyomja le a hajtást. */
+const PREVIEW_ROWS = 5;
+/** Hány versenyt nézünk át az előnézethez – kötött felső korlát, nincs N+1 robbanás. */
+const PREVIEW_CANDIDATES = 3;
+
+const FEATURES = [
+  { emoji: '⚽', title: 'Tippelj', text: 'Add le a tippedet és nézd meg, hogyan teljesítesz hosszú távon.' },
+  { emoji: '🏆', title: 'Versenyezz', text: 'Vegyél részt Tippversenyekben és mássz fel a ranglistán.' },
+  { emoji: '⚔️', title: 'Hívd ki a többieket', text: 'Küzdj meg más PRO játékosokkal 1v1 Tippcsatában.' },
+  { emoji: '📈', title: 'Fejlődj', text: 'Teljesíts küldetéseket, gyűjts XP-t és építsd fel a profilodat.' },
 ];
 
 const STEPS = [
-  { emoji: '1️⃣', title: 'Válassz napot', text: 'A nap mérkőzései a top-ligákból, kupákból és a Nemzetek Ligájából.' },
-  { emoji: '2️⃣', title: 'Nézd meg, miért', text: 'Modell-valószínűség, támogató mutatók, odds-összevetés és adatminőség – egy kártyán.' },
-  { emoji: '3️⃣', title: 'Döntsd el te', text: 'A platform elemzést ad, nem utasítást. A döntés és a felelősség a tiéd.' },
+  { n: '01', title: 'Regisztrálj', text: 'Hozd létre a profilodat pár perc alatt.' },
+  { n: '02', title: 'Tippelj', text: 'Válaszd ki a meccseket és add le a tippjeidet.' },
+  { n: '03', title: 'Versenyezz', text: 'Szerezz pontokat, kövesd a helyezésedet és hívd ki a többieket.' },
 ];
 
-const NOT = ['„Fix tipp”, „biztos szelvény”', 'Garantált nyereség vagy hozam', 'Kitalált statisztika, sérülés vagy odds', 'Tétemelésre buzdítás'];
-const YES = ['Valószínűségi becslés mintanagysággal', 'Forrás minden külső információhoz', 'Modell vs. piaci odds összevetés', 'Őszinte előzmények: találati arány, ROI'];
+/**
+ * A FREE lista a TÉNYLEGES szerveroldali szabályokat írja le:
+ * a napi kvótát (`FREE_DAILY_PREDICTION_LIMIT`), és azt, hogy a küldetés teljesítése
+ * rögzül, de az XP-jutalom PRO-hoz kötött (`MissionService.claim`, `syncUser`).
+ */
+const FREE_FEATURES = [
+  `Napi ${FREE_DAILY_PREDICTION_LIMIT} új Tippverseny-tipp`,
+  'Pontszerzés és helyezés a ranglistán',
+  'Saját statisztikák és tipp-előzmény',
+  'Küldetések – a teljesítés rögzül',
+  'Értesítések',
+  'Coin-gyűjtés és Shop kozmetikumok',
+  'Nyilvános játékosprofil',
+];
+
+/** A PRO lista csak olyan tételt tartalmaz, ami ma is `requirePro` vagy PRO-kapus. */
+const PRO_FEATURES = [
+  'Korlátlan Tippverseny-tipp (nincs napi limit)',
+  `1v1 Tippcsaták – ${BATTLE_MATCH_COUNT} meccs, PRO ellenfelek`,
+  'XP, szintek és achievementek',
+  'Küldetések XP-jutalma',
+  'Megszolgált profil-kozmetikumok',
+  'Teljes elemzés, előzmények és szelvényépítő',
+];
 
 export default function Landing() {
   const { configured } = useAuth();
-  const today = useAsync(() => api.matches({ date: todayKey() }).catch(() => []), []);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const howRef = useRef<HTMLElement>(null);
+
   const billing = useAsync(() => api.billingConfig().catch(() => null), []);
   const price = billing.data?.label ?? PRO_PRICE;
-  const count = today.data?.length ?? null;
+
+  /**
+   * Termék-előnézet: a VALÓDI, nyilvános ranglista. Két nyilvános kérés, és csak
+   * akkor jelenik meg, ha tényleg van mit mutatni – kitalált sor sosem kerül ide.
+   * A hibát elnyeljük: a nyitóoldal ettől soha nem törhet el.
+   */
+  const preview = useAsync(async () => {
+    const comps = await api.competitions();
+    const candidates = comps
+      .filter((c) => c.status === 'active' || c.status === 'finished')
+      .slice(0, PREVIEW_CANDIDATES);
+    if (!candidates.length) return null;
+
+    const boards = await Promise.all(candidates.map(async (c) => {
+      try { return { name: c.name, rows: await api.competitionLeaderboard(c.id) }; }
+      catch { return { name: c.name, rows: [] as LeaderboardRow[] }; }
+    }));
+
+    // A legnépesebb ranglista a legbeszédesebb előnézet
+    const best = boards.reduce((a, b) => (b.rows.length > a.rows.length ? b : a));
+    return best.rows.length ? { name: best.name, rows: best.rows.slice(0, PREVIEW_ROWS) } : null;
+  }, []);
+
+  const scrollToHow = () => howRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  /** A fő CTA: hitelesítés nélküli példányon a dashboardra visz, nem sehova. */
+  const startHref = configured ? '/regisztracio' : '/dashboard';
+  const startLabel = configured ? 'Kezdés ingyen' : 'Megnyitás';
 
   return (
     <div className="min-h-screen bg-background text-text">
@@ -42,152 +115,242 @@ export default function Landing() {
       <header className="sticky top-0 z-20 border-b border-border bg-card">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 lg:px-8">
           <Link to="/" aria-label="TippStats – kezdőlap"><Logo /></Link>
-          <nav className="flex items-center gap-2">
-            <Link to="/meccsek" className="nav-link hidden sm:inline-flex">Mai meccsek</Link>
-            <Link to="/pro" className="nav-link hidden sm:inline-flex"><Crown className="h-4 w-4 text-secondary" /> PRO</Link>
-            {configured ? (
-              <>
-                <Link to="/bejelentkezes" className="btn btn-sm"><LogIn className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bejelentkezés</span></Link>
-                <Link to="/regisztracio" className="btn btn-sm btn-primary"><UserPlus className="h-3.5 w-3.5" /> Regisztráció</Link>
-              </>
-            ) : (
-              <Link to="/dashboard" className="btn btn-sm btn-primary">Belépés <ArrowRight className="h-3.5 w-3.5" /></Link>
+
+          {/* Asztali navigáció */}
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Fő navigáció">
+            <button type="button" onClick={scrollToHow} className="nav-link">Hogyan működik?</button>
+            <a href="#funkciok" className="nav-link">Funkciók</a>
+            <a href="#gyik" className="nav-link">GYIK</a>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            {configured && (
+              <Link to="/bejelentkezes" className="btn btn-sm hidden sm:inline-flex">
+                <LogIn className="h-3.5 w-3.5" /> Bejelentkezés
+              </Link>
+            )}
+            <Link to={startHref} className="btn btn-sm btn-primary">
+              {configured && <UserPlus className="h-3.5 w-3.5" />} {startLabel}
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-label={menuOpen ? 'Menü bezárása' : 'Menü megnyitása'}
+              className="btn btn-sm md:hidden"
+            >
+              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobil menü */}
+        {menuOpen && (
+          <nav className="border-t border-border bg-card px-4 py-2 md:hidden" aria-label="Mobil navigáció">
+            <button
+              type="button"
+              className="nav-link-mobile w-full text-left"
+              onClick={() => { setMenuOpen(false); scrollToHow(); }}
+            >
+              Hogyan működik?
+            </button>
+            <a href="#funkciok" className="nav-link-mobile" onClick={() => setMenuOpen(false)}>Funkciók</a>
+            <a href="#gyik" className="nav-link-mobile" onClick={() => setMenuOpen(false)}>GYIK</a>
+            {configured && (
+              <Link to="/bejelentkezes" className="nav-link-mobile" onClick={() => setMenuOpen(false)}>Bejelentkezés</Link>
             )}
           </nav>
-        </div>
+        )}
       </header>
 
       {/* ----------------------------- Hero ----------------------------- */}
-      <section className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:px-8 lg:py-20">
+      <section className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:px-8 lg:py-20">
         <div>
-          <span className="badge badge-blue">⚽ Labdarúgás-elemző platform</span>
-          <h1 className="mt-4 text-4xl font-black leading-[1.1] tracking-tight md:text-5xl">
-            Nem garantált nyereség.<br />
-            Nem „fix tippek”.<br />
-            <span className="text-primary">Adatalapú elemzés.</span>
+          <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">TippStats</span>
+          <h1 className="mt-3 text-4xl font-black leading-[1.08] tracking-tight md:text-5xl lg:text-6xl">
+            Ne csak tippelj.<br /><span className="text-primary">Versenyezz is.</span>
           </h1>
-          <p className="mt-5 max-w-xl text-base font-semibold text-text-muted">
-            A TippStats valódi mérkőzésadatokból, oddsokból és friss hírekből épít átlátható statisztikai modellt, és minden becslés mellé odateszi az indoklást, a mintát és a forrást. Kutatóeszköz – a döntés a tiéd.
+          <p className="mt-5 max-w-xl text-base font-semibold text-text-muted md:text-lg">
+            Tippelj meccsekre, szerezz pontokat, küzdj meg másokkal 1v1-ben, és mássz fel a ranglistán.
           </p>
-          <div className="mt-7 flex flex-wrap gap-3">
-            {configured ? (
-              <Link to="/regisztracio" className="btn btn-primary btn-lg"><UserPlus className="h-5 w-5" /> Ingyenes kezdés</Link>
-            ) : (
-              <Link to="/dashboard" className="btn btn-primary btn-lg">Megnyitás <ArrowRight className="h-5 w-5" /></Link>
-            )}
-            <Link to="/meccsek" className="btn btn-lg">Mai meccsek</Link>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link to={startHref} className="btn btn-primary btn-lg">
+              {configured && <UserPlus className="h-5 w-5" />} {startLabel}
+            </Link>
+            <button type="button" onClick={scrollToHow} className="btn btn-lg">
+              Megnézem, hogyan működik <ChevronDown className="h-4 w-4" />
+            </button>
           </div>
-          <dl className="mt-9 grid max-w-lg grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              [count == null ? '…' : String(count), 'mérkőzés ma'],
-              ['17', 'sorozat'],
-              ['2', 'modell'],
-              ['100%', 'forrásolt infó'],
-            ].map(([v, l]) => (
-              <div key={l} className="rounded-2xl border border-border bg-card p-3 shadow-soft">
-                <dt className="mono text-2xl font-extrabold text-primary">{v}</dt>
-                <dd className="text-xs font-bold text-text-muted">{l}</dd>
-              </div>
-            ))}
-          </dl>
+
+          <p className="mt-5 text-sm font-semibold text-text-muted">
+            Ingyenesen kezdhető · Bankkártya nélkül · Napi {FREE_DAILY_PREDICTION_LIMIT} tipp a FREE csomagban
+          </p>
         </div>
 
-        {/* Példa tipp-kártya (illusztráció) */}
-        <div className="relative">
+        {/* Termék-előnézet: VALÓDI ranglista, valódi játékosokkal és kinézettel */}
+        {preview.data && (
           <div className="card p-5 shadow-lift">
-            <div className="flex items-center justify-between text-xs font-bold text-text-muted">
-              <span>Példa bajnokság</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1"><Clock className="h-3.5 w-3.5" /> 20:00</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-text-muted">
+                <Trophy className="h-3.5 w-3.5 text-secondary" /> Élő ranglista
+              </span>
+              <span className="badge badge-blue">a TippStatsból</span>
             </div>
+            <h2 className="mt-2 truncate text-base font-extrabold">{preview.data.name}</h2>
             <div className="mt-3">
-              <div className="text-lg font-extrabold">Csapat A</div>
-              <div className="my-0.5 text-[11px] font-extrabold uppercase tracking-widest text-text-muted">vs</div>
-              <div className="text-lg font-extrabold">Csapat B</div>
+              <LeaderboardList rows={preview.data.rows as LeaderboardRow[]} />
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <div className="col-span-2 rounded-xl border border-primary/20 bg-primary-soft p-3">
-                <div className="text-[11px] font-extrabold uppercase tracking-wide text-primary-strong">🎯 Tipp</div>
-                <div className="mt-0.5 text-base font-extrabold">Over 2.5</div>
-              </div>
-              <div className="rounded-xl border border-border bg-card-2 p-3 text-center">
-                <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">💰 Odds</div>
-                <div className="mono mt-0.5 text-xl font-extrabold">1,72</div>
-              </div>
-            </div>
-            <div className="mt-4"><ConfidenceMeter value={0.78} /></div>
-            <div className="mt-4 rounded-xl border border-border bg-card-2 px-4 py-3 text-sm font-bold text-text-muted">Miért ezt választotta? ↓</div>
-            <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-text-muted">Illusztráció – nem valós mérkőzés és nem valós odds</p>
+            <p className="mt-3 text-xs font-semibold text-text-muted">
+              Valódi, nyilvános ranglista – a keretek és címek a játékosok megszerzett kinézetét mutatják.
+            </p>
           </div>
-        </div>
+        )}
       </section>
 
-      {/* ----------------------------- Pillérek ----------------------------- */}
-      <section className="mx-auto max-w-6xl px-4 pb-4 lg:px-8">
-        <div className="grid gap-4 md:grid-cols-3">
-          {PILLARS.map((p) => (
-            <div key={p.title} className="card card-lift p-5">
-              <span aria-hidden className="icon-bubble bg-primary-soft">{p.emoji}</span>
-              <h3 className="mt-3 text-lg font-extrabold tracking-tight">{p.title}</h3>
-              <p className="mt-1.5 text-sm font-semibold text-text-muted">{p.text}</p>
+      {/* ----------------------------- Mi ez? ----------------------------- */}
+      <section className="mx-auto max-w-3xl px-4 pb-6 text-center lg:px-8">
+        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Egy hely, ahol a tippjeid számítanak.</h2>
+        <p className="mt-4 text-base font-semibold text-text-muted">
+          A TippStats segítségével meccsekre tippelhetsz, követheted a teljesítményedet,
+          versenyezhetsz más játékosokkal és fejlődhetsz minden jó tipp után.
+        </p>
+        <p className="mt-3 text-base font-semibold text-text-muted">
+          A tippjeid nem tűnnek el egy listában: pontot érnek, helyezést adnak, és ott maradnak
+          a statisztikádban – a jók és a rosszak egyaránt.
+        </p>
+      </section>
+
+      {/* ----------------------------- Funkciók ----------------------------- */}
+      <section id="funkciok" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 lg:px-8">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="card card-lift p-5">
+              <span aria-hidden className="icon-bubble bg-primary-soft">{f.emoji}</span>
+              <h3 className="mt-3 text-lg font-extrabold tracking-tight">{f.title}</h3>
+              <p className="mt-1.5 text-sm font-semibold text-text-muted">{f.text}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ----------------------------- Hogyan működik ----------------------------- */}
-      <section className="mx-auto max-w-6xl px-4 py-12 lg:px-8">
-        <h2 className="text-2xl font-black tracking-tight">Hogyan működik?</h2>
+      <section ref={howRef} id="hogyan-mukodik" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 lg:px-8">
+        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Hogyan működik?</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {STEPS.map((s) => (
-            <div key={s.title} className="rounded-[var(--radius-card)] border border-border bg-card p-5 shadow-soft">
-              <span aria-hidden className="text-2xl">{s.emoji}</span>
-              <h3 className="mt-2 text-base font-extrabold">{s.title}</h3>
-              <p className="mt-1 text-sm font-semibold text-text-muted">{s.text}</p>
+            <div key={s.n} className="card card-lift p-5">
+              <span className="mono text-3xl font-black text-primary/30">{s.n}</span>
+              <h3 className="mt-1 text-lg font-extrabold">{s.title}</h3>
+              <p className="mt-1.5 text-sm font-semibold text-text-muted">{s.text}</p>
             </div>
           ))}
         </div>
+        <p className="mt-5 text-sm font-semibold text-text-muted">
+          A pontozás egyszerű: <strong className="text-text">{POINTS_EXACT} pont</strong> a pontos
+          végeredményért, <strong className="text-text">{POINTS_OUTCOME} pont</strong> az eltalált kimenetelért.
+        </p>
       </section>
 
-      {/* ----------------------------- Mit igen / mit nem ----------------------------- */}
-      <section className="mx-auto max-w-6xl px-4 pb-4 lg:px-8">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="card p-5">
-            <h3 className="flex items-center gap-2 text-lg font-extrabold"><X className="h-5 w-5 text-danger" /> Amit NEM kapsz</h3>
-            <ul className="mt-3 space-y-2">{NOT.map((t) => <li key={t} className="flex items-start gap-2 text-sm font-semibold"><X className="mt-0.5 h-4 w-4 shrink-0 text-danger" /> {t}</li>)}</ul>
+      {/* ----------------------------- FREE és PRO ----------------------------- */}
+      <section id="csomagok" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 lg:px-8">
+        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Kezdd ingyen. Fejlődj tovább.</h2>
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className="card p-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-extrabold">FREE</h3>
+              <span className="badge badge-muted">0 Ft</span>
+            </div>
+            <ul className="mt-4 space-y-2.5 text-sm font-semibold">
+              {FREE_FEATURES.map((t) => (
+                <li key={t} className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}
+                </li>
+              ))}
+            </ul>
+            <Link to={startHref} className="btn mt-5 w-full">{startLabel}</Link>
           </div>
-          <div className="card p-5">
-            <h3 className="flex items-center gap-2 text-lg font-extrabold"><Check className="h-5 w-5 text-success" /> Amit kapsz</h3>
-            <ul className="mt-3 space-y-2">{YES.map((t) => <li key={t} className="flex items-start gap-2 text-sm font-semibold"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}</li>)}</ul>
+
+          <div className="card border-primary/40 p-6 shadow-lift">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-lg font-extrabold">
+                <Crown className="h-5 w-5 text-secondary" /> PRO
+              </h3>
+              <span className="text-xl font-black text-primary">{price}</span>
+            </div>
+            <ul className="mt-4 space-y-2.5 text-sm font-semibold">
+              {PRO_FEATURES.map((t) => (
+                <li key={t} className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}
+                </li>
+              ))}
+            </ul>
+            <Link to="/pro" className="btn btn-primary mt-5 w-full">PRO részletek <ArrowRight className="h-4 w-4" /></Link>
           </div>
         </div>
       </section>
 
-      {/* ----------------------------- FREE és PRO ----------------------------- */}
+      {/* ----------------------------- GYIK ----------------------------- */}
+      <section id="gyik" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-12 lg:px-8">
+        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Gyakori kérdések</h2>
+        <div className="mt-6 space-y-2.5">
+          <Accordion label="Mi az a TippStats?" defaultOpen>
+            <p className="text-sm font-semibold text-text-muted">
+              Egy labdarúgás-tippelő platform, ahol a tippjeid pontot érnek. Tippversenyeken
+              veszel részt, helyezést szerzel a ranglistán, követed a saját statisztikádat, és
+              PRO-ként 1v1 Tippcsatában állhatsz ki más játékosok ellen. Nem fogadóiroda: itt
+              nem pénzben játszol.
+            </p>
+          </Accordion>
+
+          <Accordion label="Ingyenesen használható?">
+            <p className="text-sm font-semibold text-text-muted">
+              Igen. FREE felhasználóként naponta {FREE_DAILY_PREDICTION_LIMIT} új Tippverseny-tippet
+              adhatsz le, a pontjaid ugyanúgy számítanak a ranglistán, és elérhető a saját
+              statisztikád, a tipp-előzményed, a küldetések, az értesítések, a coin-gyűjtés és a
+              Shop kozmetikumai is. Meglévő tipp módosítása nem fogyasztja a napi keretet.
+            </p>
+          </Accordion>
+
+          <Accordion label="Mi az 1v1 Tippcsata?" icon={<Swords className="h-4 w-4 text-primary" />}>
+            <p className="text-sm font-semibold text-text-muted">
+              Kiválasztasz {BATTLE_MATCH_COUNT} mérkőzést és kihívsz egy másik játékost. Mindketten
+              tippeltek ugyanarra a {BATTLE_MATCH_COUNT} meccsre, és a párbaj végén a
+              {' '}{BATTLE_MATCH_COUNT} meccs összesített eredménye dönti el, ki nyert. A Tippcsata
+              PRO funkció: ellenfelet a Tippverseny ranglistáján szereplő PRO játékosok közül
+              választhatsz.
+            </p>
+          </Accordion>
+
+          <Accordion label="Kell PRO a használathoz?">
+            <p className="text-sm font-semibold text-text-muted">
+              Nem. A Tippverseny, a ranglista, a statisztikáid és a Shop FREE csomaggal is
+              elérhető – csak a napi {FREE_DAILY_PREDICTION_LIMIT} új tipp a korlát. PRO-val
+              megszűnik ez a limit, és feloldódnak az 1v1 Tippcsaták, az XP és a szintek, az
+              achievementek, a küldetések XP-jutalma, a megszolgált profil-kozmetikumok, valamint
+              a teljes elemzés, az előzmények és a szelvényépítő.
+            </p>
+          </Accordion>
+
+          <Accordion label="Kapok garantált nyereményt?">
+            <p className="text-sm font-semibold text-text-muted">
+              Nem. A TippStats nem garantál nyereséget vagy biztos tippeket. A platform elemzést
+              és versenyt ad, a döntés és a felelősség a tiéd.
+            </p>
+          </Accordion>
+        </div>
+      </section>
+
+      {/* ----------------------------- Záró CTA ----------------------------- */}
       <section className="mx-auto max-w-6xl px-4 py-12 lg:px-8">
-        <h2 className="text-2xl font-black tracking-tight">Mi az ingyenes, és mi a PRO?</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="card p-5">
-            <div className="flex items-center justify-between"><h3 className="text-lg font-extrabold">FREE</h3><span className="badge badge-muted">0 Ft</span></div>
-            <ul className="mt-3 space-y-2 text-sm font-semibold">
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> Napi {FREE_DAILY_TIPS} tipp</li>
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> A nap első néhány mérkőzésének elemzése</li>
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> Liga-átlagok, hírek, források</li>
-              <li className="flex items-start gap-2 text-text-muted"><Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" /> Indoklás, előzmények, szelvényépítő: zárva</li>
-            </ul>
-          </div>
-          <div className="card border-primary/40 p-5 shadow-lift">
-            <div className="flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-lg font-extrabold"><Crown className="h-5 w-5 text-secondary" /> PRO</h3>
-              <span className="text-xl font-black text-primary">{price}</span>
-            </div>
-            <ul className="mt-3 space-y-2 text-sm font-semibold">
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> Minden mérkőzés, minden piac</li>
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> A modell teljes indoklása és kockázatai</li>
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> Előzmények: találati arány, kalibráció, ROI</li>
-              <li className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> Szelvényépítő valódi oddsokkal</li>
-            </ul>
-            <Link to="/pro" className="btn btn-primary mt-4 w-full">PRO részletek <ArrowRight className="h-4 w-4" /></Link>
-          </div>
+        <div className="card border-primary/30 p-8 text-center shadow-lift md:p-12">
+          <h2 className="text-2xl font-black tracking-tight md:text-3xl">Készen állsz az első tippedre?</h2>
+          <p className="mx-auto mt-3 max-w-xl text-base font-semibold text-text-muted">
+            Regisztrálj ingyen, add le az első tippedet, és kezdd el építeni a helyed a ranglistán.
+          </p>
+          <Link to={startHref} className="btn btn-primary btn-lg mt-7">
+            {configured && <UserPlus className="h-5 w-5" />} {startLabel}
+          </Link>
         </div>
       </section>
 
@@ -196,7 +359,11 @@ export default function Landing() {
         <div className="flex items-start gap-3 rounded-[var(--radius-card)] border border-warning/30 bg-warning-soft p-5 text-sm font-semibold">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
           <div>
-            <b>Felelős játék.</b> Egyetlen előrejelzés sem garantált; a megjelenített valószínűségek statisztikai becslések, nem ígéretek. A szerencsejáték függőséget okozhat és anyagi veszteséggel járhat – soha ne tegyél fel olyan összeget, amelynek elvesztését nem engedheted meg magadnak. Csak 18 éven felülieknek. Segítség: Játékosvédelmi vonal (ingyenes): 06 80 205 305.
+            <b>Felelős játék.</b> Egyetlen előrejelzés sem garantált; a megjelenített valószínűségek
+            statisztikai becslések, nem ígéretek. A szerencsejáték függőséget okozhat és anyagi
+            veszteséggel járhat – soha ne tegyél fel olyan összeget, amelynek elvesztését nem
+            engedheted meg magadnak. Csak 18 éven felülieknek. Segítség: Játékosvédelmi vonal
+            (ingyenes): 06 80 205 305.
           </div>
         </div>
       </section>
@@ -205,7 +372,8 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs font-semibold text-text-muted lg:px-8">
           <span>© {new Date().getFullYear()} TippStats – elemző és kutató eszköz. Nem fogadóiroda, nem ad fogadási tanácsot.</span>
           <div className="flex gap-4">
-            <Link to="/meccsek" className="transition hover:text-primary">Mai meccsek</Link>
+            <Link to="/tippverseny" className="transition hover:text-primary">Tippverseny</Link>
+            <Link to="/meccsek" className="transition hover:text-primary">Meccsek</Link>
             <Link to="/pro" className="transition hover:text-primary">PRO</Link>
             <Link to="/forrasok" className="transition hover:text-primary">Források</Link>
           </div>
