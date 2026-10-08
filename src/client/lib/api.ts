@@ -15,6 +15,7 @@ import type {
   LeaderboardRow, RewardStatus, UserPrediction,
 } from '@shared/competition';
 import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
+import type { PublicProfileResponse } from '@shared/publicProfile';
 import type { MissionPeriodView, MissionView } from '@shared/missions';
 import type {
   CoinBalance, CoinHistoryPage, CoinTransactionType, ProfileSlot, ShopCatalogResponse,
@@ -170,6 +171,13 @@ export const api = {
   /** A nevet mindig a hitelesített felhasználóhoz menti; a törzsben user_id-t nem küldünk. */
   saveDisplayName: (displayName: string) =>
     request<{ displayName: string; hasDisplayName: boolean }>('/display-name', { method: 'PUT', body: JSON.stringify({ displayName }) }, '/api/profile'),
+  /**
+   * Egy JÁTÉKOS nyilvános profilja a megjelenítési neve alapján.
+   * Hitelesítés nélkül is hívható; a válasz csak nyilvános mezőket tartalmaz
+   * (nincs benne user_id, coin-egyenleg, vásárlás vagy fiókadat).
+   */
+  publicProfile: (displayName: string) =>
+    request<PublicProfileResponse>(`/public/${encodeURIComponent(displayName)}`, {}, '/api/profile'),
 
   // ---------- Tipster progression (XP, achievement, testreszabás) ----------
   progressionMe: () => request<ProgressionProfileResponse>('/me', {}, '/api/progression'),

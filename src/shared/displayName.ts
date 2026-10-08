@@ -143,6 +143,20 @@ export function validateDisplayName(raw: string): DisplayNameCheck {
   return { ok: true, value };
 }
 
+/**
+ * KERESÉSRE alkalmas-e a név? Csak az alakot nézi (hossz + engedélyezett
+ * karakterek), a tiltólistát NEM: egy régebben, a tiltólista előtt mentett név
+ * is megtalálható maradjon.
+ *
+ * Ezt a nyilvános profil névfeloldása használja, MÉG AZ ADATBÁZIS-LEKÉRDEZÉS
+ * ELŐTT. Így a lekérdezésbe sosem jut `%` (az `ALLOWED` nem engedi), és minden
+ * érték paraméterként megy – nem szövegösszefűzéssel.
+ */
+export function isLookupSafeDisplayName(raw: string): boolean {
+  const value = normalizeDisplayName(raw);
+  return value.length >= DISPLAY_NAME_MIN && value.length <= DISPLAY_NAME_MAX && ALLOWED.test(value);
+}
+
 /** A felületen mutatható szabályok (a Profil oldal és a Tippverseny használja). */
 export const DISPLAY_NAME_RULES = [
   `${DISPLAY_NAME_MIN}–${DISPLAY_NAME_MAX} karakter`,

@@ -246,11 +246,15 @@ describe('Kozmetikumok V2 – egyetlen renderer', () => {
 describe('Nyilvános játékosprofil', () => {
   const src = read('src/client/pages/PublicProfile.tsx');
 
-  it('H24. KIZÁRÓLAG a meglévő nyilvános ranglista-API-t használja', () => {
-    expect(src).toContain('api.competitions()');
-    expect(src).toContain('api.competitionLeaderboard(');
-    // nem hív saját/hitelesített végpontot
-    expect(src).not.toMatch(/progressionMe|coinBalance|shopInventory|customization|profileMe/);
+  it('H24. a DEDIKÁLT nyilvános végpontot használja, privát végpontot nem', () => {
+    // A Public Profile V2-ben saját, kifejezetten nyilvános végpont van
+    // (`GET /api/profile/public/:displayName`), ezért a lap nem fűz össze
+    // ranglista-lekérdezéseket, és nem hív hitelesített adat-végpontot.
+    expect(src).toContain('api.publicProfile(');
+    expect(src).not.toMatch(/progressionMe|progressionStats|coinBalance|shopInventory|api\.customization/);
+    // a saját megjelenítési nevet CSAK bejelentkezve kérdezi le, és csak azért,
+    // hogy a saját profilra visszavezessen – más adatot nem olvas belőle
+    expect(src).toContain('loggedIn ? (await api.profileMe()).displayName : null');
   });
 
   it('H25. nem jelenít meg privát adatot', () => {
@@ -273,10 +277,14 @@ describe('Nyilvános játékosprofil', () => {
     expect(src).toContain("to=\"/profil\"");
   });
 
-  it('H28. a lekérdezett versenyek száma korlátos (nincs N+1 robbanás)', () => {
-    expect(src).toContain('MAX_COMPETITIONS');
-    expect(src).toMatch(/MAX_COMPETITIONS\s*=\s*\d+/);
-    expect(src).toContain('Promise.all');
+  it('H28. nincs N+1: egyetlen kérés, és a felső korlát szerveroldali', () => {
+    // a kliens nem iterál versenyeken – egyetlen nyilvános kérés van
+    expect(src).not.toContain('api.competitionLeaderboard(');
+    expect((src.match(/api\.publicProfile\(/g) ?? []).length).toBe(1);
+    // a lista hosszát a szerver fogja meg, nem a megjelenítés
+    const dto = read('src/shared/publicProfile.ts');
+    expect(dto).toMatch(/PUBLIC_COMPETITION_LIMIT\s*=\s*\d+/);
+    expect(read('src/server/progression/service.ts')).toContain('PUBLIC_COMPETITION_LIMIT');
   });
 
   it('H29. a route regisztrálva van', () => {

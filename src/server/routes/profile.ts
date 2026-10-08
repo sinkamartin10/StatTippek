@@ -15,7 +15,8 @@ import type { DisplayNameDirectory } from '../profile/displayNameDirectory';
 import { ProgressionError, type ProgressionService } from '../progression/service';
 import { EMPTY_EQUIPS, PROFILE_SLOTS } from '../../shared/shop';
 import {
-  DISPLAY_NAME_MAX, DISPLAY_NAME_MIN, DISPLAY_NAME_RULES, validateDisplayName,
+  DISPLAY_NAME_MAX, DISPLAY_NAME_MIN, DISPLAY_NAME_RULES,
+  isLookupSafeDisplayName, validateDisplayName,
 } from '../../shared/displayName';
 
 const LOCAL_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -25,6 +26,10 @@ function ownerId(res: Response): string | null {
   if (!plan.enforced) return LOCAL_USER_ID;
   return plan.user?.id ?? null;
 }
+
+/** Egységes „nincs ilyen játékos” válasz – nem árul el létezést és hibát sem. */
+const notFoundPlayer = (res: Response) =>
+  res.status(404).json({ error: 'Nincs ilyen játékos.', code: 'PLAYER_NOT_FOUND' });
 
 const needAuth = (res: Response) => res.status(401).json({ error: 'Bejelentkezés szükséges.', code: 'AUTH_REQUIRED' });
 
@@ -99,6 +104,45 @@ export function profileRouter(
       }
       console.error('[profil] customization mentés:', e);
       res.status(500).json({ error: 'A testreszabás nem mentheto.' });
+    }
+  });
+
+  /**
+   * NYILVÁNOS játékosprofil a megjelenítési név alapján.
+   *
+   * Hitelesítés NEM kell: minden kiadott mező eddig is nyilvános volt
+   * (ranglista-megjelenés, versenypontok, szint, achievement). A válasz
+   * alakját a `shared/publicProfile.ts` engedélyező listája zárja le, ezért
+   * nyers adatbázis-sor nem jut ki.
+   *
+   * SOHA NEM kerül a válaszba: user_id, e-mail, hitelesítési adat,
+   * coin-egyenleg, coin-tranzakció, vásárlási előzmény, készlet, Stripe- és
+   * előfizetési adat, privát beállítás, egyedi tipp részletei, IP, belső
+   * adatbázis-azonosító.
+   *
+   * Ismeretlen játékos: egységes 404, ugyanazzal az üzenettel, mint az
+   * alakilag hibás név – így a válaszból nem derül ki, hogy létezik-e a név
+   * (felhasználó-felderítés ellen), és adatbázis-hiba sem szivárog ki.
+   */
+  r.get('/public/:displayName', async (req, res) => {
+    const raw = typeof req.params.displayName === 'string' ? req.params.displayName : '';
+
+    // Alaki ellenőrzés MÉG a lekérdezés előtt (a meglévő név-szabályokkal):
+    // így a tárba sosem jut mintakarakter vagy méreten kívüli érték.
+    if (!isLookupSafeDisplayName(raw)) return notFoundPlayer(res);
+
+    try {
+      const found = await names.findByName(raw);
+      if (!found) return notFoundPlayer(res);
+      if (!progression) return res.status(503).json({ error: 'A játékosprofil most nem elérhető.', code: 'UNAVAILABLE' });
+
+      // A `found.userId` csak szerveroldalon él – a szerializáló nem kapja meg.
+      const profile = await progression.publicProfileFor(found.userId, found.displayName);
+      res.json(profile);
+    } catch (e) {
+      // A belső hiba részlete sosem megy ki a válaszba
+      console.error('[profil] nyilvános profil:', e);
+      res.status(500).json({ error: 'A játékosprofil most nem tölthető be.', code: 'PROFILE_UNAVAILABLE' });
     }
   });
 

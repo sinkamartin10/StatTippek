@@ -23,10 +23,14 @@ import {
 } from '../../shared/progression';
 import type { PublicProfile } from '../../shared/competition';
 import {
+  PUBLIC_COMPETITION_LIMIT, toPublicProfile,
+  type PublicAchievement, type PublicCompetitionEntry, type PublicProfileResponse,
+} from '../../shared/publicProfile';
+import {
   EMPTY_EQUIPS, SLOT_TO_CATEGORY, isProfileSlot, isValidItemKey, sanitizeShopEquips,
   type ProfileSlot, type ShopCategory, type ShopEquips,
 } from '../../shared/shop';
-import type { ProgressionStore } from './store';
+import type { Placement, ProgressionStore } from './store';
 
 /** Üzleti hiba, amiből a route-réteg HTTP státuszt képez. */
 export class ProgressionError extends Error {
@@ -403,6 +407,65 @@ export class ProgressionService {
     return out;
   }
 
+  // -------------------------------------------------------------------------
+  // NYILVÁNOS játékosprofil
+  // -------------------------------------------------------------------------
+
+  /**
+   * Egy játékos NYILVÁNOS profilja, a megjelenítési neve alapján feloldott
+   * azonosítóhoz. Az azonosítót a hívó (route) oldja fel; ide már csak
+   * szerveroldali értékként jut be, és a VÁLASZBA SOHA nem kerül bele.
+   *
+   * Nem épít új számítást: ugyanazt a `computeTipsterStats()`-ot, ugyanazt az
+   * `ACHIEVEMENTS` katalógust, ugyanazt a `levelFromXp()` szintgörbét és
+   * ugyanazt a `publicProfiles()` kozmetikum-réteget használja, mint a többi
+   * felület – így a nyilvános profil nem tud eltérni a sajáttól.
+   *
+   * Lekérdezésszám: ÖT párhuzamos lekérdezés, a tippek és a versenyek számától
+   * függetlenül. A verseny-előzmény a már lekért tippsorokból összesítődik,
+   * ezért nincs versenyenkénti külön lekérdezés (nincs N+1).
+   *
+   * A kimenetet a `toPublicProfile()` engedélyező listája állítja elő: ami ott
+   * nincs felsorolva, az nem hagyja el a szervert.
+   */
+  async publicProfileFor(userId: string, displayName: string): Promise<PublicProfileResponse> {
+    const [cosmeticsMap, rows, placements, xp, unlocked] = await Promise.all([
+      this.publicProfiles([userId]),
+      this.store.allPredictions(userId),
+      this.store.placements(userId),
+      this.store.totalXp(userId),
+      this.store.listAchievements(userId),
+    ]);
+
+    // `trend` és `leagues` NEM kerül a válaszba – egyedi tipp nem nyilvános.
+    const stats = computeTipsterStats(rows, placements, xp, 1);
+
+    const unlockedAt = new Map(unlocked.map((a) => [a.key, a.unlockedAt]));
+    const achievements: PublicAchievement[] = ACHIEVEMENTS
+      .filter((a) => unlockedAt.has(a.key))
+      .map((a) => ({
+        key: a.key, name: a.name, description: a.description,
+        icon: a.icon, category: a.category, unlockedAt: unlockedAt.get(a.key) ?? null,
+      }));
+
+    const cosmetics: PublicProfile = cosmeticsMap.get(userId) ?? {
+      avatar: DEFAULT_SETTINGS.avatar, borderKey: DEFAULT_SETTINGS.border, titleKey: DEFAULT_SETTINGS.title,
+    };
+
+    return toPublicProfile({
+      displayName,
+      stats,
+      cosmetics: {
+        avatar: cosmetics.avatar as Record<string, string>,
+        borderKey: cosmetics.borderKey,
+        titleKey: cosmetics.titleKey,
+        shop: cosmetics.shop,
+      },
+      achievements,
+      competitions: aggregateCompetitions(rows, placements),
+    });
+  }
+
   /**
    * A felhasználó választásának mentése. A szerver MINDEN elemet ellenőriz:
    * nem létező vagy fel nem oldott elem nem menthető, a kiemelés legfeljebb 3 achievement.
@@ -417,4 +480,39 @@ export class ProgressionService {
     await this.store.saveSettings(userId, settings);
     return { settings, rejected };
   }
+}
+
+/**
+ * Verseny-előzmény a MÁR LEKÉRT tippsorokból. Nincs versenyenkénti lekérdezés,
+ * ezért a versenyek számától független (nincs N+1), és a felső korlátot a
+ * `PUBLIC_COMPETITION_LIMIT` adja. Egyedi tipp nem kerül a kimenetbe, csak
+ * versenyenkénti összesítés.
+ */
+function aggregateCompetitions(
+  rows: { competitionId: string; competitionName: string; kickoff: string; points: number | null }[],
+  placements: Placement[],
+): PublicCompetitionEntry[] {
+  const placeOf = new Map(placements.map((p) => [p.competitionId, p.placement]));
+  const acc = new Map<string, PublicCompetitionEntry & { latest: string }>();
+
+  for (const r of rows) {
+    if (!r.competitionId) continue;
+    const e = acc.get(r.competitionId) ?? {
+      competitionId: r.competitionId,
+      name: r.competitionName || 'Tippverseny',
+      points: 0, predictions: 0, exactHits: 0,
+      placement: placeOf.get(r.competitionId) ?? null,
+      latest: '',
+    };
+    e.predictions += 1;
+    e.points += r.points ?? 0;
+    if (isExact(r.points)) e.exactHits += 1;
+    if (r.kickoff > e.latest) e.latest = r.kickoff;
+    acc.set(r.competitionId, e);
+  }
+
+  return [...acc.values()]
+    .sort((a, b) => b.latest.localeCompare(a.latest))
+    .slice(0, PUBLIC_COMPETITION_LIMIT)
+    .map(({ latest: _latest, ...e }) => e);
 }

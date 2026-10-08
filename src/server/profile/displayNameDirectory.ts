@@ -9,7 +9,7 @@
  * (lower(display_name)); a kódbeli előellenőrzés csak szebb hibaüzenetet ad.
  */
 import { supabaseAdmin } from '../billing/supabaseAdmin';
-import { normalizeDisplayName } from '../../shared/displayName';
+import { isLookupSafeDisplayName, normalizeDisplayName, sameDisplayName } from '../../shared/displayName';
 
 export type SetNameResult = { ok: true } | { ok: false; reason: 'TAKEN' | 'FAILED'; message: string };
 
@@ -18,6 +18,14 @@ export interface DisplayNameDirectory {
   get(userId: string): Promise<string | null>;
   /** Több felhasználó neve egyszerre (ranglistához). A név nélkülieket nem tartalmazza. */
   getMany(userIds: string[]): Promise<Map<string, string>>;
+  /**
+   * Névből felhasználó – kis-nagybetűtől FÜGGETLENÜL, a `profiles_display_name_unique_ci`
+   * indexre támaszkodva (ezért legfeljebb egy találat lehet).
+   *
+   * A visszatérő `userId` KIZÁRÓLAG szerveroldali használatra szolgál: a nyilvános
+   * profil válaszába SOHA nem kerül bele. A `displayName` a tárolt, eredeti írásmód.
+   */
+  findByName(name: string): Promise<{ userId: string; displayName: string } | null>;
   /** Mentés. A hívó előtte KÖTELEZŐEN lefuttatja a validateDisplayName ellenőrzést. */
   set(userId: string, value: string): Promise<SetNameResult>;
 }
@@ -42,6 +50,26 @@ export class SupabaseDisplayNameDirectory implements DisplayNameDirectory {
       if (row.display_name && row.display_name.trim()) out.set(row.id, row.display_name);
     }
     return out;
+  }
+
+  async findByName(name: string): Promise<{ userId: string; displayName: string } | null> {
+    if (!supabaseAdmin) return null;
+    if (!isLookupSafeDisplayName(name)) return null;
+    const needle = normalizeDisplayName(name);
+
+    // Paraméteres lekérdezés (nincs szövegösszefűzés). Az `ilike` LIKE-minta,
+    // ezért az `_` karakter többet is megfoghatna – a végső egyezést ezért
+    // MINDIG a `sameDisplayName()` dönti el, nem az adatbázis mintája.
+    const { data, error } = await supabaseAdmin
+      .from('profiles').select('id, display_name').ilike('display_name', needle).limit(5);
+    if (error) { console.error('[profil] név keresés:', error.message); return null; }
+
+    for (const row of (data ?? []) as { id: string; display_name: string | null }[]) {
+      if (row.display_name && sameDisplayName(row.display_name, needle)) {
+        return { userId: row.id, displayName: row.display_name };
+      }
+    }
+    return null;
   }
 
   async set(userId: string, value: string): Promise<SetNameResult> {
@@ -75,6 +103,14 @@ export class InMemoryDisplayNameDirectory implements DisplayNameDirectory {
     const out = new Map<string, string>();
     for (const id of userIds) { const v = this.byUser.get(id); if (v) out.set(id, v); }
     return out;
+  }
+
+  async findByName(name: string): Promise<{ userId: string; displayName: string } | null> {
+    if (!isLookupSafeDisplayName(name)) return null;
+    const userId = this.takenBy.get(normalizeDisplayName(name).toLowerCase());
+    if (!userId) return null;
+    const displayName = this.byUser.get(userId);
+    return displayName ? { userId, displayName } : null;
   }
 
   async set(userId: string, value: string): Promise<SetNameResult> {
