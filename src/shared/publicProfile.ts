@@ -86,6 +86,17 @@ export interface PublicHighlight {
   value: string;
 }
 
+/**
+ * Social réteg a nyilvános profilon. KIZÁRÓLAG összesítő számok és a néző
+ * saját viszonya – a követők/követettek LISTÁJA itt sosem jelenik meg.
+ */
+export interface PublicSocial {
+  followerCount: number;
+  followingCount: number;
+  /** követi-e a NÉZŐ ezt a játékost; kijelentkezve mindig false */
+  isFollowing: boolean;
+}
+
 export interface PublicProfileResponse {
   displayName: string;
   progression: PublicProgression;
@@ -94,10 +105,16 @@ export interface PublicProfileResponse {
   statistics: PublicStatistics;
   competitions: PublicCompetitionEntry[];
   highlights: PublicHighlight[];
+  /** legfeljebb 3 KIEMELT achievement a már feloldottak közül */
+  showcase: PublicAchievement[];
+  social: PublicSocial;
 }
 
 /** Hány versenyt mutatunk legfeljebb – kötött felső korlát. */
 export const PUBLIC_COMPETITION_LIMIT = 10;
+
+/** Hány kiemelt achievement jelenhet meg – azonos a meglévő MAX_SHOWCASE-szel. */
+export const MAX_PUBLIC_SHOWCASE = 3;
 
 /** Biztonságos arány: nulla osztó esetén `null`, sosem NaN vagy Infinity. */
 export const ratio = (part: number, whole: number): number | null =>
@@ -131,6 +148,9 @@ export function toPublicProfile(input: {
   cosmetics: { avatar: Record<string, string>; borderKey: string; titleKey: string; shop?: Partial<ShopEquips> };
   achievements: PublicAchievement[];
   competitions: PublicCompetitionEntry[];
+  /** a felhasználó által kiemelt achievement-kulcsok (tárolt sorrendben) */
+  showcaseKeys?: string[];
+  social?: PublicSocial;
 }): PublicProfileResponse {
   const s = input.stats;
 
@@ -179,6 +199,21 @@ export function toPublicProfile(input: {
       predictions: c.predictions, exactHits: c.exactHits, placement: c.placement,
     })),
     highlights: buildHighlights(statistics, int(s.level), String(s.levelTier ?? '')),
+    // A kiemelés CSAK a már feloldott achievementek közül állhat: a
+    // kulcsokat a feloldott listához kötjük, nem fogadjuk el vakon.
+    showcase: (input.showcaseKeys ?? [])
+      .map((k) => input.achievements.find((a) => a.key === k))
+      .filter((a): a is PublicAchievement => !!a)
+      .slice(0, MAX_PUBLIC_SHOWCASE)
+      .map((a) => ({
+        key: a.key, name: a.name, description: a.description,
+        icon: a.icon, category: a.category, unlockedAt: a.unlockedAt,
+      })),
+    social: {
+      followerCount: int(input.social?.followerCount),
+      followingCount: int(input.social?.followingCount),
+      isFollowing: input.social?.isFollowing === true,
+    },
   };
 }
 

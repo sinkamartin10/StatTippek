@@ -40,6 +40,8 @@ export function profileRouter(
    * megadva, a profil API működése bitre azonos a korábbival.
    */
   progression?: ProgressionService,
+  /** Opcionális social réteg a nyilvános profilhoz (követő-számlálók). */
+  social0?: { profileSocial: (targetUserId: string, viewerUserId: string | null) => Promise<{ followerCount: number; followingCount: number; isFollowing: boolean }> },
 ): Router {
   const r = Router();
 
@@ -136,8 +138,19 @@ export function profileRouter(
       if (!found) return notFoundPlayer(res);
       if (!progression) return res.status(503).json({ error: 'A játékosprofil most nem elérhető.', code: 'UNAVAILABLE' });
 
+      // A social réteg (követő-számlálók + a néző viszonya) opcionális: ha a
+      // modul nincs bekötve vagy hibázik, a profil ettől még betölt.
+      const plan = planOf(res);
+      const viewer = plan.enforced ? (plan.user?.id ?? null) : LOCAL_USER_ID;
+      const social = social0
+        ? await social0.profileSocial(found.userId, viewer).catch((e) => {
+          console.error('[profil] social réteg hiba:', (e as Error).message);
+          return undefined;
+        })
+        : undefined;
+
       // A `found.userId` csak szerveroldalon él – a szerializáló nem kapja meg.
-      const profile = await progression.publicProfileFor(found.userId, found.displayName);
+      const profile = await progression.publicProfileFor(found.userId, found.displayName, social);
       res.json(profile);
     } catch (e) {
       // A belső hiba részlete sosem megy ki a válaszba

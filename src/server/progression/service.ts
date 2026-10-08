@@ -25,6 +25,7 @@ import type { PublicProfile } from '../../shared/competition';
 import {
   PUBLIC_COMPETITION_LIMIT, toPublicProfile,
   type PublicAchievement, type PublicCompetitionEntry, type PublicProfileResponse,
+  type PublicSocial,
 } from '../../shared/publicProfile';
 import {
   EMPTY_EQUIPS, SLOT_TO_CATEGORY, isProfileSlot, isValidItemKey, sanitizeShopEquips,
@@ -428,13 +429,23 @@ export class ProgressionService {
    * A kimenetet a `toPublicProfile()` engedélyező listája állítja elő: ami ott
    * nincs felsorolva, az nem hagyja el a szervert.
    */
-  async publicProfileFor(userId: string, displayName: string): Promise<PublicProfileResponse> {
-    const [cosmeticsMap, rows, placements, xp, unlocked] = await Promise.all([
+  async publicProfileFor(
+    userId: string,
+    displayName: string,
+    /**
+     * Opcionális social réteg (követő-számlálók + a néző viszonya). A
+     * progression SZÁNDÉKOSAN nem függ a social modultól: ha nincs megadva,
+     * a válasz alakja ugyanaz, csak nullás számlálókkal.
+     */
+    social?: PublicSocial,
+  ): Promise<PublicProfileResponse> {
+    const [cosmeticsMap, rows, placements, xp, unlocked, settings] = await Promise.all([
       this.publicProfiles([userId]),
       this.store.allPredictions(userId),
       this.store.placements(userId),
       this.store.totalXp(userId),
       this.store.listAchievements(userId),
+      this.store.getSettings(userId),
     ]);
 
     // `trend` és `leagues` NEM kerül a válaszba – egyedi tipp nem nyilvános.
@@ -463,6 +474,8 @@ export class ProgressionService {
       },
       achievements,
       competitions: aggregateCompetitions(rows, placements),
+      showcaseKeys: settings?.showcase ?? [],
+      social,
     });
   }
 
@@ -470,6 +483,38 @@ export class ProgressionService {
    * A felhasználó választásának mentése. A szerver MINDEN elemet ellenőriz:
    * nem létező vagy fel nem oldott elem nem menthető, a kiemelés legfeljebb 3 achievement.
    */
+  /**
+   * CSAK az achievement-kiemelés (showcase) mentése – FREE és PRO egyaránt.
+   *
+   * MIÉRT KÜLÖN METÓDUS: a `saveSettings()` a MEGSZOLGÁLT kozmetikumokat
+   * (avatar, keret, cím) menti, és annak PRO-kapuja VÁLTOZATLAN. A showcase
+   * viszont nem kozmetikum, hanem a már megszerzett achievementek nyilvános
+   * kiemelése – jóváhagyott döntés szerint ez csomagfüggetlen.
+   *
+   * A megszolgált mezőket SZÁNDÉKOSAN a TÁROLT értékükön hagyjuk: ezen az
+   * úton FREE felhasználó sem tud keretet vagy címet állítani.
+   *
+   * Az érvényesítés a meglévő `sanitizeSettings()`: legfeljebb 3 elem, nincs
+   * duplikátum, és KIZÁRÓLAG feloldott achievement – a birtoklást tehát a
+   * szerver dönti el, a kliens állítása semmit nem számít.
+   */
+  async saveShowcase(userId: string, keys: unknown): Promise<{ settings: ProfileSettings; rejected: string[] }> {
+    const list = Array.isArray(keys) ? keys.filter((k): k is string => typeof k === 'string') : [];
+    const [stats, unlockedRows, stored] = await Promise.all([
+      this.statsFor(userId),
+      this.store.listAchievements(userId),
+      this.store.getSettings(userId),
+    ]);
+    const unlocked = new Set(unlockedRows.map((a) => a.key));
+    const base = stored ?? DEFAULT_SETTINGS;
+    const { settings, rejected } = sanitizeSettings(
+      { avatar: base.avatar, border: base.border, title: base.title, showcase: list },
+      stats, unlocked,
+    );
+    await this.store.saveSettings(userId, settings);
+    return { settings, rejected };
+  }
+
   async saveSettings(userId: string, input: Partial<ProfileSettings> | null): Promise<{ settings: ProfileSettings; rejected: string[] }> {
     if (!(await this.isPro(userId))) {
       throw new ProgressionError('A profil testreszabása PRO előfizetéssel érhető el.', 403, 'PRO_REQUIRED');

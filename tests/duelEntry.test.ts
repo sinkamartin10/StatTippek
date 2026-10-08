@@ -126,7 +126,8 @@ describe('Párbaj belépési pont – adatvédelem', () => {
       achievements: [], competitions: [],
     });
     expect(Object.keys(out).sort()).toEqual(
-      ['achievements', 'competitions', 'cosmetics', 'displayName', 'highlights', 'progression', 'statistics'],
+      ['achievements', 'competitions', 'cosmetics', 'displayName', 'highlights',
+        'progression', 'showcase', 'social', 'statistics'],
     );
     // a párbaj-statisztika SZÁNDÉKOSAN nincs benne (későbbi fázis)
     expect(Object.keys(out)).not.toContain('duels');

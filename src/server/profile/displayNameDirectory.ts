@@ -9,7 +9,9 @@
  * (lower(display_name)); a kódbeli előellenőrzés csak szebb hibaüzenetet ad.
  */
 import { supabaseAdmin } from '../billing/supabaseAdmin';
-import { isLookupSafeDisplayName, normalizeDisplayName, sameDisplayName } from '../../shared/displayName';
+import {
+  isLookupSafeDisplayName, isSearchableDisplayName, normalizeDisplayName, sameDisplayName,
+} from '../../shared/displayName';
 
 export type SetNameResult = { ok: true } | { ok: false; reason: 'TAKEN' | 'FAILED'; message: string };
 
@@ -26,6 +28,16 @@ export interface DisplayNameDirectory {
    * profil válaszába SOHA nem kerül bele. A `displayName` a tárolt, eredeti írásmód.
    */
   findByName(name: string): Promise<{ userId: string; displayName: string } | null>;
+  /**
+   * ELŐTAG-keresés névre, kis-nagybetűtől függetlenül. Legfeljebb `limit`
+   * találat, determinisztikus (név szerinti) sorrendben.
+   *
+   * Szándékosan ELŐTAG és nem tetszőleges részlet: az előtag illeszkedik a
+   * `lower(display_name)` indexhez, és nem teszi lehetővé a névtér
+   * végigpásztázását egyetlen karakterrel.
+   */
+  searchByName(prefix: string, limit: number): Promise<{ userId: string; displayName: string }[]>;
+
   /** Mentés. A hívó előtte KÖTELEZŐEN lefuttatja a validateDisplayName ellenőrzést. */
   set(userId: string, value: string): Promise<SetNameResult>;
 }
@@ -72,6 +84,30 @@ export class SupabaseDisplayNameDirectory implements DisplayNameDirectory {
     return null;
   }
 
+  async searchByName(prefix: string, limit: number): Promise<{ userId: string; displayName: string }[]> {
+    if (!supabaseAdmin) return [];
+    const needle = normalizeDisplayName(prefix);
+    if (!isSearchableDisplayName(needle)) return [];
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+
+    // Paraméteres lekérdezés (nincs szövegösszefűzés). A `%` nem fordulhat elő
+    // a bemenetben (az `isSearchableDisplayName` nem engedi), az `_` viszont
+    // engedélyezett névkarakter ÉS LIKE-joker – ezért a végső szűrés JS-ben
+    // történik, előtag-egyezésre. Így az `_` nem tud idegen nevet behozni.
+    const { data, error } = await supabaseAdmin
+      .from('profiles').select('id, display_name')
+      .ilike('display_name', `${needle}%`)
+      .order('display_name', { ascending: true })
+      .limit(safeLimit * 3);
+    if (error) { console.error('[profil] név keresés (előtag):', error.message); return []; }
+
+    const lower = needle.toLowerCase();
+    return ((data ?? []) as { id: string; display_name: string | null }[])
+      .filter((r) => !!r.display_name && r.display_name.toLowerCase().startsWith(lower))
+      .slice(0, safeLimit)
+      .map((r) => ({ userId: r.id, displayName: r.display_name! }));
+  }
+
   async set(userId: string, value: string): Promise<SetNameResult> {
     if (!supabaseAdmin) return { ok: false, reason: 'FAILED', message: 'A profil mentése nincs beállítva a szerveren.' };
     const name = normalizeDisplayName(value);
@@ -111,6 +147,17 @@ export class InMemoryDisplayNameDirectory implements DisplayNameDirectory {
     if (!userId) return null;
     const displayName = this.byUser.get(userId);
     return displayName ? { userId, displayName } : null;
+  }
+
+  async searchByName(prefix: string, limit: number): Promise<{ userId: string; displayName: string }[]> {
+    const needle = normalizeDisplayName(prefix);
+    if (!isSearchableDisplayName(needle)) return [];
+    const lower = needle.toLowerCase();
+    return [...this.byUser.entries()]
+      .filter(([, name]) => name.toLowerCase().startsWith(lower))
+      .sort((a, b) => a[1].localeCompare(b[1], 'hu'))
+      .slice(0, Math.min(50, Math.max(1, Math.floor(limit))))
+      .map(([userId, displayName]) => ({ userId, displayName }));
   }
 
   async set(userId: string, value: string): Promise<SetNameResult> {

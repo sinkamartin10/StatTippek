@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
-  Bell, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, X,
+  Bell, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
   type LucideIcon,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
@@ -35,10 +35,12 @@ const PLAY = [
   { to: '/statisztikaim', label: 'Statisztikáim', icon: ChartLine },
   { to: '/elozmenyek', label: 'Előzmények', icon: History },
   { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
+  { to: '/kovetes', label: 'Követés', icon: Users },
 ];
 
 /** „Felfedezés” – adat, elemzés, beállítások. */
 const EXPLORE = [
+  { to: '/felfedezes', label: 'Játékosok', icon: UserSearch },
   { to: '/meccsek', label: 'Mai meccsek', icon: CalendarDays },
   { to: '/elemzes', label: 'Elemzés', icon: Sparkles },
   { to: '/statisztikak', label: 'Statisztikák', icon: BarChart3 },

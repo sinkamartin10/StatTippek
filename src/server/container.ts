@@ -25,6 +25,7 @@ import { PostgresProgressionStore, SqliteProgressionStore, type ProgressionStore
 import { PostgresBattleStore, SqliteBattleStore, type BattleStore } from './battles/store';
 import { PostgresNotificationStore, SqliteNotificationStore, type NotificationStore } from './notifications/store';
 import { PostgresCoinStore, SqliteCoinStore, type CoinStore } from './coins/store';
+import { PostgresFollowStore, SqliteFollowStore, type FollowStore } from './social/store';
 
 export interface Container {
   data: MatchDataProvider;
@@ -44,6 +45,8 @@ export interface Container {
   notifications: NotificationStore;
   /** Coin + shop tárolója – saját táblák; a pénzmozgás-szerű műveletek authority-ja a DB */
   coins: CoinStore;
+  /** Követés (social) – saját tábla a 0013-ból, más rendszert nem érint */
+  follows: FollowStore;
   status(): AppStatus;
 }
 
@@ -107,6 +110,11 @@ export function buildContainer(): Container {
     ? new PostgresCoinStore(supabaseUrl, serviceRoleKey)
     : new SqliteCoinStore(db.sqliteHandle());
 
+  // Követés: élesben Supabase (0013), kulcs nélkül helyi SQLite azonos szerződéssel
+  const follows: FollowStore = supabaseUrl && serviceRoleKey
+    ? new PostgresFollowStore(supabaseUrl, serviceRoleKey)
+    : new SqliteFollowStore(db.sqliteHandle());
+
   return {
     data,
     research,
@@ -118,6 +126,7 @@ export function buildContainer(): Container {
     battles,
     notifications,
     coins,
+    follows,
     status: () => ({
       dataMode: data.origin,
       requestedMode,

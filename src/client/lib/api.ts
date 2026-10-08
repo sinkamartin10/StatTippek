@@ -16,6 +16,9 @@ import type {
 } from '@shared/competition';
 import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
 import type { PublicProfileResponse } from '@shared/publicProfile';
+import type {
+  FollowListResponse, FollowStatus, PlayerSearchResponse, TopTipstersResponse,
+} from '@shared/social';
 import type { MissionPeriodView, MissionView } from '@shared/missions';
 import type {
   CoinBalance, CoinHistoryPage, CoinTransactionType, ProfileSlot, ShopCatalogResponse,
@@ -178,6 +181,27 @@ export const api = {
    */
   publicProfile: (displayName: string) =>
     request<PublicProfileResponse>(`/public/${encodeURIComponent(displayName)}`, {}, '/api/profile'),
+
+  // ---------- Social: keresés, követés, Top Tipsterek ----------
+  // A követő azonosítóját a SZERVER veszi a tokenből; a törzsben sosem küldünk ilyet.
+  playerSearch: (q: string) =>
+    request<PlayerSearchResponse>(`/players/search?q=${encodeURIComponent(q)}`, {}, '/api/social'),
+  followStatus: (displayName: string) =>
+    request<FollowStatus>(`/follow/status/${encodeURIComponent(displayName)}`, {}, '/api/social'),
+  follow: (displayName: string) =>
+    request<{ following: true; created: boolean }>(`/follow/${encodeURIComponent(displayName)}`, { method: 'POST' }, '/api/social'),
+  unfollow: (displayName: string) =>
+    request<{ following: false; removed: boolean }>(`/follow/${encodeURIComponent(displayName)}`, { method: 'DELETE' }, '/api/social'),
+  following: (limit?: number, before?: string) =>
+    request<FollowListResponse>(`/following${qs({ limit, before })}`, {}, '/api/social'),
+  followers: (limit?: number, before?: string) =>
+    request<FollowListResponse>(`/followers${qs({ limit, before })}`, {}, '/api/social'),
+  topTipsters: () => request<TopTipstersResponse>('/top-tipsters', {}, '/api/social'),
+  /** Achievement-kiemelés mentése – FREE és PRO egyaránt. */
+  saveShowcase: (showcase: string[]) =>
+    request<{ settings: ProfileSettings; rejected: string[] }>('/showcase', {
+      method: 'PUT', body: JSON.stringify({ showcase }),
+    }, '/api/progression'),
 
   // ---------- Tipster progression (XP, achievement, testreszabás) ----------
   progressionMe: () => request<ProgressionProfileResponse>('/me', {}, '/api/progression'),

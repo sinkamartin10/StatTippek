@@ -82,6 +82,17 @@ export function progressionRouter(svc: ProgressionService): Router {
   });
 
   /** Testreszabás mentése (PRO). A szerver minden választást ellenőriz a feloldott elemek ellen. */
+  /**
+   * Achievement-kiemelés mentése – FREE és PRO egyaránt. A törzsből KIZÁRÓLAG
+   * a `showcase` tömböt olvassuk ki; keret, cím és avatar ezen az úton nem
+   * állítható (azok PRO-kapuja a `/settings`-en változatlan).
+   */
+  r.put('/showcase', async (req, res) => {
+    const userId = ownerId(res);
+    if (!userId) return needAuth(res);
+    try { res.json(await svc.saveShowcase(userId, req.body?.showcase)); } catch (e) { handle(res, e); }
+  });
+
   r.put('/settings', async (req, res) => {
     const userId = ownerId(res);
     if (!userId) return needAuth(res);

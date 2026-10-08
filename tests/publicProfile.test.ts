@@ -247,7 +247,7 @@ const FORBIDDEN_KEYS = [
   'coins', 'coinBalance', 'balance', 'paidCoins', 'paid_coins', 'transactions', 'coinTransactions',
   'purchases', 'purchaseHistory', 'inventory', 'ownedItems', 'priceCoins', 'price',
   'stripeCustomerId', 'stripe_customer_id', 'subscription', 'subscriptionStatus', 'plan', 'pro',
-  'settings', 'profileSettings', 'showcase', 'ip', 'ipAddress',
+  'settings', 'profileSettings', 'ip', 'ipAddress',
   'trend', 'leagues', 'predictionId', 'homeTeam', 'awayTeam', 'kickoff',
   'predictedHome', 'predictedAway', 'submittedAt',
 ];
@@ -435,11 +435,26 @@ describe('Nyilvános profil – adatvédelem', () => {
     }
   });
 
-  it('P24. a privát profil-beállítás (showcase, settings) nem jut ki', async () => {
+  it('P24. a privát profil-beállítás nem jut ki (a KIEMELÉS viszont szándékosan igen)', async () => {
     await h.progression.saveSettings(PRO, { ...DEFAULT_SETTINGS, showcase: [] });
-    const keys = [...deepKeys((await getPublic(PRO_NAME)).body)];
+    const body = (await getPublic(PRO_NAME)).body;
+    const keys = [...deepKeys(body)];
+    // a nyers beállítás-objektum SOHA nem jut ki
     expect(keys).not.toContain('settings');
-    expect(keys).not.toContain('showcase');
+    expect(keys).not.toContain('profileSettings');
+    // a kiemelés publikus mező, de üresen üres
+    expect(body.showcase).toEqual([]);
+  });
+
+  it('P24b. a kiemelés CSAK feloldott achievementet tartalmazhat', async () => {
+    await seedRichPro();
+    const unlocked = (await h.progressionStore.listAchievements(PRO)).map((a) => a.key);
+    expect(unlocked.length).toBeGreaterThan(0);
+
+    // egy feloldott + egy NEM létező + egy nem feloldott kulcs
+    await h.progression.saveShowcase(PRO, [unlocked[0], 'nincs_ilyen_achievement', 'tier_master']);
+    const body = (await getPublic(PRO_NAME)).body;
+    expect(body.showcase.map((a: any) => a.key)).toEqual([unlocked[0]]);
   });
 
   it('P25. a kérő FÉL adatai nem szivárognak a válaszba', async () => {
@@ -453,7 +468,8 @@ describe('Nyilvános profil – adatvédelem', () => {
     await seedRichPro();
     const r = await getPublic(PRO_NAME);
     expect(Object.keys(r.body).sort()).toEqual(
-      ['achievements', 'competitions', 'cosmetics', 'displayName', 'highlights', 'progression', 'statistics'],
+      ['achievements', 'competitions', 'cosmetics', 'displayName', 'highlights',
+        'progression', 'showcase', 'social', 'statistics'],
     );
   });
 
@@ -489,6 +505,11 @@ describe('Nyilvános profil – adatvédelem', () => {
     for (const a of r.body.achievements) {
       expect(Object.keys(a).sort()).toEqual(['category', 'description', 'icon', 'key', 'name', 'unlockedAt']);
     }
+  });
+
+  it('P30b. a `social` blokk kulcsai pontosan az engedélyezettek', async () => {
+    const r = await getPublic(PRO_NAME);
+    expect(Object.keys(r.body.social).sort()).toEqual(['followerCount', 'followingCount', 'isFollowing']);
   });
 
   it('P31. a kiemelések kulcsai pontosan az engedélyezettek', async () => {

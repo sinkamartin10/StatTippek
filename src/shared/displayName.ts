@@ -157,6 +157,28 @@ export function isLookupSafeDisplayName(raw: string): boolean {
   return value.length >= DISPLAY_NAME_MIN && value.length <= DISPLAY_NAME_MAX && ALLOWED.test(value);
 }
 
+/**
+ * ELŐTAG-KERESÉSRE alkalmas-e a töredék? A teljes névnél megengedőbb: a
+ * töredék lehet rövidebb a minimumnál, és nem kell betűvel/számmal végződnie,
+ * mert gépelés közben bármikor lekérdezhetünk.
+ *
+ * Amit viszont SZIGORÚAN kizár: minden olyan karakter, ami nem fordulhat elő
+ * megjelenítési névben – köztük a `%` LIKE-joker. Ez a nyilvános
+ * játékos-keresés első védvonala, MÉG az adatbázis-lekérdezés előtt.
+ */
+export function isSearchableDisplayName(raw: string): boolean {
+  const value = normalizeDisplayName(raw);
+  return value.length >= SEARCH_PREFIX_MIN
+    && value.length <= DISPLAY_NAME_MAX
+    && SEARCHABLE.test(value);
+}
+
+/** Keresésnél ennél rövidebb töredékre nem indítunk lekérdezést. */
+export const SEARCH_PREFIX_MIN = 2;
+
+/** Ugyanaz a karakterkészlet, mint az `ALLOWED`, de a vég-karakter kötöttsége nélkül. */
+const SEARCHABLE = /^[\p{L}\p{N}][\p{L}\p{N} _.\-]*$/u;
+
 /** A felületen mutatható szabályok (a Profil oldal és a Tippverseny használja). */
 export const DISPLAY_NAME_RULES = [
   `${DISPLAY_NAME_MIN}–${DISPLAY_NAME_MAX} karakter`,

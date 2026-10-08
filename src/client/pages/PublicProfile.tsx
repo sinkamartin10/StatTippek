@@ -13,6 +13,7 @@
  * A megjelenést UGYANAZ a `CosmeticProfile` renderer adja, mint a Shopban, a
  * saját profilon és a ranglistán – a kinézet nem tud szétcsúszni.
  */
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Award, Crosshair, Flame, ListChecks, Medal, Percent, Sparkles, Star, Target, Trophy,
@@ -23,6 +24,7 @@ import { fmtDate, useAsync } from '../lib/format';
 import { Card, EmptyState, ErrorBox, Loading, StatCard } from '../components/ui';
 import { CosmeticProfile } from '../components/CosmeticProfile';
 import { ChallengeAction } from '../components/ChallengeAction';
+import { FollowAction, ShareAction } from '../components/ProfileActions';
 import { usePlan } from '../auth/PlanContext';
 
 /** Ezres csoportosítás ICU nélkül – minden környezetben ugyanazt adja. */
@@ -53,6 +55,11 @@ export default function PublicProfile() {
 
   // Csak azért, hogy a saját profilra visszavezessünk; kijelentkezve el sem indul.
   const me = useAsync(async () => (loggedIn ? (await api.profileMe()).displayName : null), [loggedIn]);
+
+  // A követő-számot a szerver adja; a gomb csak optimistán lépteti.
+  const [followers, setFollowers] = useState(0);
+  const serverFollowers = state.data?.ok ? state.data.profile.social.followerCount : 0;
+  useEffect(() => { setFollowers(serverFollowers); }, [serverFollowers]);
 
   if (state.loading) return <Loading text="Játékos betöltése…" />;
 
@@ -122,10 +129,52 @@ export default function PublicProfile() {
               </div>
             </div>
 
-            {isMe
-              ? <Link to="/profil" className="btn btn-sm mt-4 w-full">Ez a te profilod</Link>
-              : <ChallengeAction displayName={p.displayName} isMe={isMe} />}
+            {/* Social számlálók – csak ÖSSZESÍTŐ szám, kapcsolat-lista soha */}
+            <dl className="mt-4 flex items-center justify-center gap-5 text-sm font-bold">
+              <div>
+                <dt className="text-xs font-extrabold uppercase tracking-wide text-text-muted">Követő</dt>
+                <dd className="mono text-lg font-extrabold">{followers}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-extrabold uppercase tracking-wide text-text-muted">Követés</dt>
+                <dd className="mono text-lg font-extrabold">{p.social.followingCount}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {isMe
+                ? <Link to="/profil" className="btn btn-sm">Ez a te profilod</Link>
+                : (
+                  <FollowAction
+                    displayName={p.displayName}
+                    isMe={isMe}
+                    initialFollowing={p.social.isFollowing}
+                    onChange={(f) => setFollowers((n) => Math.max(0, n + (f ? 1 : -1)))}
+                  />
+                )}
+              <ShareAction displayName={p.displayName} />
+            </div>
+
+            {/* A párbaj-kihívás továbbra is a MEGLÉVŐ komponens dolga */}
+            {!isMe && <ChallengeAction displayName={p.displayName} isMe={isMe} />}
           </Card>
+
+          {/* Kiemelt achievementek – legfeljebb 3, a játékos választása */}
+          {p.showcase.length > 0 && (
+            <Card title="Kiemelt achievementek">
+              <ul className="space-y-2">
+                {p.showcase.map((a) => (
+                  <li key={a.key} className="flex items-start gap-2.5">
+                    <span aria-hidden className="text-xl leading-none">{a.icon}</span>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-extrabold">{a.name}</div>
+                      <p className="text-xs font-semibold text-text-muted">{a.description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {p.highlights.length > 0 && (
             <Card title="Kiemelések">

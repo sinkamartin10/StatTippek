@@ -11,6 +11,7 @@ import { apiRouter } from './routes/api';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
+import { socialRouter } from './routes/social';
 import { progressionRouter } from './routes/progression';
 import { missionsRouter } from './routes/missions';
 import { battlesRouter } from './routes/battles';
@@ -20,6 +21,7 @@ import { MissionService } from './missions/service';
 import { BattleService } from './battles/service';
 import { NotificationService } from './notifications/service';
 import { CoinService } from './coins/service';
+import { SocialService } from './social/service';
 import { CoinRewardService } from './coins/rewards';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
@@ -45,6 +47,16 @@ const progressionService: ProgressionService = new ProgressionService(
  * szakaszban még szándékosan nincs (5d).
  */
 const coinService: CoinService = new CoinService(container.coins);
+// Social: a követés saját tárolót kap, a statisztikát és a kozmetikumokat
+// viszont a MEGLÉVŐ progression/competition rétegből olvassa – nincs második
+// statisztika-számítás és nincs párhuzamos profilrendszer.
+const socialService: SocialService = new SocialService(
+  container.follows,
+  container.displayNames,
+  container.progression,
+  container.competitions,
+  (userIds) => progressionService.publicProfiles(userIds),
+);
 
 /**
  * Coin jutalom-hookok. EGYETLEN hely, ahol a meglévő TippStats eseményekből
@@ -164,7 +176,7 @@ app.delete('/api/matches/:id/odds', requireAdmin);
 app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competitionService));
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
-app.use('/api/profile', profileRouter(container.displayNames, progressionService));
+app.use('/api/profile', profileRouter(container.displayNames, progressionService, socialService));
 // Progression: saját XP/achievement állapot olvasása és a testreszabás mentése (PRO)
 app.use('/api/progression', progressionRouter(progressionService));
 // Küldetések: a haladás számított, a jutalom idempotens és a meglévő XP-rendszerbe kerül
@@ -175,6 +187,9 @@ app.use('/api/battles', battlesRouter(battleService));
 app.use('/api/notifications', notificationsRouter(notificationService));
 // Coin + Shop: kozmetikum-vásárlás. FREE és PRO egyaránt használhatja (a coin
 // semmilyen kompetitív előnyt nem ad), minden írás a hitelesített userhez kötve.
+// Social: követés, játékos-keresés, Top Tipsterek. FREE és PRO egyaránt;
+// a követés tisztán social, semmilyen pontozást vagy gazdaságot nem érint.
+app.use('/api/social', socialRouter(socialService));
 app.use('/api/coins', coinsRouter(coinService));
 app.use('/api/shop', shopRouter(coinService));
 app.use('/api', apiRouter(container, service));
