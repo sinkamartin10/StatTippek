@@ -22,6 +22,7 @@ import { ApiError, api } from '../lib/api';
 import { fmtDate, useAsync } from '../lib/format';
 import { Card, EmptyState, ErrorBox, Loading, StatCard } from '../components/ui';
 import { CosmeticProfile } from '../components/CosmeticProfile';
+import { ChallengeAction } from '../components/ChallengeAction';
 import { usePlan } from '../auth/PlanContext';
 
 /** Ezres csoportosítás ICU nélkül – minden környezetben ugyanazt adja. */
@@ -121,7 +122,9 @@ export default function PublicProfile() {
               </div>
             </div>
 
-            {isMe && <Link to="/profil" className="btn btn-sm mt-4 w-full">Ez te vagy – saját profil</Link>}
+            {isMe
+              ? <Link to="/profil" className="btn btn-sm mt-4 w-full">Ez a te profilod</Link>
+              : <ChallengeAction displayName={p.displayName} isMe={isMe} />}
           </Card>
 
           {p.highlights.length > 0 && (

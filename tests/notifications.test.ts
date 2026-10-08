@@ -123,8 +123,6 @@ async function startApp(): Promise<Harness> {
   ]);
   const battleSvc: BattleService = new BattleService(
     battles, competitions, names,
-    async (id) => proUsers.has(id),
-    async (ids) => new Set(ids.filter((id) => proUsers.has(id))),
     (ids) => progressionSvc.publicProfiles(ids),
     (n) => notificationSvc.emit(n),
   );

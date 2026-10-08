@@ -91,8 +91,6 @@ const battleService: BattleService = new BattleService(
   container.battles,
   container.competitions,
   container.displayNames,
-  async (userId) => profileIsPro(await getProfile(userId)),
-  (userIds) => proUserIds(userIds),
   (userIds) => progressionService.publicProfiles(userIds),
   // Az értesítés SOHA nem törheti meg a párbaj műveletét: az emit() elnyeli a hibát
   (n) => notificationService.emit(n),

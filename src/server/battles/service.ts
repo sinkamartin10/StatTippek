@@ -49,11 +49,12 @@ export class BattleService {
     /** CSAK OLVASÁSRA: mérkőzésadat és a ranglista résztvevői köre. */
     private competitions: CompetitionStore,
     private names: DisplayNameDirectory,
-    /** Szerveroldali PRO-ellenőrzés a meglévő entitlement rendszerből. */
-    private isPro: (userId: string) => Promise<boolean>,
-    /** Kötegelt PRO-ellenőrzés (nincs N+1). */
-    private proUsers: (userIds: string[]) => Promise<Set<string>>,
-    /** Opcionális: avatar / border / title a meglévő progression rendszerből. */
+    /**
+     * Opcionális: avatar / border / title a meglévő progression rendszerből.
+     *
+     * A szolgáltatás SZÁNDÉKOSAN nem ismeri a csomagot (FREE/PRO): a párbaj
+     * mindkét csomagnak jár, ezért nincs és nem is kell PRO-ellenőrzés.
+     */
     private publicProfiles?: (userIds: string[]) => Promise<Map<string, PublicProfile>>,
     /**
      * Opcionális értesítés-kibocsátó. SOHA nem dobhat: az értesítés mellékes a
@@ -611,15 +612,16 @@ export class BattleService {
     const ids = [...participants];
     if (!ids.length) return [];
 
-    const [pro, names, profs] = await Promise.all([
-      this.proUsers(ids),
+    const [names, profs] = await Promise.all([
       this.names.getMany(ids),
       this.profiles(ids),
     ]);
 
     return ids
-      // PRO + van valódi, beállított megjelenítési neve (álnévvel nem hívható ki)
-      .filter((id) => pro.has(id) && !!names.get(id))
+      // Csomagtól FÜGGETLEN: a párbaj FREE és PRO felhasználónak egyaránt jár.
+      // Az egyetlen feltétel a beállított megjelenítési név – név nélküli
+      // felhasználó nem azonosítható, ezért nem hívható ki.
+      .filter((id) => !!names.get(id))
       .map((id) => {
         const p = profs.get(id) ?? DEFAULT_PROFILE;
         return { userId: id, displayName: names.get(id)!, avatar: p.avatar, borderKey: p.borderKey, titleKey: p.titleKey };
@@ -643,8 +645,4 @@ export class BattleService {
     return out.sort((a, b) => a.kickoff.localeCompare(b.kickoff));
   }
 
-  /** Szerveroldali PRO-ellenőrzés a route-réteg számára (a kliens állapotát sosem hisszük el). */
-  checkPro(userId: string): Promise<boolean> {
-    return this.isPro(userId);
-  }
 }

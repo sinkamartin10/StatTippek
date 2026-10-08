@@ -7,17 +7,16 @@
  *    plan / subscription / isPro mezőt SOHA nem olvassuk ki,
  *  - a points / winner / status / xp mezőket a kérésből figyelmen kívül hagyjuk,
  *    ezeket kizárólag a szerver számolja és írja,
- *  - a battle PRO funkció: új párbaj indítása és elfogadása requirePro mögött van.
+ *  - a párbaj NEM PRO funkció: FREE és PRO felhasználó egyaránt kihívhat,
+ *    elfogadhat, tippelhet és végigviheti a párbajt. Minden végpont egységesen
+ *    csak BEJELENTKEZÉST kér (`requireAuthenticated`), a jogosultságot pedig
+ *    a résztvevői szerep dönti el, nem a csomag.
  *
- * PRO LEJÁRAT (szándékos, dokumentált kivétel):
- * Új párbaj INDÍTÁSA és ELFOGADÁSA szigorúan PRO. A már elfogadott (active)
- * párbaj viszont végigfut akkor is, ha a felhasználó közben elveszíti a PRO-t:
- * ezért a lista, a részletek, a tippbeküldés, az elutasítás és a visszavonás
- * csak bejelentkezést kér. Így senki nem tud PRO nélkül ÚJ kötelezettséget
- * vállalni, de a futó párbaj nem szakad meg félúton.
+ * A párbaj TOVÁBBRA IS külön gazdaság: nem fogyaszt FREE napi Tippverseny-kvótát,
+ * nem ad coint és nem ad XP-t. A Tippverseny csomagszabályai érintetlenek.
  */
 import { Router, type Response } from 'express';
-import { planOf, requireAuthenticated, requirePro } from '../billing/entitlement';
+import { planOf, requireAuthenticated } from '../billing/entitlement';
 import { BattleError, type BattleService } from '../battles/service';
 import { BATTLE_MATCH_COUNT, MAX_PENDING_BATTLES } from '../../shared/battles';
 
@@ -65,10 +64,11 @@ export function battlesRouter(svc: BattleService): Router {
   });
 
   /**
-   * Új párbaj indítása – PRO. A törzsből KIZÁRÓLAG az opponentId és a
-   * competitionMatchIds olvasódik ki; minden más mezőt figyelmen kívül hagyunk.
+   * Új párbaj indítása – FREE és PRO egyaránt. A törzsből KIZÁRÓLAG az
+   * opponentId és a competitionMatchIds olvasódik ki; minden más mezőt
+   * figyelmen kívül hagyunk.
    */
-  r.post('/', requirePro, async (req, res) => {
+  r.post('/', requireAuthenticated, async (req, res) => {
     const userId = ownerId(res);
     if (!userId) return needAuth(res);
 
@@ -88,15 +88,15 @@ export function battlesRouter(svc: BattleService): Router {
     try { res.json(await svc.create(userId, opponentId, ids, new Date())); } catch (e) { handle(res, e); }
   });
 
-  /** Kihívható ellenfelek – kizárólag a Tippverseny ranglistáján szereplő PRO résztvevők. */
-  r.get('/eligible-opponents', requirePro, async (_req, res) => {
+  /** Kihívható ellenfelek – a Tippverseny ranglistáján szereplő, nevet beállított játékosok. */
+  r.get('/eligible-opponents', requireAuthenticated, async (_req, res) => {
     const userId = ownerId(res);
     if (!userId) return needAuth(res);
     try { res.json(await svc.eligibleOpponents(userId)); } catch (e) { handle(res, e); }
   });
 
   /** Választható mérkőzések (scheduled, kickoff előtt). */
-  r.get('/eligible-matches', requirePro, async (_req, res) => {
+  r.get('/eligible-matches', requireAuthenticated, async (_req, res) => {
     const userId = ownerId(res);
     if (!userId) return needAuth(res);
     try { res.json(await svc.eligibleMatches(new Date())); } catch (e) { handle(res, e); }
@@ -112,7 +112,7 @@ export function battlesRouter(svc: BattleService): Router {
   });
 
   /** Elfogadás – PRO, csak a kihívott, csak le nem járt kihívás. */
-  r.post('/:id/accept', requirePro, async (req, res) => {
+  r.post('/:id/accept', requireAuthenticated, async (req, res) => {
     const battleId = idOf(req);
     if (!UUID.test(battleId)) return badId(res);
     const userId = ownerId(res);

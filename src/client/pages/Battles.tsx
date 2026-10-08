@@ -3,13 +3,16 @@
  *
  * Minden állapotot, korlátot és jogosultságot a SZERVER ad meg; a felület csak
  * megjelenít, és a gombokkal kérést indít. A választható ellenfelek köre is
- * szerveroldali (kizárólag a Tippverseny ranglistáján szereplő PRO résztvevők),
- * ezért itt nincs és nem is lehet felhasználó-keresés.
+ * szerveroldali (a Tippverseny ranglistáján szereplő, nevet beállított
+ * játékosok), ezért itt nincs és nem is lehet felhasználó-keresés.
+ *
+ * A párbaj NEM PRO funkció: FREE és PRO felhasználó ugyanazt teheti.
  */
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Crown, Swords } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Swords } from 'lucide-react';
 import type { BattleView, EligibleMatch, EligibleOpponent } from '@shared/battles';
+import { sameDisplayName } from '@shared/displayName';
 import { BATTLE_MATCH_COUNT, BATTLE_OUTCOME_LABEL } from '@shared/battles';
 import type { AvatarSlot } from '@shared/progression';
 import { TITLES } from '@shared/progression';
@@ -45,7 +48,11 @@ function remaining(iso: string): string {
 }
 
 export default function Battles() {
-  const { pro, loggedIn, configured } = usePlan();
+  const { loggedIn, configured } = usePlan();
+  // A nyilvános profilról érkező kihívás: `?kihivas=<megjelenítési név>`.
+  // CSAK előválasztás – a jogosultságot és a párosítást a szerver dönti el.
+  const [params] = useSearchParams();
+  const invited = params.get('kihivas') ?? '';
   const data = useAsync(() => api.battles(), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
@@ -99,16 +106,9 @@ export default function Battles() {
         <StatCard icon="🏁" tone="success" label="Lezárva" value={d.settled.length} sub="befejezett" />
       </div>
 
-      {!pro && configured && (
-        <Note tone="warn">
-          🔒 Új párbaj indítása és elfogadása <b>PRO előfizetéssel</b> lehetséges. A már elfogadott párbajaidat PRO nélkül is végigviheted.
-          <Link to="/pro" className="btn btn-sm btn-primary ml-2 mt-2 sm:mt-0"><Crown className="h-3.5 w-3.5" /> PRO megtekintése</Link>
-        </Note>
-      )}
-
       {msg && <Note tone={msg.tone}>{msg.text}</Note>}
 
-      {pro && <NewBattle onCreated={() => { data.reload(); setMsg({ tone: 'info', text: 'Kihívás elküldve.' }); }} />}
+      <NewBattle invited={invited} onCreated={() => { data.reload(); setMsg({ tone: 'info', text: 'Kihívás elküldve.' }); }} />
 
       {d.incoming.length > 0 && (
         <Card title="📥 Bejövő kihívások">
@@ -120,11 +120,9 @@ export default function Battles() {
                   <span className="text-xs font-bold text-text-muted">kihívott · lejár: {remaining(b.inviteExpiresAt)}</span>
                   <span className="ml-auto flex gap-2">
                     <Link to={`/battles/${b.id}`} className="btn btn-sm">Megnézem</Link>
-                    {pro && (
-                      <button className="btn btn-sm btn-primary" onClick={() => act(b.id, 'accept')} disabled={busy === b.id + 'accept'}>
-                        {busy === b.id + 'accept' ? 'Elfogadás…' : 'Elfogadom'}
-                      </button>
-                    )}
+                    <button className="btn btn-sm btn-primary" onClick={() => act(b.id, 'accept')} disabled={busy === b.id + 'accept'}>
+                      {busy === b.id + 'accept' ? 'Elfogadás…' : 'Elfogadom'}
+                    </button>
                     <button className="btn btn-sm btn-ghost" onClick={() => act(b.id, 'decline')} disabled={busy === b.id + 'decline'}>
                       Elutasítom
                     </button>
@@ -173,9 +171,7 @@ export default function Battles() {
         <EmptyState
           emoji="⚔️"
           title="Még nincs párbajod"
-          text={pro
-            ? `Válassz ki egy ellenfelet és ${BATTLE_MATCH_COUNT} mérkőzést, és indulhat a párbaj.`
-            : 'A párbajokhoz PRO előfizetés kell.'}
+          text={`Válassz ki egy ellenfelet és ${BATTLE_MATCH_COUNT} mérkőzést, és indulhat a párbaj.`}
         />
       )}
     </div>
@@ -207,13 +203,24 @@ function BattleRow({ b }: { b: BattleView }) {
 }
 
 /** Új párbaj: ellenfél + pontosan 3 mérkőzés. A korlátot a szerver is kikényszeríti. */
-function NewBattle({ onCreated }: { onCreated: () => void }) {
+function NewBattle({ invited = '', onCreated }: { invited?: string; onCreated: () => void }) {
   const opponents = useAsync<EligibleOpponent[]>(() => api.battleEligibleOpponents(), []);
   const matches = useAsync<EligibleMatch[]>(() => api.battleEligibleMatches(), []);
   const [opponent, setOpponent] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  /**
+   * A profilról hozott nevet a BETÖLTÖTT, szerveroldali listához kötjük. Ha a
+   * név nincs a kihívhatók között, nem történik semmi – nem találunk ki
+   * azonosítót, és a választás továbbra is a felhasználóé.
+   */
+  useEffect(() => {
+    if (!invited || opponent || !opponents.data?.length) return;
+    const match = opponents.data.find((o) => sameDisplayName(o.displayName, invited));
+    if (match) setOpponent(match.userId);
+  }, [invited, opponent, opponents.data]);
 
   const toggle = (id: string) => setPicked((cur) =>
     cur.includes(id) ? cur.filter((x) => x !== id)
@@ -241,7 +248,7 @@ function NewBattle({ onCreated }: { onCreated: () => void }) {
               Ellenfél
             </label>
             {!opponents.data?.length ? (
-              <Note>Jelenleg nincs kihívható játékos. Kihívni a Tippverseny ranglistáján szereplő PRO résztvevőket lehet.</Note>
+              <Note>Jelenleg nincs kihívható játékos. Kihívni a Tippverseny ranglistáján szereplő játékosokat lehet.</Note>
             ) : (
               <select id="battle-opponent" className="input" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
                 <option value="">Válassz ellenfelet…</option>

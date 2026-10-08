@@ -121,8 +121,6 @@ async function startApp(): Promise<Harness> {
   );
   const svc = new BattleService(
     battles, competitions, names,
-    async (id) => proUsers.has(id),
-    async (ids) => new Set(ids.filter((id) => proUsers.has(id))),
     (ids) => progressionSvc.publicProfiles(ids),
   );
 
@@ -413,17 +411,42 @@ describe('Battle – jogosultság és biztonság', () => {
     }
   });
 
-  it('B14. FREE felhasználó nem indíthat és nem fogadhat el párbajt (PRO_REQUIRED)', async () => {
+  it('B14. FREE felhasználó IS indíthat párbajt és elérheti a segéd-végpontokat', async () => {
     const { matches } = await seedLeaderboard(h);
     const create = await createBattle(h, { user: FREE_D }, PRO_A, threeIds(matches));
-    expect(create.status).toBe(403);
-    expect(create.body.code).toBe('PRO_REQUIRED');
+    expect(create.status).toBe(200);
+    expect(create.body.status).toBe('pending');
 
-    const b = (await createBattle(h, { user: PRO_A }, PRO_B, threeIds(matches))).body;
-    // FREE harmadik fél nem fogadhatja el (PRO_REQUIRED előbb fut)
-    expect((await call(h, 'POST', `/api/battles/${b.id}/accept`, { user: FREE_D })).body.code).toBe('PRO_REQUIRED');
-    expect((await call(h, 'GET', '/api/battles/eligible-opponents', { user: FREE_D })).status).toBe(403);
-    expect((await call(h, 'GET', '/api/battles/eligible-matches', { user: FREE_D })).status).toBe(403);
+    expect((await call(h, 'GET', '/api/battles/eligible-opponents', { user: FREE_D })).status).toBe(200);
+    expect((await call(h, 'GET', '/api/battles/eligible-matches', { user: FREE_D })).status).toBe(200);
+    expect((await call(h, 'GET', '/api/battles', { user: FREE_D })).status).toBe(200);
+  });
+
+  it('B14b. FREE felhasználó elfogadhatja a NEKI szóló kihívást, idegenét nem', async () => {
+    const { matches } = await seedLeaderboard(h);
+    await h.competitions.upsertPrediction(FREE_D, matches[0].id, 2, 0); // ranglista-résztvevő lesz
+    const b = (await createBattle(h, { user: PRO_A }, FREE_D, threeIds(matches))).body;
+
+    // harmadik fél továbbra sem fogadhatja el – most már NOT_FOUND, nem PRO_REQUIRED
+    const stranger = await call(h, 'POST', `/api/battles/${b.id}/accept`, { user: PRO_C });
+    expect(stranger.status).not.toBe(200);
+
+    const accept = await call(h, 'POST', `/api/battles/${b.id}/accept`, { user: FREE_D });
+    expect(accept.status).toBe(200);
+    expect(accept.body.status).toBe('active');
+  });
+
+  it('B14c. FREE felhasználó tippelhet az aktív párbajában', async () => {
+    const { matches } = await seedLeaderboard(h);
+    await h.competitions.upsertPrediction(FREE_D, matches[0].id, 2, 0); // ranglista-résztvevő lesz
+    const ids = threeIds(matches);
+    const b = (await createBattle(h, { user: PRO_A }, FREE_D, ids)).body;
+    await call(h, 'POST', `/api/battles/${b.id}/accept`, { user: FREE_D });
+
+    const p = await call(h, 'POST', `/api/battles/${b.id}/predictions`, { user: FREE_D }, {
+      competitionMatchId: ids[0], predictedHomeScore: 2, predictedAwayScore: 1,
+    });
+    expect(p.status).toBe(200);
   });
 
   it('B15. Harmadik fél nem látja és nem módosíthatja más párbaját', async () => {
@@ -458,19 +481,33 @@ describe('Battle – jogosultság és biztonság', () => {
     expect((await createBattle(h, { user: PRO_A }, PRO_NONAME, ids)).body.code).toBe('OPPONENT_NOT_ELIGIBLE');
   });
 
-  it('B17. Kihívható kör: KIZÁRÓLAG a Tippverseny ranglistán szereplő PRO résztvevők', async () => {
+  it('B17. Kihívható kör: a ranglista NÉVVEL rendelkező résztvevői – csomagtól függetlenül', async () => {
     await seedLeaderboard(h); // PRO_A, PRO_B, PRO_C tippelt
     const r = await call(h, 'GET', '/api/battles/eligible-opponents', { user: PRO_A });
     expect(r.status).toBe(200);
     const ids = (r.body as any[]).map((o) => o.userId).sort();
     expect(ids).toEqual([PRO_B, PRO_C].sort());
-    // sem önmaga, sem FREE, sem a név nélküli PRO nincs benne
+    // önmaga nincs benne, és a név nélküli sem – de ez NEM csomagkérdés
     expect(ids).not.toContain(PRO_A);
-    expect(ids).not.toContain(FREE_D);
     expect(ids).not.toContain(PRO_NONAME);
+    // FREE_D csak azért hiányzik, mert még nem tippelt a versenyen
+    expect(ids).not.toContain(FREE_D);
     for (const o of r.body as any[]) {
       expect(Object.keys(o).sort()).toEqual(['avatar', 'borderKey', 'displayName', 'titleKey', 'userId']);
     }
+  });
+
+  it('B17b. A ranglistán szereplő FREE játékos IS kihívható', async () => {
+    const { competitionId, matches } = await seedLeaderboard(h);
+    // FREE_D is tippel – ettől ranglista-résztvevő lesz
+    await h.competitions.upsertPrediction(FREE_D, matches[0].id, 2, 0);
+    expect(competitionId).toBeTruthy();
+
+    const r = await call(h, 'GET', '/api/battles/eligible-opponents', { user: PRO_A });
+    expect((r.body as any[]).map((o) => o.userId)).toContain(FREE_D);
+
+    // és ténylegesen ki is hívható
+    expect((await createBattle(h, { user: PRO_A }, FREE_D, threeIds(matches))).status).toBe(200);
   });
 
   it('B18. A kihívónak kell megjelenítési név (DISPLAY_NAME_REQUIRED)', async () => {
@@ -733,10 +770,10 @@ describe('Battle – tippbeküldés és az ellenfél tippjének kitakarása', ()
 });
 
 // ===========================================================================
-// B31–B33  PRO lejárat battle közben
+// B31–B33  A csomag (FREE/PRO) nem befolyásolja a párbajt
 // ===========================================================================
 
-describe('Battle – PRO lejárat futó párbaj közben', () => {
+describe('Battle – a csomag nem befolyásolja a párbajt', () => {
   it('B31. A már elfogadott párbaj a PRO elvesztése után is végigvihető', async () => {
     const { matches } = await seedLeaderboard(h);
     const ids = threeIds(matches);
@@ -760,15 +797,15 @@ describe('Battle – PRO lejárat futó párbaj közben', () => {
     expect(p2.status).toBe(200);
   });
 
-  it('B32. PRO nélkül viszont ÚJ párbaj nem indítható és nem fogadható el', async () => {
+  it('B32. A PRO elvesztése után is indítható és elfogadható ÚJ párbaj (nincs csomagkapu)', async () => {
     const { matches } = await seedLeaderboard(h);
     const ids = threeIds(matches);
     const incoming = (await createBattle(h, { user: PRO_B }, PRO_A, ids)).body;
 
     h.proUsers.delete(PRO_A);
 
-    expect((await createBattle(h, { user: PRO_A }, PRO_C, ids)).body.code).toBe('PRO_REQUIRED');
-    expect((await call(h, 'POST', `/api/battles/${incoming.id}/accept`, { user: PRO_A })).body.code).toBe('PRO_REQUIRED');
+    expect((await createBattle(h, { user: PRO_A }, PRO_C, ids)).status).toBe(200);
+    expect((await call(h, 'POST', `/api/battles/${incoming.id}/accept`, { user: PRO_A })).status).toBe(200);
   });
 
   it('B33. PRO nélkül a bejövő kihívás elutasítható és a kimenő visszavonható', async () => {
