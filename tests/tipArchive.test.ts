@@ -359,7 +359,7 @@ describe('adatbázis-garanciák', () => {
     expect(sql).not.toMatch(/create policy/i);
     expect(sql).not.toMatch(/^\s*(drop|alter table (?!public\.model_tip_archive))/im);
     // nincs security definer függvény (a megjegyzés-sorokat kihagyva)
-    const code = sql.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+    const code = sql.split(/\r?\n/).map((l) => l.replace(/--.*$/, '')).join('\n');
     expect(code).not.toMatch(/security definer/i);
   });
 });
