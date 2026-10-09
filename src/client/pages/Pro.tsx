@@ -7,6 +7,9 @@ import { useAuth } from '../auth/AuthContext';
 import { STATUS_LABEL, expiryText } from '../auth/useProfile';
 import { FREE_DAILY_TIPS, usePlan } from '../auth/PlanContext';
 import { PlanBadge } from '../auth/ProfileCard';
+import {
+  PlannedPricingCards, PlannedPricingHeader, ReferralProgramCard,
+} from '../components/PlannedPricing';
 import { fmtDateTime, useAsync } from '../lib/format';
 import { api } from '../lib/api';
 
@@ -109,7 +112,10 @@ export default function Pro() {
             <h2 className="flex items-center gap-2 text-lg font-extrabold tracking-tight"><Crown className="h-5 w-5 text-secondary" /> PRO</h2>
             {configured && loggedIn && <PlanBadge pro={pro} />}
           </div>
-          <div className="mt-1 text-3xl font-black tracking-tight text-primary">{price}</div>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-3xl font-black tracking-tight text-primary">{price}</span>
+            <span className="badge badge-blue">jelenlegi ár</span>
+          </div>
           <p className="mt-1 text-xs font-semibold text-text-muted">Bármikor lemondható. Biztonságos fizetés Stripe-on keresztül – a kártyaadatok nem kerülnek a mi szerverünkre.</p>
 
           <ul className="mt-4 space-y-2.5">
@@ -149,6 +155,20 @@ export default function Pro() {
           )}
         </Card>
       )}
+
+      {/* --------------------- Tervezett árazás (BEMUTATÓ) ---------------------
+          A fenti „PRO” kártya a MA ÉRVÉNYES ajánlat: az ára a billingConfig()-ból
+          jön, és a „PRO aktiválása” gomb a meglévő Stripe Checkoutot indítja.
+          Az alábbi blokk ezzel szemben JAVASLAT: a gombjai nem működnek, és a
+          felszámított összeget nem befolyásolják. Ugyanaz a komponens, mint a
+          nyitóoldalon, hogy a két felület ne mutathasson eltérő árat.      */}
+      <section aria-labelledby="tervezett-arazas" className="space-y-4">
+        <div id="tervezett-arazas">
+          <PlannedPricingHeader title="Tervezett árazás és ajánlói program" />
+        </div>
+        <PlannedPricingCards />
+        <ReferralProgramCard />
+      </section>
 
       <Note>A TippStats elemző eszköz – egyetlen csomag sem ígér nyereséget. Az előfizetés státuszát csak a szerver módosíthatja; a felületről nem állítható át.</Note>
       <Disclaimer />
