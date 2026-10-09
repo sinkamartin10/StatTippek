@@ -2,6 +2,7 @@
  * API kliens. Minden hívás a szerver /api végpontjaira megy; a frontend nem tartalmaz és nem is kap API kulcsot.
  */
 import type { DailyQuota } from '@shared/freeQuota';
+import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
 } from '@shared/battles';
@@ -197,6 +198,9 @@ export const api = {
   followers: (limit?: number, before?: string) =>
     request<FollowListResponse>(`/followers${qs({ limit, before })}`, {}, '/api/social'),
   topTipsters: () => request<TopTipstersResponse>('/top-tipsters', {}, '/api/social'),
+  /** Modell-tipp archívum – nyilvános, csak elkezdődött meccsek. */
+  tipArchive: (q: TipArchiveQuery) =>
+    request<TipArchiveResponse>(qs({ ...q }), {}, '/api/tip-archive'),
   /** Achievement-kiemelés mentése – FREE és PRO egyaránt. */
   saveShowcase: (showcase: string[]) =>
     request<{ settings: ProfileSettings; rejected: string[] }>('/showcase', {

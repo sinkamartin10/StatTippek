@@ -25,6 +25,13 @@ export interface MatchDataProvider {
   getTeam(id: string): Promise<Team | null>;
   getMatches(q: MatchQuery): Promise<Match[]>;
   getMatch(id: string): Promise<Match | null>;
+  /**
+   * Opcionális: a meccs állapota a szolgáltató memóriabeli gyorsítótárának
+   * megkerülésével (a meglévő, gyorsítótárazott HTTP-úton). Akinek nincs ilyen
+   * útja, az nem implementálja – a hívó ilyenkor tudja, hogy a `getMatch`
+   * eredménye elavult lehet.
+   */
+  getMatchFresh?(id: string): Promise<Match | null>;
   /** Az elemzéshez szükséges lejátszott meccsek (a két csapat + a bajnokság). */
   getResultsForAnalysis(match: Match): Promise<MatchResult[]>;
   /** Egy csapat összes elérhető lejátszott meccse. */

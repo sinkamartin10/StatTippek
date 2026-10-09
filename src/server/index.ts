@@ -7,6 +7,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { buildContainer } from './container';
 import { AnalysisService } from './services/analysisService';
+import { TipArchiveService } from './tipArchive/service';
+import { tipArchiveRouter } from './routes/tipArchive';
 import { apiRouter } from './routes/api';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
@@ -30,7 +32,9 @@ import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseConfigured } from './billing/supabaseAdmin';
 
 const container = buildContainer();
-const service = new AnalysisService(container);
+// Modell-tipp archívum: a motor egyetlen hívási pontja (AnalysisService) rögzít bele
+const tipArchiveService = new TipArchiveService(container.tipArchive, container.data);
+const service = new AnalysisService(container, tipArchiveService);
 // A PRO-állapot KIZÁRÓLAG szerveroldalról, a meglévő profiles/Stripe adatból jön
 const progressionService: ProgressionService = new ProgressionService(
   container.progression,
@@ -192,6 +196,8 @@ app.use('/api/notifications', notificationsRouter(notificationService));
 app.use('/api/social', socialRouter(socialService));
 app.use('/api/coins', coinsRouter(coinService));
 app.use('/api/shop', shopRouter(coinService));
+// Modell-tipp archívum – nyilvános, csak olvasható (csak elkezdődött meccsek)
+app.use('/api/tip-archive', tipArchiveRouter(tipArchiveService));
 app.use('/api', apiRouter(container, service));
 
 // Ismeretlen /api útvonal
@@ -248,6 +254,11 @@ app.listen(port, async () => {
       if (missingProgression.length) {
         console.warn('Progression táblák hiányoznak:', missingProgression.join(', '));
         console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0006_progression.sql, 0007_missions.sql, 0008_free_daily_quota.sql és 0009_battles.sql');
+      }
+      const missingArchive = await container.tipArchive.healthCheck();
+      if (missingArchive.length) {
+        console.warn('Modell-tipp archívum hiányzik (a tippek addig nem rögzülnek):', missingArchive.join(', '));
+        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0014_model_tip_archive.sql');
       }
     }
     const pruned = container.db.pruneCache();

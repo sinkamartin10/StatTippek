@@ -21,6 +21,7 @@ import Discover from './pages/Discover';
 import Following from './pages/Following';
 import Stats from './pages/Stats';
 import History from './pages/History';
+import TipArchive from './pages/TipArchive';
 import Sources from './pages/Sources';
 import Settings from './pages/Settings';
 import MatchDetail from './pages/MatchDetail';
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/admin/tippverseny" element={<RequireAuth><AdminCompetitions /></RequireAuth>} />
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
+        <Route path="/modell-archivum" element={<TipArchive />} />
         <Route path="/forrasok" element={<Sources />} />
         <Route path="/beallitasok" element={<Settings />} />
         <Route path="/meccs/:id" element={<MatchDetail />} />

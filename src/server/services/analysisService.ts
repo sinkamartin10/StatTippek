@@ -8,6 +8,7 @@ import { analyzeMatch } from '../../shared/engine/analysis';
 import { marketLabel } from '../../shared/engine/markets';
 import { randomUUID } from 'node:crypto';
 import type { Container } from '../container';
+import type { TipArchiveService } from '../tipArchive/service';
 
 const RESEARCH_TTL_MS = 30 * 60_000;
 const ANALYSIS_TTL_MS = 5 * 60_000;
@@ -17,7 +18,29 @@ export class AnalysisService {
   /** párhuzamos kérések ugyanarra a meccsre egyetlen számítást indítanak */
   private inflight = new Map<string, Promise<MatchAnalysis | null>>();
 
-  constructor(private c: Container) {}
+  /** a még futó archívum-írások (a tesztek ezt várhatják meg) */
+  private archiveWrites = new Set<Promise<unknown>>();
+  private archiveWarnedAt = 0;
+  /**
+   * Archívum-írási hibák számlálója. A napló percenként legfeljebb egy sort
+   * kap, de a közben kihagyott hibák száma nem vész el: a következő naplósor
+   * (hiba vagy – ha nincs újabb hiba – a következő sikeres írás után egy
+   * összegző sor) kiírja. Csak számot, időpontot és a hibaüzenet rövid
+   * elejét tároljuk – felhasználói adatot, tokent vagy tipp-tartalmat nem.
+   */
+  private archiveFailures = { total: 0, suppressed: 0, lastAt: null as string | null, lastMessage: null as string | null };
+
+  /**
+   * @param archive Modell-tipp archívum. Ez az EGYETLEN hely, ahol a motor
+   * (analyzeMatch) lefut, ezért minden fogyasztó (mérkőzésoldal, Tippek lista,
+   * szelvényépítő, tippmentés) kimenete innen rögzül.
+   */
+  constructor(private c: Container, private archive: Pick<TipArchiveService, 'record'> | null = null) {}
+
+  /** Megvárja a folyamatban lévő archívum-írásokat (tesztekhez, leállításhoz). */
+  async archiveIdle(): Promise<void> {
+    while (this.archiveWrites.size) await Promise.allSettled([...this.archiveWrites]);
+  }
 
   invalidateAll() { this.cache.clear(); }
 
@@ -111,7 +134,46 @@ export class AnalysisService {
 
     const analysis = analyzeMatch({ match, league, homeTeam, awayTeam, results, odds, research, now: new Date().toISOString(), modelOptions, seasonStart });
     this.cache.set(key, { at: Date.now(), value: analysis });
+    this.recordInArchive(analysis);
     return analysis;
+  }
+
+  /**
+   * A ténylegesen kiszámolt tippek rögzítése a Modell-tipp archívumban.
+   * NEM blokkol és NEM dönthet el elemzést: az archívum hibája csak naplózódik,
+   * a felhasználó a tippjeit ugyanúgy megkapja.
+   */
+  private recordInArchive(analysis: MatchAnalysis): void {
+    if (!this.archive) return;
+    const f = this.archiveFailures;
+    const p = this.archive.record(analysis).then(
+      () => {
+        // Sikeres írás: ha korábban kihagyott hibák maradtak naplózatlanul, összegezzük őket
+        if (f.suppressed && Date.now() - this.archiveWarnedAt >= 60_000) {
+          this.archiveWarnedAt = Date.now();
+          console.warn(`[tip-archive] ${f.suppressed} rögzítési hiba nem került külön naplóba (összesen ${f.total}; utolsó: ${f.lastAt}: ${f.lastMessage})`);
+          f.suppressed = 0;
+        }
+      },
+      (e: Error) => {
+        f.total++;
+        f.lastAt = new Date().toISOString();
+        f.lastMessage = String(e?.message ?? e).slice(0, 200);
+        // percenként legfeljebb egy naplósor (pl. ha a 0014 még nincs lefuttatva)
+        if (Date.now() - this.archiveWarnedAt < 60_000) { f.suppressed++; return; }
+        this.archiveWarnedAt = Date.now();
+        const skipped = f.suppressed ? ` (+${f.suppressed} kihagyott hiba az előző naplósor óta; összesen ${f.total})` : ` (összesen ${f.total})`;
+        f.suppressed = 0;
+        console.error(`[tip-archive] a rögzítés sikertelen (az elemzést nem érinti)${skipped}:`, f.lastMessage);
+      },
+    );
+    this.archiveWrites.add(p);
+    void p.finally(() => this.archiveWrites.delete(p));
+  }
+
+  /** Az archívum-írási hibák összesítése (megfigyelhetőség, tesztek). */
+  archiveFailureStats(): { total: number; suppressed: number; lastAt: string | null; lastMessage: string | null } {
+    return { ...this.archiveFailures };
   }
 
   /** "Mai tippek": minden, a napon még le nem játszott meccs tippjei. */

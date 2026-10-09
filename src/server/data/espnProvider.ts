@@ -191,7 +191,12 @@ export class EspnProvider implements MatchDataProvider {
 
   // ---------- Meccsek ----------
 
-  private toMatch(ev: Json, leagueId: string): Match | null {
+  /**
+   * @param remember false esetén a meccset és az oddsot NEM írja a közös
+   * memóriabeli térképekbe (a `getMatchFresh` így nem változtatja meg, mit
+   * lát a többi fogyasztó a `getMatch`-en át).
+   */
+  private toMatch(ev: Json, leagueId: string, remember = true): Match | null {
     const comp = ev.competitions?.[0];
     if (!comp) return null;
     const slug = SLUG[leagueId];
@@ -231,6 +236,7 @@ export class EspnProvider implements MatchDataProvider {
       awayGoals: status === 'scheduled' ? undefined : score(away),
       origin: 'live',
     };
+    if (!remember) return m;
     this.matches.set(m.id, m);
     const odds = this.toOdds(m.id, comp.odds?.[0]);
     if (odds) this.odds.set(m.id, odds);
@@ -317,6 +323,24 @@ export class EspnProvider implements MatchDataProvider {
     const comp = data?.header?.competitions?.[0];
     if (!comp) return null;
     return this.toMatch({ id: m[2], date: comp.date, status: comp.status, competitions: [comp] }, leagueId);
+  }
+
+  /**
+   * A meccs állapota a memóriabeli térkép MEGKERÜLÉSÉVEL (a `getMatch` a
+   * térképben lévő – akár órák óta változatlan – objektumot adja vissza).
+   * Ugyanazt a summary-végpontot használja, ugyanazzal az 5 perces HTTP-
+   * gyorsítótárral, mint a `getMatch`: új végpont és sűrűbb hívás nincs. A
+   * közös térképeket nem írja, így más fogyasztók viselkedése nem változik.
+   */
+  async getMatchFresh(id: string): Promise<Match | null> {
+    const m = id.match(/^espn-([a-z0-9.]+)-(\d+)$/);
+    if (!m) return null;
+    const leagueId = LEAGUE_BY_SLUG[m[1]];
+    if (!leagueId) return null;
+    const data = await this.call(`${m[1]}/summary?event=${m[2]}`, 5 * MIN);
+    const comp = data?.header?.competitions?.[0];
+    if (!comp) return null;
+    return this.toMatch({ id: m[2], date: comp.date, status: comp.status, competitions: [comp] }, leagueId, false);
   }
 
   // ---------- Eredmények ----------
