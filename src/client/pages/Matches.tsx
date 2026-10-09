@@ -1,14 +1,24 @@
-import { useState } from 'react';
 import { api } from '../lib/api';
 import { useAsync, todayKey, fmtDayLabel } from '../lib/format';
+import { useUrlState } from '../lib/listState';
 import { applyClientFilters, defaultFilters, MatchFilters, MatchGrid } from '../components/MatchList';
 import { Card, Disclaimer, ErrorBox, Loading, Note } from '../components/ui';
 import { useFreeDay, usePlan } from '../auth/PlanContext';
 
 export default function Matches() {
-  const [f, setF] = useState(defaultFilters());
+  /**
+   * A választott nap és a szűrők az URL-BEN élnek. Így a meccs megnyitása
+   * után a „Vissza” ugyanazt a napot adja vissza (a böngésző az előzményből
+   * állítja helyre a címet), és a `?date=…` cím újratöltve is működik.
+   */
+  const [f, setF] = useUrlState(defaultFilters(), ['date']);
   const leagues = useAsync(() => api.leagues(), []);
-  const matches = useAsync(() => api.matches({ date: f.date, leagueId: f.leagueId, country: f.country, importance: f.importance }), [f.date, f.leagueId, f.country, f.importance]);
+  const matches = useAsync(
+    () => api.matches({ date: f.date, leagueId: f.leagueId, country: f.country, importance: f.importance }),
+    [f.date, f.leagueId, f.country, f.importance],
+    // Visszalépéskor az utolsó friss lista azonnal látszik, és a háttérben frissül
+    `matches:${f.date}|${f.leagueId}|${f.country}|${f.importance}`,
+  );
   const list = matches.data ? applyClientFilters(matches.data, f) : [];
   const { pro } = usePlan();
   const free = useFreeDay(f.date);

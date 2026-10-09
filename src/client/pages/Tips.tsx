@@ -4,6 +4,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { marketType, type MarketType } from '@shared/engine/markets';
 import { api } from '../lib/api';
 import { signed, todayKey, useAsync } from '../lib/format';
+import { useUrlState } from '../lib/listState';
 import { Accordion, Card, ChipGroup, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
 import { TipCard } from '../components/TipCard';
 import { FREE_DAILY_TIPS, LockedBlock, usePlan } from '../auth/PlanContext';
@@ -11,7 +12,10 @@ import { FREE_DAILY_TIPS, LockedBlock, usePlan } from '../auth/PlanContext';
 const TYPES: MarketType[] = ['1X2', 'dupla esély', 'gólszám', 'BTTS', 'csapat gólszám', 'pontos eredmény', 'hendikep'];
 
 export default function Tips() {
-  const [date, setDate] = useState(todayKey());
+  // A nap az URL-ben: a tipp megnyitása után a „Vissza” ugyanide hoz vissza
+  const [params, setParams] = useUrlState({ date: todayKey() }, ['date']);
+  const date = params.date;
+  const setDate = (v: string) => setParams({ date: v });
   const [minProb, setMinProb] = useState(60);
   const [minDiff, setMinDiff] = useState(-100);
   const [minSample, setMinSample] = useState(10);
@@ -19,7 +23,7 @@ export default function Tips() {
   const [types, setTypes] = useState<MarketType[]>(TYPES);
   const [cat, setCat] = useState('');
   const [quality, setQuality] = useState('');
-  const tips = useAsync(() => api.tips(date), [date]);
+  const tips = useAsync(() => api.tips(date), [date], `tips:${date}`);
   const { pro } = usePlan();
 
   const list = useMemo(() => (tips.data ?? []).filter((t) => {

@@ -50,19 +50,75 @@ export function todayKey(offsetDays = 0) {
 export const IMPORTANCE_LABEL: Record<string, string> = { low: 'Alacsony', normal: 'Normál', high: 'Kiemelt', top: 'Rangadó' };
 export const STATUS_LABEL: Record<string, string> = { scheduled: 'Tervezett', live: 'Élő', finished: 'Lejátszott', postponed: 'Elhalasztva' };
 
+/**
+ * Rövid életű pillanatkép az utolsó sikeres lekérésekről.
+ *
+ * MIÉRT: ha a felhasználó megnyit egy meccset, majd visszalép, a lista
+ * komponens ÚJRA csatolódik, és egy üres töltőképernyőn át jutna el ugyanahhoz
+ * az adathoz. A pillanatkép ilyenkor azonnal megmutatja a korábbi listát,
+ * miközben a háttérben mindig újratöltünk – így a frissességi garancia NEM
+ * gyengül, csak a villogás tűnik el.
+ *
+ * A tárolás szándékosan szűk: memóriában él (újratöltésnél eltűnik), kötött
+ * elemszámmal, és rövid lejárattal – elavult adatot nem őrizgetünk.
+ */
+const SNAPSHOT_TTL_MS = 60_000;
+const SNAPSHOT_MAX = 20;
+const snapshots = new Map<string, { at: number; data: unknown }>();
+
+function readSnapshot<T>(key: string | null): T | null {
+  if (!key) return null;
+  const hit = snapshots.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > SNAPSHOT_TTL_MS) { snapshots.delete(key); return null; }
+  return hit.data as T;
+}
+
+function writeSnapshot(key: string | null, data: unknown): void {
+  if (!key) return;
+  // A legrégebbi kulcs esik ki először – a Map beszúrási sorrendet tart
+  if (snapshots.size >= SNAPSHOT_MAX) {
+    const oldest = snapshots.keys().next().value;
+    if (oldest !== undefined) snapshots.delete(oldest);
+  }
+  snapshots.set(key, { at: Date.now(), data });
+}
+
+/** Teszthez / kijelentkezéshez: a pillanatképek eldobása. */
+export const clearSnapshots = (): void => { snapshots.clear(); };
+
 /** Egyszerű adatlekérő hook: betöltés/hiba/adat állapottal. */
-export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
-  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: true });
+export function useAsync<T>(
+  fn: () => Promise<T>,
+  deps: unknown[],
+  /**
+   * Nem kötelező pillanatkép-kulcs. Megadva a hook az utolsó friss eredményt
+   * AZONNAL megmutatja (nincs töltőképernyő), és a háttérben újratölt.
+   * Kulcs nélkül a viselkedés bitre azonos a korábbival.
+   */
+  snapshotKey?: string | null,
+) {
+  const seed = snapshotKey ? readSnapshot<T>(snapshotKey) : null;
+  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>(
+    seed != null ? { data: seed, error: null, loading: false } : { data: null, error: null, loading: true },
+  );
   const [tick, setTick] = useState(0);
   useEffect(() => {
     let alive = true;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    const cached = snapshotKey ? readSnapshot<T>(snapshotKey) : null;
+    // Van friss pillanatkép? Akkor azt mutatjuk, és csendben revalidálunk.
+    setState((s) => (cached != null
+      ? { data: cached, error: null, loading: false }
+      : { ...s, loading: true, error: null }));
     fn().then(
-      (data) => alive && setState({ data, error: null, loading: false }),
+      (data) => {
+        writeSnapshot(snapshotKey ?? null, data);
+        if (alive) setState({ data, error: null, loading: false });
+      },
       (e: Error) => alive && setState({ data: null, error: e.message, loading: false }),
     );
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
+  }, [...deps, tick, snapshotKey]);
   return { ...state, reload: () => setTick((t) => t + 1) };
 }
