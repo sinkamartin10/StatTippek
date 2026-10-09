@@ -16,7 +16,8 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, Check, ChevronDown, Crown, LogIn, Menu, ShieldAlert, Swords, Trophy, UserPlus, X,
+  ArrowRight, Check, ChevronDown, Crown, Gift, LogIn, Menu, ShieldAlert, Swords, Trophy,
+  UserPlus, Users, X,
 } from 'lucide-react';
 import type { LeaderboardRow } from '@shared/competition';
 import { POINTS_EXACT, POINTS_OUTCOME } from '@shared/competition';
@@ -61,6 +62,29 @@ const FREE_FEATURES = [
   'Értesítések',
   'Coin-gyűjtés és Shop kozmetikumok',
   'Nyilvános játékosprofil',
+];
+
+/**
+ * TERVEZETT árazás – KIZÁRÓLAG BEMUTATÁSRA.
+ *
+ * FIGYELEM: ezek JAVASLATOK, nem élő árak. A ténylegesen felszámított összeget
+ * a Stripe ár-azonosítója határozza meg; ez a szekció csak szöveget jelenít
+ * meg, és SEMMILYEN fizetési folyamatot nem indít. A jelenleg érvényes árat a
+ * `billingConfig()` adja, és a lap alján külön ki is írjuk, hogy a látogató ne
+ * keverje össze a kettőt.
+ */
+const PLANNED_PRICE = {
+  pro: '3 490 Ft/hó',
+  referrer: '2 990 Ft/hó',
+  invitedFirst: '2 490 Ft',
+  invitedLater: '3 490 Ft/hó',
+};
+
+/** A tervezett PRO-csomag tételei (a meglévő PRO funkciókra építve). */
+const PLANNED_PRO_FEATURES = [
+  'Minden PRO-ban elérhető mérkőzés',
+  'AI-alapú mérkőzés-elemzés',
+  'Futball-statisztikák és a további PRO funkciók',
 ];
 
 /** A PRO lista csak olyan tételt tartalmaz, ami ma is `requirePro` vagy PRO-kapus. */
@@ -252,10 +276,59 @@ export default function Landing() {
         </p>
       </section>
 
-      {/* ----------------------------- FREE és PRO ----------------------------- */}
+      {/* --------------------- Tervezett árazás (BEMUTATÓ) ---------------------
+          FIGYELEM: ez a szekció JAVASOLT árakat mutat, nem élőket. Egyetlen
+          gombja sem indít fizetést, és a ténylegesen felszámított összeget nem
+          befolyásolja – azt a Stripe ár-azonosítója határozza meg. A ma
+          érvényes árat a szekció alján, külön kártyán írjuk ki.           */}
       <section id="csomagok" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 lg:px-8">
-        <h2 className="text-2xl font-black tracking-tight md:text-3xl">Kezdd ingyen. Fejlődj tovább.</h2>
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-2xl font-black tracking-tight md:text-3xl">
+            Több meccs. Több statisztika. Mélyebb AI-elemzés.
+          </h2>
+          <span className="badge badge-yellow">Tervezett árazás</span>
+        </div>
+        <p className="mt-2 max-w-2xl text-sm font-semibold text-text-muted">
+          Az alábbi három csomag <strong className="text-text">javaslat</strong>, és még nem él.
+          A jelenleg érvényes előfizetési díjat lentebb és a PRO oldalon látod.
+        </p>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <PlanCard
+            icon={<Crown className="h-5 w-5 text-secondary" />}
+            title="PRO"
+            price={PLANNED_PRICE.pro}
+            items={PLANNED_PRO_FEATURES}
+          />
+          <PlanCard
+            featured
+            icon={<Users className="h-5 w-5 text-primary" />}
+            title="PRO ajánlóval"
+            price={PLANNED_PRICE.referrer}
+            note="Akkor jár, ha legalább egy általad meghívott barátod aktív, fizető előfizető."
+            items={[
+              'Minden PRO funkció, ugyanúgy',
+              'Az ár akkor is ennyi marad, ha több barátod fizet elő',
+              'A kedvezmények nem adódnak össze',
+            ]}
+          />
+          <PlanCard
+            icon={<Gift className="h-5 w-5 text-success" />}
+            title="Hívj meg egy barátot"
+            price={PLANNED_PRICE.invitedFirst}
+            priceSuffix="az első hónap"
+            note={`A meghívott barátod ára az első hónap után ${PLANNED_PRICE.invitedLater}.`}
+            items={[
+              'A barátod az ajánlói linkkel fizet elő',
+              `Első hónap: ${PLANNED_PRICE.invitedFirst}`,
+              `Utána: ${PLANNED_PRICE.invitedLater}`,
+            ]}
+          />
+        </div>
+
+        {/* A MA ÉRVÉNYES csomagok – ez a rész valós, nem terv */}
+        <h3 className="mt-10 text-lg font-extrabold tracking-tight">Ami ma érvényes</h3>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="card p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-extrabold">FREE</h3>
@@ -274,7 +347,7 @@ export default function Landing() {
           <div className="card border-primary/40 p-6 shadow-lift">
             <div className="flex items-center justify-between gap-2">
               <h3 className="flex items-center gap-2 text-lg font-extrabold">
-                <Crown className="h-5 w-5 text-secondary" /> PRO
+                <Crown className="h-5 w-5 text-secondary" /> PRO – jelenlegi ár
               </h3>
               <span className="text-xl font-black text-primary">{price}</span>
             </div>
@@ -287,6 +360,49 @@ export default function Landing() {
             </ul>
             <Link to="/pro" className="btn btn-primary mt-5 w-full">PRO részletek <ArrowRight className="h-4 w-4" /></Link>
           </div>
+        </div>
+      </section>
+
+      {/* ------------------ Ajánlói program (BEMUTATÓ) ------------------
+          A program MÉG NEM INDULT EL. A minta-link nem működik, nem tartozik
+          fiókhoz, és semmilyen követést vagy jutalmat nem valósítunk meg. */}
+      <section id="ajanlo" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-12 lg:px-8">
+        <div className="card border-primary/30 p-6 md:p-10">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-black tracking-tight md:text-3xl">
+              Hívd meg a barátaidat, és mindketten jól jártok!
+            </h2>
+            <span className="badge badge-yellow">Tervezett ajánlói program · Hamarosan</span>
+          </div>
+
+          <p className="mt-4 max-w-3xl text-base font-semibold text-text-muted">
+            Hívd meg egy futballrajongó ismerősödet! Ha előfizet a TippStats PRO-ra, ő
+            kedvezményesen kezdhet, te pedig {PLANNED_PRICE.referrer} áron használhatod a PRO-t,
+            amíg legalább egy általad meghívott felhasználó aktív, fizető előfizető.
+          </p>
+
+          <div className="mt-7">
+            <ol className="space-y-3.5">
+              {[
+                ['01', 'Megosztod a linked', 'Minden PRO-felhasználó saját ajánlói linket kapna.'],
+                ['02', 'A barátod előfizet', `Az első hónapja ${PLANNED_PRICE.invitedFirst}, utána ${PLANNED_PRICE.invitedLater}.`],
+                ['03', 'Te kedvezményes áron maradsz', `${PLANNED_PRICE.referrer}, amíg legalább egy meghívottad aktív, fizető előfizető.`],
+              ].map(([n, title, text]) => (
+                <li key={n} className="flex gap-3">
+                  <span className="mono shrink-0 text-2xl font-black text-primary/30">{n}</span>
+                  <span className="min-w-0">
+                    <span className="block text-base font-extrabold">{title}</span>
+                    <span className="block text-sm font-semibold text-text-muted">{text}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <p className="mt-6 text-xs font-semibold text-text-muted">
+            A kedvezmények nem adódnak össze: több aktív meghívott esetén is {PLANNED_PRICE.referrer} az ár.
+            Az ajánlói program még nem indult el – ez a felület kizárólag bemutató.
+          </p>
         </div>
       </section>
 
@@ -379,6 +495,44 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Egy TERVEZETT csomag kártyája.
+ *
+ * A gombja SZÁNDÉKOSAN nem működik (`disabled`): ez a szekció bemutató, és
+ * semmilyen fizetési folyamatot nem indíthat. A ma érvényes előfizetés a
+ * szekció alján, a „PRO – jelenlegi ár” kártyáról érhető el.
+ */
+function PlanCard({ icon, title, price, priceSuffix, note, items, featured }: {
+  icon: React.ReactNode;
+  title: string;
+  price: string;
+  priceSuffix?: string;
+  note?: string;
+  items: string[];
+  featured?: boolean;
+}) {
+  return (
+    <div className={`card card-lift flex flex-col p-6 ${featured ? 'border-primary/40 shadow-lift' : ''}`}>
+      <h3 className="flex items-center gap-2 text-lg font-extrabold">{icon} {title}</h3>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
+        <span className="text-2xl font-black tracking-tight text-primary">{price}</span>
+        {priceSuffix && <span className="text-sm font-bold text-text-muted">{priceSuffix}</span>}
+      </div>
+      {note && <p className="mt-1.5 text-xs font-semibold text-text-muted">{note}</p>}
+      <ul className="mt-4 space-y-2.5 text-sm font-semibold">
+        {items.map((t) => (
+          <li key={t} className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" /> {t}
+          </li>
+        ))}
+      </ul>
+      <button type="button" disabled aria-disabled="true" className="btn mt-6 w-full">
+        Hamarosan
+      </button>
     </div>
   );
 }
