@@ -40,17 +40,6 @@ export const dateFromParams = (params: URLSearchParams): string => {
 };
 
 /**
- * Szöveges lista-állapot az URL keresési paramétereiben.
- *
- * Csak azokat a kulcsokat írjuk ki, amelyeknek van értékük, és a `date`-et
- * csak akkor, ha nem a mai nap – így a cím tiszta marad, amíg a felhasználó
- * nem tér el az alapértelmezéstől.
- *
- * A frissítés `replace: true`-val megy: a szűrőállítás NEM hoz létre új
- * előzmény-bejegyzést, különben egyetlen „Vissza” nem a meccslistáról a
- * meccsre vinne, hanem a szűrőzgetés lépéseit játszaná vissza.
- */
-/**
  * URL → állapot. A hiányzó kulcsok az alapértelmezést kapják, az érvénytelen
  * dátum pedig csendben visszaesik az alapértelmezésre.
  *
@@ -90,6 +79,17 @@ export function stateToParams<T extends Record<keyof T, string>>(
   return sp;
 }
 
+/**
+ * Szöveges lista-állapot az URL keresési paramétereiben.
+ *
+ * Csak azokat a kulcsokat írjuk ki, amelyeknek van értékük, és a `date`-et
+ * csak akkor, ha nem a mai nap – így a cím tiszta marad, amíg a felhasználó
+ * nem tér el az alapértelmezéstől.
+ *
+ * A frissítés `replace: true`-val megy: a szűrőállítás NEM hoz létre új
+ * előzmény-bejegyzést, különben egyetlen „Vissza” nem a meccslistáról a
+ * meccsre vinne, hanem a szűrőzgetés lépéseit játszaná vissza.
+ */
 export function useUrlState<T extends Record<keyof T, string>>(
   defaults: T,
   /** Mely kulcsokat NE írjuk ki, ha az alapértelmezéssel egyeznek. */

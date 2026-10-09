@@ -84,9 +84,6 @@ function writeSnapshot(key: string | null, data: unknown): void {
   snapshots.set(key, { at: Date.now(), data });
 }
 
-/** Teszthez / kijelentkezéshez: a pillanatképek eldobása. */
-export const clearSnapshots = (): void => { snapshots.clear(); };
-
 /** Egyszerű adatlekérő hook: betöltés/hiba/adat állapottal. */
 export function useAsync<T>(
   fn: () => Promise<T>,
