@@ -8,7 +8,7 @@ import { analyzeMatch } from '../../shared/engine/analysis';
 import { marketLabel } from '../../shared/engine/markets';
 import { randomUUID } from 'node:crypto';
 import type { Container } from '../container';
-import type { TipArchiveService } from '../tipArchive/service';
+import { baselineServed, type TipArchiveService } from '../tipArchive/service';
 
 const RESEARCH_TTL_MS = 30 * 60_000;
 const ANALYSIS_TTL_MS = 5 * 60_000;
@@ -146,7 +146,10 @@ export class AnalysisService {
   private recordInArchive(analysis: MatchAnalysis): void {
     if (!this.archive) return;
     const f = this.archiveFailures;
-    const p = this.archive.record(analysis).then(
+    // A felhasználó PONTOSAN ezt az elemzést kapja (nincs kiszolgálási transzformáció): a
+    // kiszolgált modell az alap motor, a kiszolgált érték a nyers kimenet. Kalibráció
+    // éles kiszolgálása nincs bekötve (az aktiválás tiltott) – lásd SERVING_NOTE.
+    const p = this.archive.record(analysis, baselineServed(analysis)).then(
       () => {
         // Sikeres írás: ha korábban kihagyott hibák maradtak naplózatlanul, összegezzük őket
         if (f.suppressed && Date.now() - this.archiveWarnedAt >= 60_000) {

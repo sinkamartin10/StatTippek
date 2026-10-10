@@ -27,6 +27,7 @@ import { PostgresNotificationStore, SqliteNotificationStore, type NotificationSt
 import { PostgresCoinStore, SqliteCoinStore, type CoinStore } from './coins/store';
 import { PostgresFollowStore, SqliteFollowStore, type FollowStore } from './social/store';
 import { PostgresTipArchiveStore, SqliteTipArchiveStore, type TipArchiveStore } from './tipArchive/store';
+import { PostgresModelLearningStore, SqliteModelLearningStore, type ModelLearningStore } from './modelLearning/store';
 
 export interface Container {
   data: MatchDataProvider;
@@ -50,6 +51,8 @@ export interface Container {
   follows: FollowStore;
   /** Modell-tipp archívum – saját tábla a 0014-ből; felhasználói adatot nem tárol */
   tipArchive: TipArchiveStore;
+  /** Modell-kalibráció (tanulási réteg) – saját táblák a 0015-ből; az archívumot csak olvassa */
+  learning: ModelLearningStore;
   status(): AppStatus;
 }
 
@@ -123,6 +126,11 @@ export function buildContainer(): Container {
     ? new PostgresTipArchiveStore(supabaseUrl, serviceRoleKey)
     : new SqliteTipArchiveStore(db.sqliteHandle());
 
+  // Modell-kalibráció: élesben Supabase (0015); helyben SQLite – az archívum-tároló UTÁN, mert annak nézeteit olvassa
+  const learning: ModelLearningStore = supabaseUrl && serviceRoleKey
+    ? new PostgresModelLearningStore(supabaseUrl, serviceRoleKey)
+    : new SqliteModelLearningStore(db.sqliteHandle());
+
   return {
     data,
     research,
@@ -136,6 +144,7 @@ export function buildContainer(): Container {
     coins,
     follows,
     tipArchive,
+    learning,
     status: () => ({
       dataMode: data.origin,
       requestedMode,

@@ -64,8 +64,51 @@ const RESPONSE_TTL_MS = 30_000;
 const MAX_MEMO = 2_000;
 
 /** Tartalom-hash: CSAK a tipp lényegi tartalma (odds és időbélyeg nélkül). */
-export function contentHash(matchId: string, market: string, category: string, modelProb: number, engineVersion = ENGINE_VERSION): string {
-  return createHash('sha256').update(`${engineVersion}|${matchId}|${market}|${category}|${modelProb.toFixed(3)}`).digest('hex');
+export function contentHash(
+  matchId: string, market: string, category: string, modelProb: number, engineVersion = ENGINE_VERSION,
+  served?: { model: string; prob: number },
+): string {
+  // Az alap motor kiszolgálásakor a hash BITRE azonos a provenance előtti
+  // képlettel – így a meglévő (legacy) sorokhoz képest a tartalmilag azonos
+  // újraszámolás nem hoz létre új verziót. Kalibrált kiszolgálásnál a
+  // kiszolgáló modell és a kiszolgált érték is a tartalom része.
+  const extra = served && served.model !== engineVersion ? `|${served.model}|${served.prob.toFixed(3)}` : '';
+  return createHash('sha256').update(`${engineVersion}|${matchId}|${market}|${category}|${modelProb.toFixed(3)}${extra}`).digest('hex');
+}
+
+/**
+ * A felhasználónak ténylegesen kiszolgált valószínűségek egy elemzéshez.
+ * `model`: az alap motor verziója, vagy `<alap>+cal-<12 hex>`.
+ */
+export interface ServedSnapshot {
+  model: string;
+  /** piac → kiszolgált valószínűség */
+  probs: Record<string, number>;
+}
+
+const SERVED_CALIBRATION = /^\+cal-[0-9a-f]{12}$/;
+
+/** Az alap motor kiszolgálása: a kiszolgált érték pontosan a nyers kimenet. */
+export function baselineServed(a: MatchAnalysis): ServedSnapshot {
+  return { model: ENGINE_VERSION, probs: Object.fromEntries(a.tips.map((t) => [t.market, t.modelProb])) };
+}
+
+export class ProvenanceError extends Error {}
+
+/**
+ * A kiszolgált pillanatkép ellenőrzése a nyers elemzéssel szemben. Bármilyen
+ * eltérésnél HIBA – a rögzítés inkább elmarad, mint hogy hamis eredetet írjon.
+ */
+export function validateServed(a: MatchAnalysis, served: ServedSnapshot, engineVersion = ENGINE_VERSION): void {
+  const isBaseline = served.model === engineVersion;
+  if (!isBaseline && !(served.model.startsWith(engineVersion) && SERVED_CALIBRATION.test(served.model.slice(engineVersion.length)))) {
+    throw new ProvenanceError(`ismeretlen kiszolgáló modell: ${served.model}`);
+  }
+  for (const t of a.tips) {
+    const p = served.probs[t.market];
+    if (typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1) throw new ProvenanceError(`hiányzó vagy érvénytelen kiszolgált érték: ${t.market}`);
+    if (isBaseline && p !== t.modelProb) throw new ProvenanceError(`alap motor kiszolgálásakor a kiszolgált érték eltér a nyerstől: ${t.market}`);
+  }
 }
 
 /**
@@ -291,24 +334,29 @@ export class TipArchiveService {
    * Egy ténylegesen lefutott elemzés tippjeinek rögzítése. Visszaadja az új
    * sorok számát. Meccsenként sorba állítva fut.
    */
-  record(analysis: MatchAnalysis): Promise<number> {
+  record(analysis: MatchAnalysis, served: ServedSnapshot = baselineServed(analysis)): Promise<number> {
     const id = analysis.match.id;
     const prev = this.chain.get(id) ?? Promise.resolve();
-    const next = prev.catch(() => undefined).then(() => this.recordInner(analysis));
+    const next = prev.catch(() => undefined).then(() => this.recordInner(analysis, served));
     this.chain.set(id, next);
     void next.finally(() => { if (this.chain.get(id) === next) this.chain.delete(id); }).catch(() => undefined);
     return next;
   }
 
-  private async recordInner(a: MatchAnalysis): Promise<number> {
+  private async recordInner(a: MatchAnalysis, served: ServedSnapshot): Promise<number> {
     let inserted = 0;
     if (a.poisson && a.tips.length) {
+      // Eredet-ellenőrzés: ha nem garantálható, nem rögzítünk (a hívó naplózza)
+      validateServed(a, served);
       const m = a.match;
       const kickoff = new Date(m.kickoff).toISOString();
       const generatedAt = new Date(a.generatedAt).toISOString();
       const seen = new Set<string>();
       const tips = a.tips.filter((t) => (seen.has(t.market) ? false : (seen.add(t.market), true)));
-      const wanted = new Map(tips.map((t) => [t.market, { tip: t, hash: contentHash(m.id, t.market, t.category, t.modelProb) }]));
+      const wanted = new Map(tips.map((t) => [t.market, {
+        tip: t,
+        hash: contentHash(m.id, t.market, t.category, t.modelProb, ENGINE_VERSION, { model: served.model, prob: served.probs[t.market] }),
+      }]));
 
       // ÁLLAPOT ELŐBB, SOROK UTÁNA: ha a meccsnek még nincs tárolt állapota,
       // a tipp-sorok beszúrása ELŐTT rögzítjük. Ha ez elbukik, nem keletkezik
@@ -345,6 +393,8 @@ export class TipArchiveService {
           supportingIndicators: Math.max(0, Math.round(t.supportingIndicators)),
           preKickoff: generatedAt < kickoff,
           availability: 'pro_on_request',
+          servedProb: served.probs[market],
+          servedModel: served.model,
         };
       };
 

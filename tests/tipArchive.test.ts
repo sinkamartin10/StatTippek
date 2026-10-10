@@ -19,6 +19,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof
 import { SqliteTipArchiveStore, type ArchiveDraft, type TipArchiveStore } from '../src/server/tipArchive/store';
 import {
   TipArchiveService, budapestDayStart, contentHash, decideObservation, observedStatusOf, parseArchiveQuery, TipArchiveError,
+  baselineServed, ProvenanceError,
 } from '../src/server/tipArchive/service';
 import type { ObservedStatus } from '../src/server/tipArchive/store';
 import { EspnProvider } from '../src/server/data/espnProvider';
@@ -89,13 +90,15 @@ function rows(db: DB, where = '1=1') {
 }
 
 function draft(over: Partial<ArchiveDraft> = {}): ArchiveDraft {
-  return {
+  const d: Omit<ArchiveDraft, 'servedProb' | 'servedModel'> & Partial<ArchiveDraft> = {
     matchId: 'mx', market: 'O2.5', versionNo: 1, contentHash: 'a'.repeat(64), engineVersion: ENGINE_VERSION,
     generatedAt: iso(T0.getTime() - 5 * H), origin: 'live', matchLabel: 'X – Y', leagueId: 'L1', leagueName: 'Liga',
     kickoff: iso(T0.getTime() - 2 * H), marketLabel: 'x', marketType: 'gólszám', category: 'mérsékelt', modelProb: 0.5,
     odds: null, impliedProb: null, dataQuality: 'magas', sampleSize: 1, supportingIndicators: 1, preKickoff: true,
     availability: 'pro_on_request', ...over,
   };
+  // alapértelmezés: az alap motor szolgált ki, a kiszolgált érték a nyers kimenet
+  return { ...d, servedProb: over.servedProb ?? d.modelProb, servedModel: over.servedModel ?? d.engineVersion };
 }
 
 interface Harness {
@@ -220,7 +223,7 @@ describe('rögzítés és verziózás', () => {
             if (!injected) {
               injected = true;
               // a másik példány RÉGEBBI számolása (1 mp-cel korábbi) foglalja el ugyanazt a sorszámot
-              await t.insertVersions(drafts.map((d) => ({ ...d, contentHash: 'f'.repeat(64), modelProb: 0.7, generatedAt: iso(T0.getTime() - 1000) })));
+              await t.insertVersions(drafts.map((d) => ({ ...d, contentHash: 'f'.repeat(64), modelProb: 0.7, servedProb: 0.7, generatedAt: iso(T0.getTime() - 1000) })));
             }
             return t.insertVersions(drafts);
           };
@@ -1232,5 +1235,131 @@ describe('archívum-írási hibák számlálója', () => {
     } finally {
       nowSpy.mockRestore(); errSpy.mockRestore(); warnSpy.mockRestore();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 15) Valószínűség-eredet (0016): nyers vs. kiszolgált érték, régi sorok
+// ---------------------------------------------------------------------------
+
+describe('valószínűség-eredet (provenance)', () => {
+  let h: Harness;
+  beforeEach(async () => { h = await harness(); });
+  afterEach(async () => { await h.close(); });
+
+  const m1 = () => match('pv1', iso(T0.getTime() + 6 * H));
+  const CAL = `${ENGINE_VERSION}+cal-0123456789ab`;
+
+  it('új sor: „recorded”, a kiszolgált érték PONTOSAN a nyers, a kiszolgáló az alap motor', async () => {
+    await h.svc.record(analysis(m1(), [{ market: 'O2.5', prob: 0.6137 }, { market: '1X', prob: 0.72 }], T0.toISOString()));
+    for (const r of rows(h.db)) {
+      expect(r.provenance).toBe('recorded');
+      expect(r.served_model).toBe(ENGINE_VERSION);
+      expect(r.served_prob).toBe(r.model_prob);
+    }
+  });
+
+  it('hibás eredet esetén NINCS rögzítés (inkább elmarad, mint hamis eredetet írjon)', async () => {
+    const a = analysis(m1(), [{ market: 'O2.5', prob: 0.61 }], T0.toISOString());
+    await expect(h.svc.record(a, { model: ENGINE_VERSION, probs: { 'O2.5': 0.62 } })).rejects.toThrow(ProvenanceError);
+    await expect(h.svc.record(a, { model: 'masik-motor', probs: { 'O2.5': 0.61 } })).rejects.toThrow(/ismeretlen kiszolgáló modell/);
+    await expect(h.svc.record(a, { model: `${ENGINE_VERSION}+cal-XYZ`, probs: { 'O2.5': 0.61 } })).rejects.toThrow(/ismeretlen kiszolgáló modell/);
+    await expect(h.svc.record(a, { model: CAL, probs: {} })).rejects.toThrow(/hiányzó vagy érvénytelen/);
+    await expect(h.svc.record(a, { model: CAL, probs: { 'O2.5': 1.2 } })).rejects.toThrow(/hiányzó vagy érvénytelen/);
+    expect(rows(h.db)).toHaveLength(0);
+  });
+
+  it('kalibrált kiszolgálás (jövőbeli képesség, tesztben): modell + érték rögzül; a kiszolgált érték változása új verzió, azonos tartalom nem', async () => {
+    const a = (gen: number) => analysis(m1(), [{ market: 'O2.5', prob: 0.61 }], iso(T0.getTime() + gen));
+    expect(await h.svc.record(a(0), { model: CAL, probs: { 'O2.5': 0.58 } })).toBe(1);
+    expect(await h.svc.record(a(1000), { model: CAL, probs: { 'O2.5': 0.58 } })).toBe(0);     // azonos tartalom
+    expect(await h.svc.record(a(2000), { model: CAL, probs: { 'O2.5': 0.55 } })).toBe(1);     // csak a kiszolgált érték változott
+    expect(await h.svc.record(a(3000), baselineServed(a(3000)))).toBe(1);                     // vissza az alap motorra
+    expect(rows(h.db).map((r) => [r.version_no, r.model_prob, r.served_model, r.served_prob])).toEqual([
+      [1, 0.61, CAL, 0.58], [2, 0.61, CAL, 0.55], [3, 0.61, ENGINE_VERSION, 0.61],
+    ]);
+  });
+
+  it('az alap motor kiszolgálásának hash-e bitre azonos a provenance előtti képlettel', () => {
+    expect(contentHash('m', 'O2.5', 'mérsékelt', 0.6, ENGINE_VERSION, { model: ENGINE_VERSION, prob: 0.6 }))
+      .toBe(contentHash('m', 'O2.5', 'mérsékelt', 0.6));
+    expect(contentHash('m', 'O2.5', 'mérsékelt', 0.6, ENGINE_VERSION, { model: CAL, prob: 0.6 }))
+      .not.toBe(contentHash('m', 'O2.5', 'mérsékelt', 0.6));
+  });
+
+  it('DB-szabály: régi sor nem állíthat kiszolgált értéket; alap motornál a kiszolgált = nyers', () => {
+    const ins = (prov: string, served: number | null, model: string | null) => () => h.db.prepare(
+      `INSERT INTO model_tip_archive (id, match_id, market, version_no, content_hash, engine_version, generated_at, origin, match_label,
+        league_id, league_name, kickoff, market_label, market_type, category, model_prob, data_quality, sample_size, supporting_indicators,
+        pre_kickoff, provenance, served_prob, served_model)
+       VALUES (?, ?, 'O2.5', 1, '${'a'.repeat(64)}', '${ENGINE_VERSION}', '2026-10-01T00:00:00.000Z', 'live', 'l', 'L', 'L',
+        '2026-10-02T00:00:00.000Z', 'x', 'y', 'mérsékelt', 0.5, 'magas', 1, 1, 1, ?, ?, ?)`,
+    ).run(`${prov}-${served}-${model}`, `m-${prov}-${served}-${model}`, prov, served, model);
+    expect(ins('legacy_baseline', 0.5, ENGINE_VERSION)).toThrow(/provenance/);
+    expect(ins('recorded', 0.6, ENGINE_VERSION)).toThrow(/provenance/);
+    expect(ins('recorded', null, ENGINE_VERSION)).toThrow(/provenance/);
+    expect(ins('recorded', 0.4, 'masik-motor')).toThrow(/provenance/);
+    expect(ins('recorded', 0.4, CAL)).not.toThrow();
+    expect(ins('legacy_baseline', null, null)).not.toThrow();
+  });
+
+  it('régi (0014-es) helyi tábla: bővítés „legacy” jelöléssel, kitalált érték nélkül; a régi sor nem írható át; azonos tartalom nem hoz új verziót', async () => {
+    const db = new DatabaseSync(':memory:');
+    // a provenance előtti séma (0014 megfelelője) egy már rögzített sorral
+    db.exec(`CREATE TABLE model_tip_archive (
+      id TEXT PRIMARY KEY, match_id TEXT NOT NULL, market TEXT NOT NULL, version_no INTEGER NOT NULL, content_hash TEXT NOT NULL,
+      engine_version TEXT NOT NULL, generated_at TEXT NOT NULL, origin TEXT NOT NULL, match_label TEXT NOT NULL, league_id TEXT NOT NULL,
+      league_name TEXT NOT NULL, kickoff TEXT NOT NULL, market_label TEXT NOT NULL, market_type TEXT NOT NULL, category TEXT NOT NULL,
+      model_prob REAL NOT NULL, odds_at_generation REAL, implied_prob REAL, data_quality TEXT NOT NULL, sample_size INTEGER NOT NULL,
+      supporting_indicators INTEGER NOT NULL, pre_kickoff INTEGER NOT NULL, availability TEXT NOT NULL DEFAULT 'pro_on_request',
+      archive_visible INTEGER NOT NULL DEFAULT 1, settlement_status TEXT NOT NULL DEFAULT 'pending', home_goals INTEGER, away_goals INTEGER,
+      result_kickoff TEXT, settled_at TEXT, UNIQUE (match_id, market, version_no))`);
+    const kickoff = iso(T0.getTime() + 6 * H);
+    db.prepare(`INSERT INTO model_tip_archive (id, match_id, market, version_no, content_hash, engine_version, generated_at, origin,
+      match_label, league_id, league_name, kickoff, market_label, market_type, category, model_prob, data_quality, sample_size,
+      supporting_indicators, pre_kickoff) VALUES ('old-1', 'pv1', 'O2.5', 1, ?, ?, ?, 'live', 'Hazai FC – Vendég SC', 'L1', 'Liga L1',
+      ?, 'címke O2.5', 'gólszám', 'mérsékelt', 0.61, 'magas', 20, 3, 1)`)
+      .run(contentHash('pv1', 'O2.5', 'mérsékelt', 0.61), ENGINE_VERSION, T0.toISOString(), kickoff);
+
+    const store = new SqliteTipArchiveStore(db);  // bővítés
+    const old = db.prepare("SELECT provenance, served_prob, served_model, model_prob FROM model_tip_archive WHERE id = 'old-1'").get();
+    expect(old).toEqual({ provenance: 'legacy_baseline', served_prob: null, served_model: null, model_prob: 0.61 });
+    expect(() => db.prepare("UPDATE model_tip_archive SET served_prob = 0.61, served_model = ?, provenance = 'recorded' WHERE id = 'old-1'")
+      .run(ENGINE_VERSION)).toThrow(/nem módosítható/);
+    // az azonos tartalmú újraszámolás nem hoz új verziót, és a régi sort sem „értelmezi át”
+    const svc = new TipArchiveService(store, new StubMatches(), { now: () => T0 });
+    expect(await svc.record(analysis(match('pv1', kickoff), [{ market: 'O2.5', prob: 0.61 }], iso(T0.getTime() + H)))).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM model_tip_archive').get()).toEqual({ n: 1 });
+    // a lényegi változás már „recorded” eredettel kerül be
+    expect(await svc.record(analysis(match('pv1', kickoff), [{ market: 'O2.5', prob: 0.66 }], iso(T0.getTime() + 2 * H)))).toBe(1);
+    expect(db.prepare('SELECT version_no, provenance, served_model FROM model_tip_archive ORDER BY version_no').all()).toEqual([
+      { version_no: 1, provenance: 'legacy_baseline', served_model: null },
+      { version_no: 2, provenance: 'recorded', served_model: ENGINE_VERSION },
+    ]);
+    // a konstruktor ismételten futtatva sem változtat semmit (idempotens)
+    new SqliteTipArchiveStore(db);
+    expect(db.prepare("SELECT provenance FROM model_tip_archive WHERE id = 'old-1'").get()).toEqual({ provenance: 'legacy_baseline' });
+  });
+
+  it('élő út: az AnalysisService a felhasználónak adott elemzést rögzíti alap-motor eredettel, a kimenet változatlan', async () => {
+    const demo = new DemoMatchDataProvider();
+    const store = new SqliteTipArchiveStore(new DatabaseSync(':memory:'));
+    const archive = new TipArchiveService(store, demo);
+    const seen: { served: unknown; tips: number[] }[] = [];
+    const spy = { record: (a: MatchAnalysis, s?: Parameters<TipArchiveService['record']>[1]) => {
+      seen.push({ served: s, tips: a.tips.map((t) => t.modelProb) }); return archive.record(a, s);
+    } };
+    const svc = new AnalysisService({
+      data: demo, research: new DemoResearchProvider(demo), oddsApi: null,
+      db: { getSetting: async () => null, getManualOdds: async () => null, getResearch: () => null, saveResearch: () => undefined },
+    } as unknown as Container, spy);
+    const upcoming = (await demo.getMatches({ status: 'scheduled' }))[0];
+    const a = await svc.analyze(upcoming.id);
+    await svc.archiveIdle();
+    expect(seen).toHaveLength(1);
+    expect(seen[0].served).toEqual({ model: ENGINE_VERSION, probs: Object.fromEntries(a!.tips.map((t) => [t.market, t.modelProb])) });
+    expect(seen[0].tips).toEqual(a!.tips.map((t) => t.modelProb));   // a felhasználó ugyanezt kapta
+    const recorded = await store.latestVersions(upcoming.id);
+    expect(recorded.size).toBe(a!.tips.length);
   });
 });

@@ -9,6 +9,8 @@ import { buildContainer } from './container';
 import { AnalysisService } from './services/analysisService';
 import { TipArchiveService } from './tipArchive/service';
 import { tipArchiveRouter } from './routes/tipArchive';
+import { ModelLearningService } from './modelLearning/service';
+import { modelLearningRouter } from './routes/modelLearning';
 import { apiRouter } from './routes/api';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
@@ -35,6 +37,10 @@ const container = buildContainer();
 // Modell-tipp archívum: a motor egyetlen hívási pontja (AnalysisService) rögzít bele
 const tipArchiveService = new TipArchiveService(container.tipArchive, container.data);
 const service = new AnalysisService(container, tipArchiveService);
+// Modell-kalibráció: árnyék-kiértékelés. Az aktiválás SZÁNDÉKOSAN tiltva – a kiszolgált
+// modell az alap motor (xg-poisson-1), amíg az archívum nem rögzíti a kiszolgált ÉS az
+// alap valószínűséget is (lásd SERVING_NOTE). A tanulás nem fut felhasználói kérésben.
+const modelLearningService = new ModelLearningService(container.learning, { allowPromotion: false });
 // A PRO-állapot KIZÁRÓLAG szerveroldalról, a meglévő profiles/Stripe adatból jön
 const progressionService: ProgressionService = new ProgressionService(
   container.progression,
@@ -178,6 +184,8 @@ app.delete('/api/matches/:id/odds', requireAdmin);
 // Tippverseny: a nyilvános rész olvasható (a tippbeküldés a routeren belül requirePro),
 // az admin rész teljes egészében a meglévő ADMIN_EMAILS alapú ellenőrzés mögött van
 app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competitionService));
+// Modell-kalibráció – kizárólag admin (státusz, kiértékelés, aktiválás, visszaállítás)
+app.use('/api/admin/model-learning', requireAdmin, modelLearningRouter(modelLearningService));
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
 app.use('/api/profile', profileRouter(container.displayNames, progressionService, socialService));
@@ -258,7 +266,13 @@ app.listen(port, async () => {
       const missingArchive = await container.tipArchive.healthCheck();
       if (missingArchive.length) {
         console.warn('Modell-tipp archívum hiányzik (a tippek addig nem rögzülnek):', missingArchive.join(', '));
-        console.warn('Futtasd le a Supabase SQL Editorban: supabase/migrations/0014_model_tip_archive.sql');
+        console.warn('Futtasd le a Supabase SQL Editorban (sorrendben, ami hiányzik): supabase/migrations/0014_model_tip_archive.sql, 0016_tip_archive_provenance.sql');
+      }
+      // A tanulási réteg csak akkor kész, ha a 0015 ÉS a 0016 is lefutott (állapot + eredet-oszlopok)
+      const missingLearning = await modelLearningService.healthCheck();
+      if (missingLearning.length) {
+        console.warn('Modell-kalibráció nem kész (a kiértékelés addig nem fut):', missingLearning.join(', '));
+        console.warn('Futtasd le a Supabase SQL Editorban (sorrendben, ami hiányzik): supabase/migrations/0015_model_learning.sql, 0016_tip_archive_provenance.sql');
       }
     }
     const pruned = container.db.pruneCache();

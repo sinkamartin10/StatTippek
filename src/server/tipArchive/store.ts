@@ -49,13 +49,27 @@ export interface ArchiveDraft {
   supportingIndicators: number;
   preKickoff: boolean;
   availability: TipAvailability;
+  /**
+   * A felhasználónak TÉNYLEGESEN kiszolgált valószínűség és az azt előállító
+   * modell (0016). Az alap motor kiszolgálásakor `servedModel` = engine_version
+   * és `servedProb` = `modelProb` (a DB is kikényszeríti). Az új sorok
+   * provenance-a mindig 'recorded'.
+   */
+  servedProb: number;
+  servedModel: string;
 }
+
+/** A valószínűség eredete: rögzített, vagy a rögzítés bevezetése előtti (régi) sor. */
+export type Provenance = 'recorded' | 'legacy_baseline';
 
 /** A meccs megfigyelt állapota. */
 export type ObservedStatus = 'scheduled' | 'live' | 'finished' | 'postponed';
 
 /** Tárolt sor (belső forma – a nyilvános API ennél szűkebbet ad ki). */
-export interface ArchiveRow extends ArchiveDraft {
+export interface ArchiveRow extends Omit<ArchiveDraft, 'servedProb' | 'servedModel'> {
+  provenance: Provenance | null;
+  servedProb: number | null;
+  servedModel: string | null;
   id: string;
   archiveVisible: boolean;
   status: SettlementStatus;
@@ -205,6 +219,10 @@ function pgToRow(r: PgRow): ArchiveRow {
     settledAt: r.settled_at ? new Date(r.settled_at).toISOString() : null,
     currentKickoff: new Date(r.current_kickoff).toISOString(),
     matchStatus: r.match_status,
+    // a listázó nézetek (0014) nem tartalmazzák – ott null
+    provenance: r.provenance ?? null,
+    servedProb: r.served_prob == null ? null : Number(r.served_prob),
+    servedModel: r.served_model ?? null,
   };
 }
 
@@ -232,6 +250,9 @@ function draftToPg(d: ArchiveDraft): PgRow {
     supporting_indicators: d.supportingIndicators,
     pre_kickoff: d.preKickoff,
     availability: d.availability,
+    provenance: 'recorded',
+    served_prob: d.servedProb,
+    served_model: d.servedModel,
   };
 }
 
@@ -420,6 +441,9 @@ export class PostgresTipArchiveStore implements TipArchiveStore {
       const { error, count } = await this.db.from(t).select(col, { count: 'exact', head: true }).limit(1);
       if (error || count == null) missing.push(t);
     }
+    // 0016: az eredet-oszlopok nélkül minden új rögzítés elbukna – külön jelezzük
+    const prov = await this.db.from(TABLE).select('provenance, served_prob, served_model', { count: 'exact', head: true }).limit(1);
+    if (prov.error || prov.count == null) missing.push('model_tip_archive.provenance (0016)');
     return missing;
   }
 }
@@ -463,6 +487,9 @@ function sqlToRow(r: SqlRow): ArchiveRow {
     settledAt: r.settled_at == null ? null : String(r.settled_at),
     currentKickoff: String(r.current_kickoff),
     matchStatus: r.match_status as ObservedStatus,
+    provenance: (r.provenance as Provenance | undefined) ?? null,
+    servedProb: r.served_prob == null ? null : Number(r.served_prob),
+    servedModel: r.served_model == null ? null : String(r.served_model),
   };
 }
 
@@ -472,12 +499,28 @@ const IMMUTABLE = [
   'match_label', 'league_id', 'league_name', 'kickoff', 'market_label', 'market_type', 'category',
   'model_prob', 'odds_at_generation', 'implied_prob', 'data_quality', 'sample_size',
   'supporting_indicators', 'pre_kickoff',
+  // 0016: a valószínűség eredete is megváltoztathatatlan
+  'provenance', 'served_prob', 'served_model',
 ];
+
+/** A 0016 provenance-szabálya (a PostgreSQL CHECK megfelelője). */
+const PROVENANCE_RULE = `(
+  (new.provenance = 'legacy_baseline' AND new.served_prob IS NULL AND new.served_model IS NULL)
+  OR (new.provenance = 'recorded'
+      AND new.served_prob IS NOT NULL AND new.served_prob >= 0 AND new.served_prob <= 1
+      AND new.served_model IS NOT NULL
+      AND (new.served_model = new.engine_version
+           OR (substr(new.served_model, 1, length(new.engine_version) + 5) = new.engine_version || '+cal-'
+               AND length(new.served_model) = length(new.engine_version) + 17
+               AND substr(new.served_model, length(new.engine_version) + 6) GLOB '${'[0-9a-f]'.repeat(12)}'))
+      AND (new.served_model <> new.engine_version OR new.served_prob = new.model_prob))
+)`;
 const SETTLEMENT = ['settlement_status', 'home_goals', 'away_goals', 'result_kickoff', 'settled_at'];
 
 export class SqliteTipArchiveStore implements TipArchiveStore {
   constructor(private db: DatabaseSync) {
-    // A 0014 megfelelője: azonos megszorítások, triggerek és nézetek.
+    this.upgradeLegacyTable();
+    // A 0014 + 0016 megfelelője: azonos megszorítások, triggerek és nézetek.
     // Az időpontok mindig `toISOString()` alakúak, így a szöveges összevetés időrendi.
     // SQLite-ban nincs TRUNCATE: a feltétel nélküli DELETE is a sor-triggeren akad el.
     this.db.exec(`
@@ -512,6 +555,9 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
         away_goals INTEGER,
         result_kickoff TEXT,
         settled_at TEXT,
+        provenance TEXT NOT NULL DEFAULT 'legacy_baseline' CHECK (provenance IN ('legacy_baseline', 'recorded')),
+        served_prob REAL,
+        served_model TEXT,
         UNIQUE (match_id, market, version_no),
         CHECK (
           (settlement_status = 'pending' AND home_goals IS NULL AND away_goals IS NULL AND settled_at IS NULL AND result_kickoff IS NULL)
@@ -532,10 +578,16 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
       CREATE INDEX IF NOT EXISTS idx_model_tip_archive_match_state_due
         ON model_tip_archive_match_state(current_kickoff DESC) WHERE match_status <> 'finished';
 
-      CREATE TRIGGER IF NOT EXISTS model_tip_archive_guard_tip
+      DROP TRIGGER IF EXISTS model_tip_archive_guard_tip;
+      CREATE TRIGGER model_tip_archive_guard_tip
       BEFORE UPDATE ON model_tip_archive
       WHEN ${IMMUTABLE.map((c) => `old.${c} IS NOT new.${c}`).join(' OR ')}
       BEGIN SELECT RAISE(ABORT, 'model_tip_archive: a rögzített tipp nem módosítható'); END;
+
+      CREATE TRIGGER IF NOT EXISTS model_tip_archive_provenance_check
+      BEFORE INSERT ON model_tip_archive
+      WHEN NOT ${PROVENANCE_RULE}
+      BEGIN SELECT RAISE(ABORT, 'model_tip_archive: érvénytelen valószínűség-eredet (provenance)'); END;
 
       CREATE TRIGGER IF NOT EXISTS model_tip_archive_guard_settled
       BEFORE UPDATE ON model_tip_archive
@@ -567,6 +619,22 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
       SELECT c.*, s.current_kickoff, s.match_status
       FROM model_tip_archive_counted c JOIN model_tip_archive_match_state s ON s.match_id = c.match_id;
     `);
+  }
+
+  /**
+   * Egy korábbi (0014-es sémájú) helyi tábla bővítése a 0016 oszlopaival. A
+   * meglévő sorok 'legacy_baseline' jelölést kapnak, kiszolgált érték nélkül –
+   * semmit nem találunk ki és semmit nem írunk át.
+   */
+  private upgradeLegacyTable(): void {
+    const exists = this.db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'model_tip_archive'").get();
+    if (!exists) return;
+    const cols = new Set((this.db.prepare('PRAGMA table_info(model_tip_archive)').all() as { name: string }[]).map((c) => c.name));
+    if (!cols.has('provenance')) {
+      this.db.exec("ALTER TABLE model_tip_archive ADD COLUMN provenance TEXT NOT NULL DEFAULT 'legacy_baseline' CHECK (provenance IN ('legacy_baseline', 'recorded'))");
+    }
+    if (!cols.has('served_prob')) this.db.exec('ALTER TABLE model_tip_archive ADD COLUMN served_prob REAL');
+    if (!cols.has('served_model')) this.db.exec('ALTER TABLE model_tip_archive ADD COLUMN served_model TEXT');
   }
 
   /** A nyilvános szűrés – a láthatósági feltétel itt kötelezően rákerül. */
@@ -620,8 +688,9 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
     const stmt = this.db.prepare(
       `INSERT OR IGNORE INTO model_tip_archive (id, match_id, market, version_no, content_hash, engine_version, generated_at,
         origin, match_label, league_id, league_name, kickoff, market_label, market_type, category, model_prob,
-        odds_at_generation, implied_prob, data_quality, sample_size, supporting_indicators, pre_kickoff, availability)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        odds_at_generation, implied_prob, data_quality, sample_size, supporting_indicators, pre_kickoff, availability,
+        provenance, served_prob, served_model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recorded', ?, ?)`,
     );
     const inserted: string[] = [];
     for (const d of rows) {
@@ -629,6 +698,7 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
         randomUUID(), d.matchId, d.market, d.versionNo, d.contentHash, d.engineVersion, d.generatedAt,
         d.origin, d.matchLabel, d.leagueId, d.leagueName, d.kickoff, d.marketLabel, d.marketType, d.category, d.modelProb,
         d.odds, d.impliedProb, d.dataQuality, d.sampleSize, d.supportingIndicators, d.preKickoff ? 1 : 0, d.availability,
+        d.servedProb, d.servedModel,
       );
       if (Number(r.changes) > 0) inserted.push(d.market);
     }

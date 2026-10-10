@@ -31,10 +31,13 @@ interface Result { ok: boolean; out: string; err: string }
  * értékek (pl. „mérsékelt”) elromlanának.
  */
 function psql(db: string, args: string[], input?: string): Result {
+  // A kapcsolatot átirányítani képes libpq-változók törölve: a PGHOSTADDR (vagy egy
+  // PGSERVICE-ből jövő hostaddr) felülírná a `-h 127.0.0.1`-et.
+  const env: NodeJS.ProcessEnv = { ...process.env, PGHOST: HOST, PGDATABASE: db, PGCLIENTENCODING: 'UTF8' };
+  for (const k of ['PGHOSTADDR', 'PGSERVICE', 'PGSERVICEFILE']) delete env[k];
   try {
     const out = execFileSync(PSQL, ['-h', HOST, '-U', process.env.PGUSER || 'postgres', '-d', db, '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1', ...args], {
-      encoding: 'utf8', input: input ?? '', stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PGHOST: HOST, PGDATABASE: db, PGCLIENTENCODING: 'UTF8' },
+      encoding: 'utf8', input: input ?? '', stdio: ['pipe', 'pipe', 'pipe'], env,
     });
     return { ok: true, out: out.trim(), err: '' };
   } catch (e) {
