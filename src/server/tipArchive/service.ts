@@ -33,7 +33,7 @@ import { evaluateMarket, marketLabel, marketType } from '../../shared/engine/mar
 import { ENGINE_VERSION } from '../../shared/engine/version';
 import {
   ARCHIVE_MARKET_TYPES, ARCHIVE_MAX_OFFSET, ARCHIVE_PAGE_MAX, ARCHIVE_PAGE_SIZE, SETTLEMENT_STATUSES,
-  TIP_AVAILABILITIES, hitRateOf, sanitizeSearch,
+  TIP_AVAILABILITIES, hitRateOf, parseCategory, sanitizeSearch,
   type SettlementStatus, type TipArchiveEntry, type TipArchiveResponse, type TipAvailability,
 } from '../../shared/tipArchive';
 import type { MatchDataProvider } from '../data/provider';
@@ -268,6 +268,12 @@ export function parseArchiveQuery(raw: Record<string, unknown>): ParsedArchiveQu
   if (mt) {
     if (!(ARCHIVE_MARKET_TYPES as readonly string[]).includes(mt)) throw new TipArchiveError('Ismeretlen piactípus.');
     filter.marketType = mt;
+  }
+  const categoryRaw = str(raw.category);
+  if (categoryRaw) {
+    const category = parseCategory(categoryRaw);
+    if (!category) throw new TipArchiveError('Ismeretlen tipp-kategória.');
+    filter.category = category;
   }
   const status = str(raw.status);
   if (status) {

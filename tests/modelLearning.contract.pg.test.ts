@@ -189,8 +189,12 @@ describe.skipIf(!ENABLED)('PostgREST-szerződés: valódi Postgres-tárolók a h
     const all = await archive.list(filter, 'all', 0, 50);
     expect(all.total).toBe(1);
     expect(all.rows[0]).toMatchObject({ matchId: 'c1', modelProb: 0.61, odds: 1.85, status: 'won', homeGoals: 2, currentKickoff: iso(T0 - 2 * H), matchStatus: 'live' });
-    const filtered = await archive.list({ ...filter, from: iso(T0 - 3 * H), to: iso(T0), leagueId: 'L1', marketType: 'gólszám', status: 'won', availability: 'pro_on_request', search: 'hazai' }, 'counted', 0, 1);
+    const filtered = await archive.list({ ...filter, from: iso(T0 - 3 * H), to: iso(T0), leagueId: 'L1', marketType: 'gólszám', category: 'mérsékelt', status: 'won', availability: 'pro_on_request', search: 'hazai' }, 'counted', 0, 1);
     expect(filtered.total).toBe(1);
+    // kategóriaszűrő a listázó nézeteken (category oszlop) – másik kategória → üres
+    expect(await archive.list({ ...filter, category: 'konzervatív' }, 'all', 0, 10)).toEqual({ rows: [], total: 0 });
+    expect(await archive.summary({ ...filter, category: 'magas variancia' })).toEqual({ records: 0, counted: { won: 0, lost: 0, void: 0, pending: 0, unsupported: 0 } });
+    expect((await archive.summary({ ...filter, category: 'mérsékelt' })).records).toBe(1);
     expect(await archive.countedIds(['c1'])).toEqual(new Set([all.rows[0].id]));
     expect(await archive.summary(filter)).toEqual({ records: 1, counted: { won: 1, lost: 0, void: 0, pending: 0, unsupported: 0 } });
     expect(await archive.coverageStart('live')).toBe(iso(T0 - 30 * H));

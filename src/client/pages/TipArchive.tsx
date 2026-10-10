@@ -11,10 +11,11 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal } from 'lucide-react';
 import {
-  ARCHIVE_MARKET_TYPES, AVAILABILITY_LABEL, SETTLEMENT_LABEL, SETTLEMENT_STATUSES, TIP_AVAILABILITIES,
+  ARCHIVE_CATEGORIES, ARCHIVE_MARKET_TYPES, AVAILABILITY_LABEL, CATEGORY_LABEL, SETTLEMENT_LABEL, SETTLEMENT_STATUSES, TIP_AVAILABILITIES,
   type SettlementStatus, type TipArchiveEntry,
 } from '@shared/tipArchive';
 import { api } from '../lib/api';
+import { archiveEmptyState, categoryFromParam, categoryLabel } from '../lib/archiveCategory';
 import { fmtDate, fmtDateTime, odds as fo, pct, useAsync } from '../lib/format';
 import { useUrlState } from '../lib/listState';
 import {
@@ -22,7 +23,7 @@ import {
 } from '../components/ui';
 
 const DEFAULTS = {
-  from: '', to: '', leagueId: '', marketType: '', status: '', availability: '', search: '', scope: 'all', page: '1',
+  from: '', to: '', leagueId: '', marketType: '', category: '', status: '', availability: '', search: '', scope: 'all', page: '1',
 };
 type Filters = typeof DEFAULTS;
 
@@ -57,22 +58,31 @@ export default function TipArchive() {
   useEffect(() => setSearchText(f.search), [f.search]);
 
   const leagues = useAsync(() => api.leagues(), []);
+  // Ismeretlen kategória az URL-ben → nincs szűrés (az „Összes kategória” aktív)
+  const category = categoryFromParam(f.category);
   const r = useAsync(() => api.tipArchive({
     from: f.from || undefined,
     to: f.to || undefined,
     leagueId: f.leagueId || undefined,
     marketType: f.marketType || undefined,
+    category: category ?? undefined,
     status: f.status || undefined,
     availability: f.availability || undefined,
     search: f.search || undefined,
     scope: f.scope === 'counted' ? 'counted' : 'all',
     page,
-  }), [f.from, f.to, f.leagueId, f.marketType, f.status, f.availability, f.search, f.scope, page]);
+  }), [f.from, f.to, f.leagueId, f.marketType, category, f.status, f.availability, f.search, f.scope, page]);
 
   /** Szűrőváltáskor mindig az első oldalra ugrunk. */
   const change = (patch: Partial<Filters>) => setF({ ...f, ...patch, page: '1' });
   const submitSearch = (ev: FormEvent) => { ev.preventDefault(); change({ search: searchText.trim() }); };
-  const filtered = Object.entries(f).some(([k, v]) => k !== 'page' && k !== 'scope' && v !== '');
+  /** a kategórián kívüli szűrők valamelyike aktív-e */
+  const otherFilters = Object.entries(f).some(([k, v]) => k !== 'page' && k !== 'scope' && k !== 'category' && v !== '');
+  const filtered = otherFilters || !!category;
+  const empty = archiveEmptyState(category, otherFilters);
+  // Az ismeretlen kategória kikerül az URL-ből, hogy a cím és a kiválasztott chip mindig egyezzen
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (f.category && !category) setF({ ...f, category: '' }); }, [f.category, category]);
 
   const d = r.data;
   const s = d?.summary;
@@ -114,7 +124,7 @@ export default function TipArchive() {
         </div>
       )}
 
-      <Accordion label="Szűrők" icon={<SlidersHorizontal className="h-4 w-4 text-primary" />} defaultOpen={filtered}>
+      <Accordion label="Szűrők" icon={<SlidersHorizontal className="h-4 w-4 text-primary" />} defaultOpen={otherFilters}>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <label className="field-label min-w-0">Dátumtól<input type="date" className="input mt-1.5" value={f.from} onChange={(e) => change({ from: e.target.value })} /></label>
@@ -154,8 +164,22 @@ export default function TipArchive() {
         </div>
       </Accordion>
 
+      {/* Kategória – jól látható, a többi szűrő mellett; váltáskor a többi szűrő megmarad */}
+      <section aria-label="Tipp-kategória" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-xs font-extrabold uppercase tracking-wide text-text-muted">Kategória</span>
+        <ChipGroup
+          ariaLabel="Tipp-kategória"
+          value={category ?? ''}
+          onChange={(v) => change({ category: v })}
+          options={[
+            { value: '', label: 'Összes kategória' },
+            ...ARCHIVE_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] })),
+          ]}
+        />
+      </section>
+
       <Card
-        title={d ? `Tippek (${d.total})` : 'Tippek'}
+        title={d ? `Tippek (${d.total})${category ? ` · ${CATEGORY_LABEL[category]}` : ''}` : 'Tippek'}
         right={<ChipGroup
           ariaLabel="Megjelenített verziók"
           value={f.scope === 'counted' ? 'counted' : 'all'}
@@ -169,8 +193,9 @@ export default function TipArchive() {
         {r.loading && !d ? <Loading /> : r.error ? <ErrorBox message={r.error} onRetry={r.reload} /> : !d || d.entries.length === 0 ? (
           <EmptyState
             emoji="🗄️"
-            title={filtered ? 'Nincs a szűrőknek megfelelő tipp' : 'Még nincs archivált tipp'}
-            text={filtered ? 'Lazíts a szűrőkön, vagy válassz másik időszakot.' : 'A tippek a mérkőzések elemzésekor rögzülnek, és a kezdés után jelennek meg itt.'}
+            title={empty.title}
+            text={empty.text}
+            action={category ? <button type="button" className="btn btn-sm" onClick={() => change({ category: '' })}>Összes kategória</button> : undefined}
           />
         ) : (
           <>
@@ -179,7 +204,7 @@ export default function TipArchive() {
                 <li key={e.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0 flex-1 basis-56">
                     <Link to={`/meccs/${encodeURIComponent(e.matchId)}`} className="block truncate text-sm font-extrabold transition hover:text-primary">{e.matchLabel}</Link>
-                    <div className="truncate text-xs font-semibold text-text-muted">{e.marketLabel} · {e.category} · {e.leagueName} · {fmtDateTime(e.kickoff)}</div>
+                    <div className="truncate text-xs font-semibold text-text-muted">{e.marketLabel} · {categoryLabel(e.category)} · {e.leagueName} · {fmtDateTime(e.kickoff)}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-text-muted">
                       <CountedTag e={e} />
                       <span className="badge badge-muted">{AVAILABILITY_LABEL[e.availability]}</span>

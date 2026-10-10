@@ -28,7 +28,8 @@ import { AnalysisService } from '../src/server/services/analysisService';
 import { DemoMatchDataProvider } from '../src/server/data/demoProvider';
 import { DemoResearchProvider } from '../src/server/research/demoResearch';
 import { ENGINE_VERSION } from '../src/shared/engine/version';
-import { ARCHIVE_PAGE_MAX, sanitizeSearch, type TipArchiveResponse } from '../src/shared/tipArchive';
+import { ARCHIVE_CATEGORIES, ARCHIVE_PAGE_MAX, CATEGORY_LABEL, parseCategory, sanitizeSearch, type TipArchiveResponse } from '../src/shared/tipArchive';
+import { archiveEmptyState, categoryFromParam, categoryLabel } from '../src/client/lib/archiveCategory';
 import type { Container } from '../src/server/container';
 import type { DataOrigin, Match, MatchAnalysis, TipCategory } from '../src/shared/types';
 
@@ -1361,5 +1362,161 @@ describe('valószínűség-eredet (provenance)', () => {
     expect(seen[0].tips).toEqual(a!.tips.map((t) => t.modelProb));   // a felhasználó ugyanezt kapta
     const recorded = await store.latestVersions(upcoming.id);
     expect(recorded.size).toBe(a!.tips.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Kategóriaszűrő (Modell-tipp archívum)
+// ---------------------------------------------------------------------------
+
+describe('kategóriaszűrő', () => {
+  let h: Harness;
+  // 6 elkezdődött meccs (L1/L2 felváltva): mindegyiken 1 konzervatív (1X) és
+  // 1 mérsékelt (O2.5) tipp, az első kettőn 1 magas varianciájú (BTTS_Y) is.
+  // Összesen 6 + 6 + 2 = 14 sor; + 1 jövőbeli meccs (rejtett).
+  beforeEach(async () => {
+    h = await harness();
+    for (let i = 0; i < 6; i++) {
+      const k = iso(T0.getTime() - (i + 1) * 24 * H);
+      const league = i % 2 ? 'L2' : 'L1';
+      const id = `c${i}`;
+      const tips: TipSpec[] = [
+        { market: '1X', prob: 0.7, category: 'konzervatív' },
+        { market: 'O2.5', prob: 0.55, category: 'mérsékelt' },
+      ];
+      if (i < 2) tips.push({ market: 'BTTS_Y', prob: 0.5, category: 'magas variancia' });
+      await h.svc.record(analysis(match(id, k, { leagueId: league }), tips, iso(new Date(k).getTime() - 5 * H), { league }));
+      await h.start(id, k);
+    }
+    await h.svc.record(analysis(match('future', iso(T0.getTime() + 24 * H)),
+      [{ market: 'BTTS_Y', prob: 0.9, category: 'magas variancia' }], T0.toISOString()));
+    // c0: 3–0 → 1X nyert, O2.5 nyert, BTTS_Y vesztett
+    await h.svc.observe(match('c0', iso(T0.getTime() - 24 * H), { status: 'finished', homeGoals: 3, awayGoals: 0 }));
+  });
+  afterEach(async () => { await h.close(); });
+
+  const enc = encodeURIComponent;
+
+  it('a három kanonikus kategória pontosan a motor TipCategory értékei', () => {
+    expect(ARCHIVE_CATEGORIES).toEqual(['konzervatív', 'mérsékelt', 'magas variancia']);
+    expect(ARCHIVE_CATEGORIES.map((c) => CATEGORY_LABEL[c])).toEqual(['Konzervatív', 'Mérsékelt', 'Magas variancia']);
+  });
+
+  it('kategória nélkül (és üres paraméterrel) a teljes kör – a viselkedés változatlan', async () => {
+    const all = (await h.get('?pageSize=50')).body as TipArchiveResponse;
+    expect(all.total).toBe(14);
+    expect(all.summary.records).toBe(14);
+    expect(new Set(all.entries.map((e) => e.category))).toEqual(new Set(ARCHIVE_CATEGORIES));
+    const empty = (await h.get('?pageSize=50&category=')).body as TipArchiveResponse;
+    expect(empty.total).toBe(14);
+    expect(empty.entries.map((e) => e.id)).toEqual(all.entries.map((e) => e.id));
+    expect(empty.summary).toEqual(all.summary);
+  });
+
+  it('minden kategória csak a saját tippjeit adja; a részek összege a teljes kör', async () => {
+    const expected: Record<string, number> = { 'konzervatív': 6, 'mérsékelt': 6, 'magas variancia': 2 };
+    let sum = 0;
+    for (const c of ARCHIVE_CATEGORIES) {
+      const b = (await h.get(`?pageSize=50&category=${enc(c)}`)).body as TipArchiveResponse;
+      expect(b.total, c).toBe(expected[c]);
+      expect(b.summary.records, c).toBe(expected[c]);
+      expect(b.entries.length, c).toBe(expected[c]);
+      expect(b.entries.every((e) => e.category === c), c).toBe(true);
+      expect(b.entries.some((e) => e.matchId === 'future'), c).toBe(false);
+      sum += b.total;
+    }
+    expect(sum).toBe(14);
+  });
+
+  it('az összesítés a kiválasztott kategóriára számol (nyert/vesztett/függő, találati arány)', async () => {
+    const kons = (await h.get(`?category=${enc('konzervatív')}`)).body as TipArchiveResponse;
+    expect(kons.summary).toMatchObject({ records: 6, won: 1, lost: 0, pending: 5, hitRate: 1 });
+    const high = (await h.get(`?category=${enc('magas variancia')}`)).body as TipArchiveResponse;
+    expect(high.summary).toMatchObject({ records: 2, won: 0, lost: 1, pending: 1, hitRate: 0 });
+  });
+
+  it('együtt működik a többi szűrővel (bajnokság, piactípus, eredmény, dátum, statisztikai kör)', async () => {
+    const l2 = (await h.get(`?leagueId=L2&category=${enc('mérsékelt')}`)).body as TipArchiveResponse;
+    expect(l2.total).toBe(3);
+    expect(l2.entries.every((e) => e.leagueId === 'L2' && e.category === 'mérsékelt')).toBe(true);
+    expect(l2.summary.records).toBe(3);
+
+    const highL1 = (await h.get(`?leagueId=L1&category=${enc('magas variancia')}`)).body as TipArchiveResponse;
+    expect(highL1.entries.map((e) => e.matchId)).toEqual(['c0']);
+
+    const won = (await h.get(`?status=won&category=${enc('mérsékelt')}`)).body as TipArchiveResponse;
+    expect(won.entries.map((e) => e.market)).toEqual(['O2.5']);
+    expect(won.summary).toMatchObject({ records: 1, won: 1 });
+
+    // c0 kezdése 2026-09-30 12:00 UTC → magyar 09-30
+    const day = (await h.get(`?from=2026-09-30&to=2026-09-30&category=${enc('magas variancia')}`)).body as TipArchiveResponse;
+    expect(day.total).toBe(1);
+
+    const counted = (await h.get(`?scope=counted&category=${enc('konzervatív')}`)).body as TipArchiveResponse;
+    expect(counted.total).toBe(6);
+    expect(counted.entries.every((e) => e.counted && e.category === 'konzervatív')).toBe(true);
+  });
+
+  it('üres kategória-találat: 0 sor, nullázott összesítés, nem hiba', async () => {
+    const b = (await h.get(`?marketType=g%C3%B3lsz%C3%A1m&category=${enc('konzervatív')}`)).body as TipArchiveResponse;
+    expect(b.total).toBe(0);
+    expect(b.entries).toEqual([]);
+    expect(b.hasMore).toBe(false);
+    expect(b.summary).toMatchObject({ records: 0, counted: 0, won: 0, lost: 0, pending: 0, hitRate: null });
+  });
+
+  it('lapozás kategóriával: átfedés- és hézagmentes, a total a kategóriára vonatkozik', async () => {
+    const seen: string[] = [];
+    for (let page = 1; ; page++) {
+      const b = (await h.get(`?pageSize=4&page=${page}&category=${enc('konzervatív')}`)).body as TipArchiveResponse;
+      expect(b.total).toBe(6);
+      expect(b.entries.every((e) => e.category === 'konzervatív')).toBe(true);
+      seen.push(...b.entries.map((e) => e.id));
+      if (!b.hasMore) break;
+    }
+    expect(seen).toHaveLength(6);
+    expect(new Set(seen).size).toBe(6);
+  });
+
+  it('ismeretlen kategória → 400 (belső részlet nélkül); NFC-normalizált és szóközös érték elfogadott', async () => {
+    for (const qs of ['?category=Konzervat%C3%ADv', '?category=m%C3%A9rs%C3%A9kelt%20variancia', '?category=magas', '?category=%27%3Bdrop',
+      '?category=konzervativ']) {
+      const { status, body } = await h.get(qs);
+      expect(status, qs).toBe(400);
+      expect(body.code).toBe('BAD_REQUEST');
+    }
+    // NFD (e + kombináló ékezet) és körülvevő szóköz → ugyanaz a kanonikus érték
+    const nfd = 'konzervatív'.normalize('NFD');
+    expect((await h.get(`?category=${enc(` ${nfd} `)}`)).body.total).toBe(6);
+  });
+
+  it('a tárolt kategória nem módosul (a szűrés csak olvas)', async () => {
+    const before = rows(h.db).map((r) => [r.id, r.category]);
+    for (const c of ARCHIVE_CATEGORIES) await h.get(`?category=${enc(c)}`);
+    expect(rows(h.db).map((r) => [r.id, r.category])).toEqual(before);
+  });
+});
+
+describe('kategóriaszűrő – kliens segédfüggvények', () => {
+  it('parseCategory / categoryFromParam: csak a kanonikus értékek; minden más → összes kategória', () => {
+    for (const c of ARCHIVE_CATEGORIES) {
+      expect(parseCategory(c)).toBe(c);
+      expect(categoryFromParam(c)).toBe(c);
+    }
+    for (const bad of ['', '  ', 'Mérsékelt', 'mérsékelt variancia', 'magas', 'x', null, undefined]) expect(categoryFromParam(bad as string)).toBeNull();
+    expect(parseCategory(42)).toBeNull();
+    expect(parseCategory(['mérsékelt'])).toBeNull();
+  });
+
+  it('categoryLabel: magyar felirat; ismeretlen érték változatlanul (nem omlik össze)', () => {
+    expect(categoryLabel('magas variancia')).toBe('Magas variancia');
+    expect(categoryLabel('jövőbeli')).toBe('jövőbeli');
+  });
+
+  it('üres állapot: kategóriánként saját szöveg, a régi szövegek kategória nélkül változatlanok', () => {
+    expect(archiveEmptyState(null, false).title).toBe('Még nincs archivált tipp');
+    expect(archiveEmptyState(null, true).title).toBe('Nincs a szűrőknek megfelelő tipp');
+    expect(archiveEmptyState('magas variancia', false).title).toBe('Még nincs „Magas variancia” kategóriájú archivált tipp');
+    expect(archiveEmptyState('konzervatív', true).title).toBe('Nincs a szűrőknek megfelelő „Konzervatív” tipp');
   });
 });

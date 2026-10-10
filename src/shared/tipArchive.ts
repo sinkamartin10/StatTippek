@@ -109,11 +109,32 @@ export interface TipArchiveResponse {
   origin: DataOrigin;
 }
 
+/**
+ * A tipp-kategóriák – a motor (`tips.ts`) által adott, az archívum sorában
+ * tárolt és megváltoztathatatlan `category` értékek (`TipCategory`). A
+ * feliratok megegyeznek a Tippek oldal szűrőjével.
+ */
+export const ARCHIVE_CATEGORIES: TipCategory[] = ['konzervatív', 'mérsékelt', 'magas variancia'];
+export const CATEGORY_LABEL: Record<TipCategory, string> = {
+  'konzervatív': 'Konzervatív',
+  'mérsékelt': 'Mérsékelt',
+  'magas variancia': 'Magas variancia',
+};
+
+/** Pontos egyezés a kanonikus kategóriákkal (Unicode-normalizálva); minden más → null. */
+export function parseCategory(raw: unknown): TipCategory | null {
+  if (typeof raw !== 'string') return null;
+  const v = raw.normalize('NFC').trim();
+  return (ARCHIVE_CATEGORIES as string[]).includes(v) ? (v as TipCategory) : null;
+}
+
 export interface TipArchiveQuery {
   from?: string;
   to?: string;
   leagueId?: string;
   marketType?: string;
+  /** a tipp kategóriája (kanonikus érték, lásd ARCHIVE_CATEGORIES) */
+  category?: string;
   status?: string;
   availability?: string;
   search?: string;

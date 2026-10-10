@@ -110,6 +110,8 @@ export interface ArchiveFilter {
   to?: string;
   leagueId?: string;
   marketType?: string;
+  /** a tipp tárolt (megváltoztathatatlan) kategóriája */
+  category?: TipCategory;
   status?: SettlementStatus;
   availability?: TipAvailability;
   /** tisztított csapatnév-töredék */
@@ -285,6 +287,7 @@ export class PostgresTipArchiveStore implements TipArchiveStore {
     if (f.to) x = x.lt('current_kickoff', f.to);
     if (f.leagueId) x = x.eq('league_id', f.leagueId);
     if (f.marketType) x = x.eq('market_type', f.marketType);
+    if (f.category) x = x.eq('category', f.category);
     if (f.status) x = x.eq('settlement_status', f.status);
     if (f.availability) x = x.eq('availability', f.availability);
     // a keresés tisztított (nincs benne % _ , ( ) karakter) – lásd sanitizeSearch
@@ -648,6 +651,7 @@ export class SqliteTipArchiveStore implements TipArchiveStore {
     if (f.to) { parts.push('current_kickoff < ?'); args.push(f.to); }
     if (f.leagueId) { parts.push('league_id = ?'); args.push(f.leagueId); }
     if (f.marketType) { parts.push('market_type = ?'); args.push(f.marketType); }
+    if (f.category) { parts.push('category = ?'); args.push(f.category); }
     if (f.status) { parts.push('settlement_status = ?'); args.push(f.status); }
     if (f.availability) { parts.push('availability = ?'); args.push(f.availability); }
     if (f.search) { parts.push("lower(match_label) LIKE ? ESCAPE '\\'"); args.push(`%${f.search.toLowerCase()}%`); }
