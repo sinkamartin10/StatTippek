@@ -39,8 +39,11 @@ export function redactTipsForFree(list: TipListEntry[]): TipListEntry[] {
  */
 export function redactAnalysisForFree(a: MatchAnalysis): MatchAnalysis {
   const strip = (f: MatchAnalysis['form']['homeLast10']) => ({ ...f, matches: [] });
+  // A szögletelemzés PRO-adat: a mező a FREE válaszban egyáltalán nem szerepel
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { corners: _corners, ...rest } = a;
   return {
-    ...a,
+    ...rest,
     form: {
       homeLast5: strip(a.form.homeLast5),
       homeLast10: strip(a.form.homeLast10),

@@ -1,0 +1,1263 @@
+{
+ "generatedAt": "2026-10-13T22:13:44.808Z",
+ "months": [
+  "202307",
+  "202606"
+ ],
+ "requests": 612,
+ "matches": 13743,
+ "coverage": {
+  "eng-pl": {
+   "2023-24": {
+    "completed": 380,
+    "valid": 380,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 380,
+    "valid": 368,
+    "skipped": {
+     "empty_stats": 12
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 380,
+    "valid": 380,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "esp-ll": {
+   "2023-24": {
+    "completed": 380,
+    "valid": 380,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 380,
+    "valid": 376,
+    "skipped": {
+     "empty_stats": 4
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 380,
+    "valid": 380,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "ita-sa": {
+   "2023-24": {
+    "completed": 380,
+    "valid": 379,
+    "skipped": {
+     "empty_stats": 1
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 380,
+    "valid": 375,
+    "skipped": {
+     "empty_stats": 5
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 380,
+    "valid": 380,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "ger-bl": {
+   "2023-24": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 306,
+    "valid": 305,
+    "skipped": {
+     "empty_stats": 1
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "fra-l1": {
+   "2023-24": {
+    "completed": 306,
+    "valid": 304,
+    "skipped": {
+     "empty_stats": 2
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 306,
+    "valid": 296,
+    "skipped": {
+     "empty_stats": 10
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 305,
+    "valid": 305,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "uefa-ucl": {
+   "2023-24": {
+    "completed": 125,
+    "valid": 122,
+    "skipped": {
+     "extra_time": 3
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 189,
+    "valid": 185,
+    "skipped": {
+     "extra_time": 4
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 189,
+    "valid": 186,
+    "skipped": {
+     "extra_time": 3
+    },
+    "failedMonths": 0
+   }
+  },
+  "uefa-uel": {
+   "2023-24": {
+    "completed": 141,
+    "valid": 137,
+    "skipped": {
+     "extra_time": 4
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 189,
+    "valid": 183,
+    "skipped": {
+     "empty_stats": 1,
+     "extra_time": 5
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 189,
+    "valid": 184,
+    "skipped": {
+     "extra_time": 5
+    },
+    "failedMonths": 0
+   }
+  },
+  "uefa-uecl": {
+   "2023-24": {
+    "completed": 141,
+    "valid": 134,
+    "skipped": {
+     "extra_time": 7
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 153,
+    "valid": 146,
+    "skipped": {
+     "extra_time": 7
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 153,
+    "valid": 151,
+    "skipped": {
+     "extra_time": 2
+    },
+    "failedMonths": 0
+   }
+  },
+  "usa-mls": {
+   "2023-24": {
+    "completed": 536,
+    "valid": 530,
+    "skipped": {
+     "extra_time": 6
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 521,
+    "valid": 508,
+    "skipped": {
+     "empty_stats": 3,
+     "extra_time": 10
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 468,
+    "valid": 457,
+    "skipped": {
+     "empty_stats": 4,
+     "extra_time": 7
+    },
+    "failedMonths": 0
+   }
+  },
+  "eng-ch": {
+   "2023-24": {
+    "completed": 557,
+    "valid": 557,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 557,
+    "valid": 25,
+    "skipped": {
+     "empty_stats": 531,
+     "extra_time": 1
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 557,
+    "valid": 556,
+    "skipped": {
+     "extra_time": 1
+    },
+    "failedMonths": 0
+   }
+  },
+  "esp-l2": {
+   "2023-24": {
+    "completed": 468,
+    "valid": 468,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 468,
+    "valid": 467,
+    "skipped": {
+     "extra_time": 1
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 468,
+    "valid": 468,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "ita-sb": {
+   "2023-24": {
+    "completed": 390,
+    "valid": 5,
+    "skipped": {
+     "empty_stats": 384,
+     "extra_time": 1
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 390,
+    "valid": 390,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 390,
+    "valid": 390,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "ger-b2": {
+   "2023-24": {
+    "completed": 126,
+    "valid": 126,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "fra-l2": {
+   "2023-24": {
+    "completed": 380,
+    "valid": 4,
+    "skipped": {
+     "empty_stats": 376
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 306,
+    "valid": 306,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "uefa-nl": {
+   "2023-24": {
+    "completed": 2,
+    "valid": 2,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 184,
+    "valid": 179,
+    "skipped": {
+     "extra_time": 5
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 4,
+    "valid": 4,
+    "skipped": {},
+    "failedMonths": 0
+   }
+  },
+  "fifa-wcq-uefa": {
+   "2023-24": {
+    "completed": 0,
+    "valid": 0,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 48,
+    "valid": 48,
+    "skipped": {},
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 156,
+    "valid": 152,
+    "skipped": {
+     "extra_time": 4
+    },
+    "failedMonths": 0
+   }
+  },
+  "fifa-friendly": {
+   "2023-24": {
+    "completed": 368,
+    "valid": 239,
+    "skipped": {
+     "empty_stats": 124,
+     "extra_time": 5
+    },
+    "failedMonths": 0
+   },
+   "2024-25": {
+    "completed": 168,
+    "valid": 79,
+    "skipped": {
+     "empty_stats": 87,
+     "extra_time": 2
+    },
+    "failedMonths": 0
+   },
+   "2025-26": {
+    "completed": 377,
+    "valid": 217,
+    "skipped": {
+     "empty_stats": 150,
+     "extra_time": 10
+    },
+    "failedMonths": 0
+   }
+  }
+ },
+ "tune": {
+  "period": [
+   "2024-07-01T00:00:00.000Z",
+   "2025-07-01T00:00:00.000Z"
+  ],
+  "targets": 4463,
+  "best": {
+   "k": 20,
+   "window": 20,
+   "distribution": "negbin",
+   "minTeamMatches": 8,
+   "minVenueMatches": 4,
+   "minLeagueMatches": 40,
+   "leagueWindow": 300,
+   "maxCorners": 40
+  },
+  "table": [
+   {
+    "params": {
+     "k": 0,
+     "window": 5,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6894743557970137,
+    "brier": 0.23602971144320417,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 0,
+     "window": 5,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.735682135452137,
+    "brier": 0.24462145090045917,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 0,
+     "window": 10,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6395541102654824,
+    "brier": 0.22027438235594254,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 0,
+     "window": 10,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6656527538981449,
+    "brier": 0.22577674217876242,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 0,
+     "window": 20,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6258550766253156,
+    "brier": 0.2151712940740663,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 0,
+     "window": 20,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6449826222268399,
+    "brier": 0.21928613202404615,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 5,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6380702064796593,
+    "brier": 0.22075075936105884,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 5,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6610113649440787,
+    "brier": 0.2259817623287242,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 10,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.621896822992002,
+    "brier": 0.21462663439984664,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 10,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6389627460116174,
+    "brier": 0.2185778434574447,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 20,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6162510678758897,
+    "brier": 0.21221237877518914,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 2,
+     "window": 20,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6304178982391136,
+    "brier": 0.215465154469908,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 5,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6158627682947979,
+    "brier": 0.21272940269966908,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 5,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6273723451601443,
+    "brier": 0.21570263364445846,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 10,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6106928814631545,
+    "brier": 0.2105770202488566,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 10,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6213361328675411,
+    "brier": 0.2132416775539928,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 20,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6094435065632375,
+    "brier": 0.20986966950082522,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 5,
+     "window": 20,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6196876443923118,
+    "brier": 0.21235203105475475,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 5,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6065464567040995,
+    "brier": 0.20902472622643725,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 5,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6126894843910559,
+    "brier": 0.21074969615865308,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 10,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6041854671285198,
+    "brier": 0.2080317457478689,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 10,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6105547013823943,
+    "brier": 0.20974555082794913,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 20,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6044985925278034,
+    "brier": 0.20805571789323632,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 10,
+     "window": 20,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6115371053735656,
+    "brier": 0.2098621042360022,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 5,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6037187272319782,
+    "brier": 0.20784156946809143,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 5,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6077984041971598,
+    "brier": 0.20906010876737632,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 10,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6016164305386252,
+    "brier": 0.20696559322326338,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 10,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6056422318612386,
+    "brier": 0.2081321166149818,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 20,
+     "distribution": "negbin",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.6015404601321404,
+    "brier": 0.20691736957482956,
+    "eligible": 3807
+   },
+   {
+    "params": {
+     "k": 20,
+     "window": 20,
+     "distribution": "poisson",
+     "minTeamMatches": 8,
+     "minVenueMatches": 4,
+     "minLeagueMatches": 40,
+     "leagueWindow": 300,
+     "maxCorners": 40
+    },
+    "logLoss": 0.606150304844263,
+    "brier": 0.20819124831328414,
+    "eligible": 3807
+   }
+  ]
+ },
+ "holdout": {
+  "period": [
+   "2025-07-01T00:00:00.000Z",
+   "2026-07-01T00:00:00.000Z"
+  ],
+  "targets": 4911,
+  "eligible": 4657,
+  "skipped": {
+   "home_team": 140,
+   "away_team": 141,
+   "home_venue": 142,
+   "away_venue": 141
+  },
+  "overall": {
+   "records": 74512,
+   "matches": 4657,
+   "brierModel": 0.20774109285489095,
+   "brierBase": 0.21034411532957778,
+   "logLossModel": 0.6032504459344901,
+   "logLossBase": 0.6094519188785836
+  },
+  "byScope": {
+   "total": {
+    "records": 27942,
+    "matches": 4657,
+    "brierModel": 0.21348482898285784,
+    "brierBase": 0.21364805913089607,
+    "logLossModel": 0.6163028475896385,
+    "logLossBase": 0.6167874788378549
+   },
+   "home": {
+    "records": 23285,
+    "matches": 4657,
+    "brierModel": 0.205093353144569,
+    "brierBase": 0.2098750716683915,
+    "logLossModel": 0.596773964467858,
+    "logLossBase": 0.607992682875848
+   },
+   "away": {
+    "records": 23285,
+    "matches": 4657,
+    "brierModel": 0.20349634921165113,
+    "brierBase": 0.206848426429182,
+    "logLossModel": 0.5940640454149647,
+    "logLossBase": 0.6021084829301896
+   }
+  },
+  "byLeague": [
+   {
+    "leagueId": "eng-ch",
+    "records": 8368,
+    "matches": 523,
+    "brierModel": 0.20971425799418061,
+    "brierBase": 0.2097368244492139,
+    "logLossModel": 0.6077915175546934,
+    "logLossBase": 0.6080875851328411
+   },
+   {
+    "leagueId": "eng-pl",
+    "records": 6080,
+    "matches": 380,
+    "brierModel": 0.20848925958487277,
+    "brierBase": 0.21212821562077566,
+    "logLossModel": 0.6050898272541031,
+    "logLossBase": 0.613398261551991
+   },
+   {
+    "leagueId": "esp-l2",
+    "records": 7104,
+    "matches": 444,
+    "brierModel": 0.20901891993353003,
+    "brierBase": 0.20904221173508258,
+    "logLossModel": 0.6065267890991962,
+    "logLossBase": 0.6067699271373271
+   },
+   {
+    "leagueId": "esp-ll",
+    "records": 6080,
+    "matches": 380,
+    "brierModel": 0.20452203090023427,
+    "brierBase": 0.2103615194176244,
+    "logLossModel": 0.5957395070479166,
+    "logLossBase": 0.6095560568556652
+   },
+   {
+    "leagueId": "fifa-wcq-uefa",
+    "records": 2416,
+    "matches": 151,
+    "brierModel": 0.20738111080573643,
+    "brierBase": 0.21925147805969386,
+    "logLossModel": 0.6017623970418685,
+    "logLossBase": 0.6291809460643261
+   },
+   {
+    "leagueId": "fra-l1",
+    "records": 4880,
+    "matches": 305,
+    "brierModel": 0.2111085687104009,
+    "brierBase": 0.21318313066080388,
+    "logLossModel": 0.6109386006282327,
+    "logLossBase": 0.6159863866148982
+   },
+   {
+    "leagueId": "fra-l2",
+    "records": 4512,
+    "matches": 282,
+    "brierModel": 0.20163309204738644,
+    "brierBase": 0.20434109429286798,
+    "logLossModel": 0.5897795598424591,
+    "logLossBase": 0.596444050583832
+   },
+   {
+    "leagueId": "ger-b2",
+    "records": 4640,
+    "matches": 290,
+    "brierModel": 0.20967959769652458,
+    "brierBase": 0.21027132678817417,
+    "logLossModel": 0.6080870282102189,
+    "logLossBase": 0.6095014271526494
+   },
+   {
+    "leagueId": "ger-bl",
+    "records": 4896,
+    "matches": 306,
+    "brierModel": 0.20931734852378794,
+    "brierBase": 0.2107926508368597,
+    "logLossModel": 0.6067230432133446,
+    "logLossBase": 0.6104524904420578
+   },
+   {
+    "leagueId": "ita-sa",
+    "records": 6080,
+    "matches": 380,
+    "brierModel": 0.20345851892345293,
+    "brierBase": 0.20640161735453075,
+    "logLossModel": 0.5929564038444093,
+    "logLossBase": 0.6001544273026755
+   },
+   {
+    "leagueId": "ita-sb",
+    "records": 5728,
+    "matches": 358,
+    "brierModel": 0.2076885933449198,
+    "brierBase": 0.21007142061074102,
+    "logLossModel": 0.6032565584666534,
+    "logLossBase": 0.6087626275768735
+   },
+   {
+    "leagueId": "uefa-nl",
+    "records": 64,
+    "matches": 4,
+    "brierModel": 0.1797822836473506,
+    "brierBase": 0.2122012345956799,
+    "logLossModel": 0.5354425079451771,
+    "logLossBase": 0.6106387482515695
+   },
+   {
+    "leagueId": "uefa-ucl",
+    "records": 2848,
+    "matches": 178,
+    "brierModel": 0.20367279613661307,
+    "brierBase": 0.20970166802422668,
+    "logLossModel": 0.5936100616518893,
+    "logLossBase": 0.6079223610210348
+   },
+   {
+    "leagueId": "uefa-uecl",
+    "records": 1104,
+    "matches": 69,
+    "brierModel": 0.20730594163241176,
+    "brierBase": 0.21249673741226704,
+    "logLossModel": 0.602110805996854,
+    "logLossBase": 0.6136728633894242
+   },
+   {
+    "leagueId": "uefa-uel",
+    "records": 2416,
+    "matches": 151,
+    "brierModel": 0.20385344220690277,
+    "brierBase": 0.20425701022964035,
+    "logLossModel": 0.5940659175244166,
+    "logLossBase": 0.5957190310730549
+   },
+   {
+    "leagueId": "usa-mls",
+    "records": 7296,
+    "matches": 456,
+    "brierModel": 0.21244301827256049,
+    "brierBase": 0.2148401832849922,
+    "logLossModel": 0.6139985957424231,
+    "logLossBase": 0.6194749605122272
+   }
+  ],
+  "ci": {
+   "logLoss": {
+    "mean": -0.006201472944089644,
+    "lo": -0.008357028729895568,
+    "hi": -0.004141187366415101
+   },
+   "brier": {
+    "mean": -0.002603022474688187,
+    "lo": -0.0035230437343556297,
+    "hi": -0.0017390511502340827
+   },
+   "byScope": {
+    "total": {
+     "mean": -0.00048463124822263826,
+     "lo": -0.0031975540562508525,
+     "hi": 0.002451220186405063
+    },
+    "home": {
+     "mean": -0.011218718407991848,
+     "lo": -0.014617040609946357,
+     "hi": -0.007625446597870827
+    },
+    "away": {
+     "mean": -0.008044437515227931,
+     "lo": -0.011277141227324289,
+     "hi": -0.004613858202528851
+    }
+   }
+  },
+  "calibration": {
+   "model": [
+    {
+     "from": 0,
+     "to": 0.1,
+     "n": 270,
+     "meanP": 0.08574256704236038,
+     "observed": 0.1
+    },
+    {
+     "from": 0.1,
+     "to": 0.2,
+     "n": 5712,
+     "meanP": 0.16305652411039853,
+     "observed": 0.16771708683473388
+    },
+    {
+     "from": 0.2,
+     "to": 0.3,
+     "n": 11995,
+     "meanP": 0.25145969312703187,
+     "observed": 0.2521050437682368
+    },
+    {
+     "from": 0.3,
+     "to": 0.4,
+     "n": 12308,
+     "meanP": 0.34905600045220286,
+     "observed": 0.3494475138121547
+    },
+    {
+     "from": 0.4,
+     "to": 0.5,
+     "n": 11203,
+     "meanP": 0.4494920729756309,
+     "observed": 0.45925198607515844
+    },
+    {
+     "from": 0.5,
+     "to": 0.6,
+     "n": 10417,
+     "meanP": 0.5493596072544501,
+     "observed": 0.5662858788518768
+    },
+    {
+     "from": 0.6,
+     "to": 0.7,
+     "n": 10189,
+     "meanP": 0.6488436748958561,
+     "observed": 0.6661105113357543
+    },
+    {
+     "from": 0.7,
+     "to": 0.8,
+     "n": 8007,
+     "meanP": 0.7458017821991028,
+     "observed": 0.7529661546147122
+    },
+    {
+     "from": 0.8,
+     "to": 0.9,
+     "n": 4133,
+     "meanP": 0.8415696818924879,
+     "observed": 0.8449068473263973
+    },
+    {
+     "from": 0.9,
+     "to": 1,
+     "n": 278,
+     "meanP": 0.9136181099616315,
+     "observed": 0.9100719424460432
+    }
+   ],
+   "baseline": [
+    {
+     "from": 0,
+     "to": 0.1,
+     "n": 0,
+     "meanP": 0,
+     "observed": 0
+    },
+    {
+     "from": 0.1,
+     "to": 0.2,
+     "n": 4819,
+     "meanP": 0.17632362474131236,
+     "observed": 0.1714048557792073
+    },
+    {
+     "from": 0.2,
+     "to": 0.3,
+     "n": 12782,
+     "meanP": 0.256845282470663,
+     "observed": 0.2538726333907057
+    },
+    {
+     "from": 0.3,
+     "to": 0.4,
+     "n": 11928,
+     "meanP": 0.3482295376047554,
+     "observed": 0.3456572769953052
+    },
+    {
+     "from": 0.4,
+     "to": 0.5,
+     "n": 11352,
+     "meanP": 0.44242722549902114,
+     "observed": 0.4474982381959126
+    },
+    {
+     "from": 0.5,
+     "to": 0.6,
+     "n": 12446,
+     "meanP": 0.556376763909008,
+     "observed": 0.5686164229471317
+    },
+    {
+     "from": 0.6,
+     "to": 0.7,
+     "n": 8436,
+     "meanP": 0.6573445045956173,
+     "observed": 0.681484115694642
+    },
+    {
+     "from": 0.7,
+     "to": 0.8,
+     "n": 8111,
+     "meanP": 0.7344080076092282,
+     "observed": 0.7348045863641968
+    },
+    {
+     "from": 0.8,
+     "to": 0.9,
+     "n": 4601,
+     "meanP": 0.8361171632125403,
+     "observed": 0.8317757009345794
+    },
+    {
+     "from": 0.9,
+     "to": 1,
+     "n": 37,
+     "meanP": 0.9035865534215457,
+     "observed": 0.7567567567567568
+    }
+   ]
+  }
+ },
+ "independence": {
+  "pearson": -0.2483398933093415,
+  "n": 4911
+ },
+ "gate": {
+  "passed": true,
+  "reasons": []
+ }
+}

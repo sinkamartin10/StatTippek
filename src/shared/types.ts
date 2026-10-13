@@ -371,6 +371,116 @@ export interface MatchAnalysis {
   consensus: ExternalConsensus;
   risks: string[];
   methodology: string[];
+  /**
+   * Szögletelemzés (külön réteg, `corners-nb-1`). Opcionális: az elemzőmotor
+   * (`analyzeMatch`) NEM tölti ki, és a gólmodell nem olvassa. PRO-adat – a FREE
+   * válaszból a szerver eltávolítja (`redactAnalysisForFree`).
+   */
+  corners?: CornerAnalysis | null;
+}
+
+// ---------- Szögletek (corners-nb-1) – a gólmodelltől elkülönített réteg ----------
+
+/** Egy befejezett meccs hiteles, mindkét csapatra meglévő szögletszáma. */
+export interface CornerResult {
+  matchId: string;
+  leagueId: string;
+  /** a kezdés ideje (ISO) */
+  date: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeCorners: number;
+  awayCorners: number;
+}
+
+/** Egy csapat szöglet-összesítője egy ablakra (utolsó N befejezett meccs). */
+export interface CornerStats {
+  venue: 'összes' | 'hazai' | 'idegen';
+  window: number;
+  /** a vizsgált befejezett meccsek száma (szögletadattal vagy anélkül) */
+  considered: number;
+  /** ebből érvényes szögletadat – minden átlag EBBŐL számol */
+  sampleSize: number;
+  /** kiharcolt szöglet / meccs */
+  forAvg: number | null;
+  /** kapott (az ellenfél által kiharcolt) szöglet / meccs */
+  againstAvg: number | null;
+  /** a meccsek összes szöglete / meccs */
+  totalAvg: number | null;
+}
+
+/** Egy vonal történeti teljesülése: hányszor volt TÖBB a vonalnál. */
+export interface CornerLineRate {
+  line: number;
+  over: number;
+  sampleSize: number;
+}
+
+export interface CornerTeamBlock {
+  teamId: string;
+  last5: CornerStats;
+  last10: CornerStats;
+  /** hazai csapatnál a hazai, vendégnél az idegenbeli meccsek (utolsó 10) */
+  venue: CornerStats;
+  /** a csapat utolsó 10 meccsének ÖSSZES szöglete a vonalakhoz mérve */
+  totalLines: CornerLineRate[];
+  /** a csapat saját (kiharcolt) szögletei a vonalakhoz mérve, utolsó 10 */
+  forLines: CornerLineRate[];
+}
+
+export interface CornerLeagueAverages {
+  leagueId: string;
+  sampleSize: number;
+  homeAvg: number | null;
+  awayAvg: number | null;
+  totalAvg: number | null;
+}
+
+export interface CornerMarketProbability {
+  /** elkülönített piackód, pl. CRN_O9.5, CRN_HOME_O4.5 */
+  market: string;
+  label: string;
+  scope: 'total' | 'home' | 'away';
+  line: number;
+  over: number;
+  under: number;
+}
+
+export interface CornerPrediction {
+  modelVersion: string;
+  distribution: 'negbin' | 'poisson';
+  homeExpected: number;
+  awayExpected: number;
+  /** csak ha az összes-szöglet piaccsoport validált, különben null */
+  totalExpected: number | null;
+  markets: CornerMarketProbability[];
+}
+
+export type CornerStatus = 'ok' | 'insufficient' | 'unavailable' | 'unsupported';
+
+export interface CornerAnalysis {
+  matchId: string;
+  modelVersion: string;
+  generatedAt: string;
+  /**
+   * ok: van leíró statisztika és a modell feltételei teljesülnek ·
+   * insufficient: a modellhez kevés az adat (leíró adat lehet) ·
+   * unavailable: a szögletadat most nem érhető el (hálózat/forrás) ·
+   * unsupported: a liga/forrás nem ad megbízható szögletadatot
+   */
+  status: CornerStatus;
+  reasons: string[];
+  source: string;
+  coverage: { considered: number; valid: number; skipped: Record<string, number> };
+  league: CornerLeagueAverages | null;
+  home: CornerTeamBlock | null;
+  away: CornerTeamBlock | null;
+  /** modell-valószínűség – CSAK validált modellnél és elegendő adatnál, különben null */
+  prediction: CornerPrediction | null;
+  /** a modell validációs állapota; `scopes`: a kiadott piaccsoportok */
+  validation: { validated: boolean; note: string; scopes: ('total' | 'home' | 'away')[] };
+  /** szöglet-odds és value-becslés nincs bekötve (nincs jóváhagyott forrás) */
+  oddsAvailable: false;
 }
 
 // ---------- Előzmények (historikus teljesítmény) ----------

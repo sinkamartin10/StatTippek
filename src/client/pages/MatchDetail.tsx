@@ -9,9 +9,10 @@ import { Card, Disclaimer, EmptyState, ErrorBox, FormPills, ImportanceBadge, Loa
 import { CorrectScoreChart, FormGoalsChart, FormTrendChart, GoalDistChart, OneXTwoChart, OverUnderChart } from '../components/charts';
 import { LockedBlock, ProLock, useFreeDay, usePlan } from '../auth/PlanContext';
 import { localDateKey } from '../lib/dates';
+import { CornersCard } from '../components/CornersCard';
 
 const SECTIONS = [
-  ['attekintes', 'Áttekintés'], ['statisztika', 'Statisztika'], ['osszehasonlitas', 'Összehasonlítás'], ['hirek', 'Hírek'],
+  ['attekintes', 'Áttekintés'], ['statisztika', 'Statisztika'], ['szogletek', 'Szögletek'], ['osszehasonlitas', 'Összehasonlítás'], ['hirek', 'Hírek'],
   ['kulso', 'Külső előrejelzések'], ['modell', 'Modell'], ['ertek', 'Odds és érték'], ['tippek', 'Lehetséges piacok'], ['kockazatok', 'Kockázatok'], ['forrasok', 'Források'], ['modszer', 'Elemzési módszer'],
 ];
 
@@ -76,6 +77,7 @@ function MatchDetailInner({ id, pro }: { id: string; pro: boolean }) {
 
       <Overview an={an} />
       <Statistics an={an} pro={pro} />
+      <CornersCard matchId={an.match.id} homeName={an.homeTeam.shortName} awayName={an.awayTeam.shortName} pro={pro} />
       <Comparison an={an} pro={pro} />
       <News an={an} />
       <External an={an} />

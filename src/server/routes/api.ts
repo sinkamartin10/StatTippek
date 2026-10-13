@@ -9,11 +9,12 @@ import { computeForm, computeStandings, computeLeagueAverages } from '../../shar
 import { localDateKey } from '../data/demoProvider';
 import type { MatchOdds, SlipStrategy } from '../../shared/types';
 import { freeMatchIds, redactAnalysisForFree, redactTipsForFree } from '../../shared/engine/plan';
-import { planOf } from '../billing/entitlement';
+import { planOf, requirePro } from '../billing/entitlement';
+import type { CornerService } from '../corners/service';
 
 const VALID_MARKET = /^([12X]|1X|X2|12|DNB_[12]|[OU]\d\.5|BTTS_[YN]|(HOME|AWAY)_O\d\.5|AH_HOME_-1|CS_\d+-\d+)$/;
 
-export function apiRouter(c: Container, svc: AnalysisService): Router {
+export function apiRouter(c: Container, svc: AnalysisService, corners: CornerService | null = null): Router {
   const r = Router();
   const q = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
   // Bemenet-ellenőrzés: dátum csak YYYY-MM-DD, azonosítók csak biztonságos karakterek – a külső szolgáltatók URL-jébe kerülnek
@@ -80,6 +81,22 @@ export function apiRouter(c: Container, svc: AnalysisService): Router {
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'Az elemzés nem futtatható: ' + (e as Error).message });
+    }
+  });
+
+  // Szögletelemzés (corners-nb-1) – PRO-funkció: a szerver dönti el (requirePro), nem csak a felület.
+  // Külön végpont, hogy a gólelemzés (analyze) útja és a Tippek lista ne indítson szögletlekérést.
+  r.get('/matches/:id/corners', requirePro, async (req, res) => {
+    const id = String(req.params.id);
+    if (!ID.test(id)) return badId(res);
+    if (!corners) return res.status(503).json({ error: 'A szögletelemzés jelenleg nem elérhető.' });
+    try {
+      const a = await corners.analyze(id);
+      if (!a) return res.status(404).json({ error: 'A mérkőzés nem található.' });
+      res.json(a);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'A szögletelemzés nem futtatható.' });
     }
   });
 

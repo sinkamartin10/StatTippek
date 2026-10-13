@@ -12,6 +12,7 @@ import { tipArchiveRouter } from './routes/tipArchive';
 import { ModelLearningService } from './modelLearning/service';
 import { modelLearningRouter } from './routes/modelLearning';
 import { apiRouter } from './routes/api';
+import { CornerService } from './corners/service';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
@@ -206,7 +207,7 @@ app.use('/api/coins', coinsRouter(coinService));
 app.use('/api/shop', shopRouter(coinService));
 // Modell-tipp archívum – nyilvános, csak olvasható (csak elkezdődött meccsek)
 app.use('/api/tip-archive', tipArchiveRouter(tipArchiveService));
-app.use('/api', apiRouter(container, service));
+app.use('/api', apiRouter(container, service, new CornerService(container.data)));
 
 // Ismeretlen /api útvonal
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Ismeretlen API végpont.' }));

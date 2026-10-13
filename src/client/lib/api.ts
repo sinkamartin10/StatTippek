@@ -8,7 +8,7 @@ import type {
 } from '@shared/battles';
 import type { NotificationListResponse, NotificationRow } from '@shared/notifications';
 import type {
-  AppStatus, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
+  AppStatus, CornerAnalysis, HistorySummary, League, Match, MatchAnalysis, MatchOdds, PredictionRecord, SourceRecord, Team, TipListEntry, SlipBuildResponse, SlipRecord, SlipStrategy,
   FormSummary, StandingRow, LeagueAverages, MatchResult,
 } from '@shared/types';
 import type {
@@ -152,6 +152,8 @@ export const api = {
   matches: (params: Record<string, string | undefined>) => request<MatchWithTeams[]>(`/matches${qs(params)}`),
   match: (id: string) => request<MatchWithTeams>(`/matches/${encodeURIComponent(id)}`),
   analysis: (id: string, refresh = false) => request<MatchAnalysis>(`/matches/${encodeURIComponent(id)}/analysis${refresh ? '?refresh=1' : ''}`),
+  /** Szögletelemzés – PRO (a szerver FREE-nek 403-at ad) */
+  matchCorners: (id: string) => request<CornerAnalysis>(`/matches/${encodeURIComponent(id)}/corners`),
   saveOdds: (id: string, markets: Record<string, string>, bookmaker?: string) =>
     request<MatchOdds>(`/matches/${encodeURIComponent(id)}/odds`, { method: 'POST', body: JSON.stringify({ markets, bookmaker }) }),
   deleteOdds: (id: string) => request<{ ok: true }>(`/matches/${encodeURIComponent(id)}/odds`, { method: 'DELETE' }),

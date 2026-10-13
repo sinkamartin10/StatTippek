@@ -10,10 +10,11 @@
  * hitelesítés nélküli végpontok. Ha egy hívás sikertelen, üres eredményt adunk vissza és naplózunk – soha nem
  * pótoljuk kitalált adattal.
  */
-import type { League, Match, MatchImportance, MatchOdds, MatchResult, Team } from '../../shared/types';
+import type { CornerResult, League, Match, MatchImportance, MatchOdds, MatchResult, Team } from '../../shared/types';
 import type { HttpCache } from '../db/database';
 import { DERBIES, TEAMS as DEMO_TEAMS } from './demo/leagues';
-import type { MatchDataProvider, MatchQuery } from './provider';
+import type { CornerFetch, CornerRef, MatchDataProvider, MatchQuery } from './provider';
+import { candidateMonths, espnMonthKey, monthEndUtc, parseScoreboardCorners, shiftMonth, type ParsedCorners } from './espnCorners';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
@@ -426,6 +427,85 @@ export class EspnProvider implements MatchDataProvider {
   async getOdds(matchId: string): Promise<MatchOdds | null> {
     if (!this.odds.has(matchId)) await this.getMatch(matchId);
     return this.odds.get(matchId) ?? null;
+  }
+
+  // ---------- Szögletek (külön réteg – a gólelemzés nem használja) ----------
+
+  /**
+   * Egy liga egy (keleti idő szerinti) hónapjának szögletadatai a scoreboard
+   * végpontról, a meglévő HTTP-cache-sel. A lezárt hónap 30 napig, a folyó
+   * hónap 30 percig cache-elt. Hálózati vagy cache-hiba → null (soha nem kitalált adat).
+   */
+  async getCornerMonth(leagueId: string, yyyymm: string): Promise<ParsedCorners | null> {
+    // ugyanarra a hónapra párhuzamosan (csapat- és liga-előzmény) csak egy ESPN-kérés induljon
+    const key = `${leagueId}|${yyyymm}`;
+    const running = this.cornerInflight.get(key);
+    if (running) return running;
+    const p = this.fetchCornerMonth(leagueId, yyyymm).finally(() => this.cornerInflight.delete(key));
+    this.cornerInflight.set(key, p);
+    return p;
+  }
+
+  private cornerInflight = new Map<string, Promise<ParsedCorners | null>>();
+
+  private async fetchCornerMonth(leagueId: string, yyyymm: string): Promise<ParsedCorners | null> {
+    const slug = SLUG[leagueId];
+    if (!slug || !/^\d{6}$/.test(yyyymm)) return null;
+    const closed = monthEndUtc(yyyymm) + 3 * 24 * HOUR < Date.now();
+    try {
+      const data = await this.call(`${slug}/scoreboard?dates=${yyyymm}`, closed ? 30 * 24 * HOUR : 30 * MIN);
+      return data ? parseScoreboardCorners(data, slug, leagueId) : null;
+    } catch (e) {
+      console.error(`[espn] szögletadat ${slug} ${yyyymm} -> kivétel:`, (e as Error).message);
+      return null;
+    }
+  }
+
+  async getCornerResults(refs: CornerRef[]): Promise<CornerFetch> {
+    const found = new Map<string, CornerResult>();
+    const missing: CornerFetch['missing'] = [];
+    const pending = new Map<string, CornerRef>();
+    for (const r of refs) {
+      const slug = SLUG[r.leagueId];
+      if (!slug || !r.matchId.startsWith(`espn-${slug}-`)) { missing.push({ matchId: r.matchId, reason: 'unsupported_league' }); continue; }
+      pending.set(r.matchId, r);
+    }
+    const failedMonths = new Set<string>();
+    // 1. kör: az elsődleges (keleti idő szerinti) hónap; 2–3. kör: hónaphatár-közeli tartalék
+    for (let attempt = 0; attempt < 3 && pending.size; attempt++) {
+      const jobs = new Map<string, { leagueId: string; month: string }>();
+      for (const r of pending.values()) {
+        const m = candidateMonths(r.kickoff)[attempt];
+        if (m) jobs.set(`${r.leagueId}|${m}`, { leagueId: r.leagueId, month: m });
+      }
+      if (!jobs.size) break;
+      const fetched = await Promise.all([...jobs.entries()].map(async ([key, j]) => [key, await this.getCornerMonth(j.leagueId, j.month)] as const));
+      for (const [key, parsed] of fetched) {
+        if (!parsed) { failedMonths.add(key); continue; }
+        for (const r of parsed.results) if (pending.delete(r.matchId)) found.set(r.matchId, r);
+        // megtalált, de nem elfogadható meccs (nem befejezett, hosszabbítás, hiányzó érték) – nem keressük tovább
+        for (const s of parsed.skipped) if (pending.delete(s.matchId)) missing.push({ matchId: s.matchId, reason: s.reason });
+      }
+    }
+    for (const r of pending.values()) {
+      const failed = candidateMonths(r.kickoff).some((m) => failedMonths.has(`${r.leagueId}|${m}`));
+      missing.push({ matchId: r.matchId, reason: failed ? 'request_failed' : 'not_found' });
+    }
+    return { results: [...found.values()], missing, failedRequests: failedMonths.size };
+  }
+
+  async getLeagueCornerHistory(leagueId: string, before: string, minMatches: number, maxMonths: number): Promise<CornerFetch> {
+    if (!SLUG[leagueId]) return { results: [], missing: [], failedRequests: 0 };
+    const seen = new Set<string>();
+    const results: CornerResult[] = [];
+    let failed = 0;
+    let month = espnMonthKey(before);
+    for (let i = 0; i < maxMonths && results.length < minMatches; i++, month = shiftMonth(month, -1)) {
+      const p = await this.getCornerMonth(leagueId, month);
+      if (!p) { failed++; continue; }
+      for (const r of p.results) if (r.date < before && !seen.has(r.matchId)) { seen.add(r.matchId); results.push(r); }
+    }
+    return { results, missing: [], failedRequests: failed };
   }
 
   /** Az aktuális idény kezdete (tabellához) – az ESPN scoreboard válaszából, különben becsült (júl. 1.). */

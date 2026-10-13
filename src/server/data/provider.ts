@@ -3,7 +3,22 @@
  * Új adatforrás hozzáadása: implementáld ezt az interfészt (lásd demoProvider.ts, apiFootballProvider.ts),
  * majd regisztráld a src/server/container.ts-ben.
  */
-import type { DataOrigin, League, Match, MatchOdds, MatchResult, Team } from '../../shared/types';
+import type { CornerResult, DataOrigin, League, Match, MatchOdds, MatchResult, Team } from '../../shared/types';
+
+/** Egy befejezett meccs, amelynek a szögletszáma kell. */
+export interface CornerRef {
+  matchId: string;
+  leagueId: string;
+  kickoff: string;
+}
+
+/** Szögletadat-lekérés eredménye: csak hiteles adat, a hiány okával. */
+export interface CornerFetch {
+  results: CornerResult[];
+  missing: { matchId: string; reason: string }[];
+  /** sikertelen (hálózati/cache) kérések száma */
+  failedRequests: number;
+}
 
 export interface MatchQuery {
   /** YYYY-MM-DD (helyi nap) */
@@ -41,4 +56,11 @@ export interface MatchDataProvider {
   getOdds(matchId: string): Promise<MatchOdds | null>;
   /** Az aktuális idény kezdete ISO formában (tabella-szűréshez). Ha nincs, minden eredmény számít. */
   getSeasonStart?(leagueId: string): Promise<string>;
+  /**
+   * Opcionális: a megadott befejezett meccsek hiteles szögletszáma. Aki nem
+   * implementálja, annál szögletelemzés nem készül. Soha nem pótol adatot.
+   */
+  getCornerResults?(refs: CornerRef[]): Promise<CornerFetch>;
+  /** Opcionális: a liga legutóbbi szögletadatai a `before` időpont előtt (liga-átlaghoz). */
+  getLeagueCornerHistory?(leagueId: string, before: string, minMatches: number, maxMonths: number): Promise<CornerFetch>;
 }
