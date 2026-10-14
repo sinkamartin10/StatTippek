@@ -12,6 +12,7 @@ import Competitions from './pages/Competitions';
 import CompetitionDetail from './pages/CompetitionDetail';
 import AdminCompetitions from './pages/AdminCompetitions';
 import AdminProPayments from './pages/AdminProPayments';
+import AdminProStats from './pages/AdminProStats';
 import AdminModelLearning from './pages/AdminModelLearning';
 import MyStats from './pages/MyStats';
 import Battles from './pages/Battles';
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="/admin/tippverseny" element={<RequireAuth><AdminCompetitions /></RequireAuth>} />
         <Route path="/admin/modell-tanulas" element={<RequireAuth><AdminModelLearning /></RequireAuth>} />
         <Route path="/admin/pro-befizetesek" element={<RequireAuth><AdminProPayments /></RequireAuth>} />
+        <Route path="/admin/pro-statisztika" element={<RequireAuth><AdminProStats /></RequireAuth>} />
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
         <Route path="/modell-archivum" element={<TipArchive />} />

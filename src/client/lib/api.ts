@@ -6,6 +6,7 @@ import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
 import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo,
 } from '@shared/manualPayment';
+import type { AdminProStats, PublicProCount } from '@shared/proStats';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
@@ -187,6 +188,11 @@ export const api = {
     request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }, '/api/admin/pro-payments'),
   adminRejectProPayment: (id: string, note: string | null) =>
     request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ note }) }, '/api/admin/pro-payments'),
+  // ---------- PRO-felhasználószám (mindig a tényleges aktív PRO-k száma; az admin csak a megjelenítést kapcsolja) ----------
+  proStats: () => request<PublicProCount>('/pro-stats'),
+  adminProStats: () => request<AdminProStats>('', {}, '/api/admin/pro-stats'),
+  adminSetProStatsVisibility: (showPublic: boolean) =>
+    request<AdminProStats>('', { method: 'PUT', body: JSON.stringify({ showPublic }) }, '/api/admin/pro-stats'),
   // ---------- Profil: megjelenítési név (a meglévő profiles táblán) ----------
   profileMe: () => request<ProfileMe>('/me', {}, '/api/profile'),
   /** A nevet mindig a hitelesített felhasználóhoz menti; a törzsben user_id-t nem küldünk. */

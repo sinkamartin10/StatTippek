@@ -5,6 +5,7 @@ import { ArrowRight, Crown, Trophy } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync, pct, signed } from '../lib/format';
 import { applyClientFilters, defaultFilters, MatchFilters, MatchGrid } from '../components/MatchList';
+import { ProUserCount } from '../components/ProUserCount';
 import { Card, Disclaimer, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { TipCard } from '../components/TipCard';
 import { CompetitionStatusBadge, remainingText } from './Competitions';
@@ -41,6 +42,8 @@ export default function Dashboard() {
         text={name ? `Üdv, ${name}! Az algoritmus átnézte a mai mérkőzéseket – itt vannak a statisztikailag legjobban támogatott piacok.` : 'Az algoritmus átnézte a mai mérkőzéseket – itt vannak a statisztikailag legjobban támogatott piacok.'}
         right={<Link to="/tippek" className="btn btn-primary">Összes tipp <ArrowRight className="h-4 w-4" /></Link>}
       />
+      {/* ugyanaz a jelvény és forrás, mint a nyitóoldalon (a tényleges aktív PRO-k száma) */}
+      <ProUserCount className="-mt-3" />
 
       {/* A nap mutatói */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

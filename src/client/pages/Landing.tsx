@@ -32,6 +32,7 @@ import {
   PlannedPricingCards, PlannedPricingHeader, ReferralProgramCard,
 } from '../components/PlannedPricing';
 import { PRO_PRICE } from './Pro';
+import { ProUserCount } from '../components/ProUserCount';
 
 /** Hány sort mutatunk az élő ranglistából – rövid, hogy ne nyomja le a hajtást. */
 const PREVIEW_ROWS = 5;
@@ -189,6 +190,8 @@ export default function Landing() {
           <p className="mt-5 text-sm font-semibold text-text-muted">
             Ingyenesen kezdhető · Bankkártya nélkül · Napi {FREE_DAILY_PREDICTION_LIMIT} tipp a FREE csomagban
           </p>
+          {/* a TÉNYLEGES aktív PRO-k száma a szerverről – ha nincs mit mutatni, nem jelenik meg */}
+          <ProUserCount className="mt-4" />
         </div>
 
         {/* Termék-előnézet: VALÓDI ranglista, valódi játékosokkal és kinézettel */}

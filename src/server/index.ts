@@ -32,6 +32,7 @@ import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter } from './billing/manualPayments';
+import { proStatsRouters, supabaseActiveProCounter } from './billing/proStats';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseAdmin, supabaseConfigured } from './billing/supabaseAdmin';
 
@@ -192,6 +193,10 @@ app.use('/api/admin/model-learning', requireAdmin, modelLearningRouter(modelLear
 const manualPayments = supabaseAdmin ? new PostgresManualPaymentStore(supabaseAdmin) : null;
 app.use('/api/pro-payments', proPaymentsRouter(manualPayments, currentProPrice));
 app.use('/api/admin/pro-payments', requireAdmin, adminProPaymentsRouter(manualPayments));
+// Nyilvános PRO-felhasználószám: mindig a TÉNYLEGES aktív PRO-k száma; az admin csak a megjelenítést kapcsolja
+const proStats = proStatsRouters(container.db, supabaseAdmin ? supabaseActiveProCounter(supabaseAdmin) : null);
+app.use('/api/pro-stats', proStats.pub);
+app.use('/api/admin/pro-stats', requireAdmin, proStats.admin);
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
 app.use('/api/profile', profileRouter(container.displayNames, progressionService, socialService));
