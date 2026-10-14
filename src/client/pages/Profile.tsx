@@ -123,11 +123,11 @@ export default function Profile() {
           ) : (
             <Link to="/pro" className="btn btn-primary"><Crown className="h-4 w-4" /> PRO kipróbálása</Link>
           )}
-          <button className="btn" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Státusz frissítése</button>
+          {profile?.stripe_customer_id && <button className="btn" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Stripe-státusz frissítése</button>}
           <Link to="/beallitasok" className="btn">Beállítások</Link>
         </div>
         {msg && <div className="mt-3"><Note tone={msg.tone}>{msg.text}</Note></div>}
-        <p className="mt-3 text-xs font-semibold text-text-muted">Az előfizetés állapotát kizárólag a szerver (Stripe) írja – a felületről nem módosítható.</p>
+        <p className="mt-3 text-xs font-semibold text-text-muted">Az előfizetés állapotát kizárólag a szerver írja (a befizetés admin általi jóváhagyása után) – a felületről nem módosítható.</p>
       </Card>
 
       <Card title="Munkamenet">

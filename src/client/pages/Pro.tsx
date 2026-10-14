@@ -1,6 +1,10 @@
-/** PRO oldal: ár (a Stripe Price-ból), előnyök, „PRO aktiválása” → Stripe Checkout; PRO-nak ügyfélportál. */
+/**
+ * PRO oldal: ár, előnyök és a PRO igénylése KÉZI fizetéssel (banki átutalás / Revolut).
+ * A befizetést admin ellenőrzi és hagyja jóvá; a felület a PRO-t soha nem állítja be.
+ * A korábbi Stripe-ügyfelek számára az ügyfélportál és a státusz-szinkron megmarad.
+ */
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Crown, Lock } from 'lucide-react';
 import { Card, Disclaimer, ErrorBox, Loading, Note } from '../components/ui';
 import { useAuth } from '../auth/AuthContext';
@@ -11,10 +15,12 @@ import {
   PlannedPricingCards, PlannedPricingHeader, ReferralProgramCard,
 } from '../components/PlannedPricing';
 import { fmtDateTime, useAsync } from '../lib/format';
+import { ManualPaymentSection } from '../components/ManualPayment';
+import { APP_PRO_PRICE } from '@shared/manualPayment';
 import { api } from '../lib/api';
 
-/** Tartalék ár-felirat, ha a Stripe nincs beállítva – élesben a Stripe Price adja az árat. */
-export const PRO_PRICE = '2 990 Ft/hó';
+/** Tartalék ár-felirat (ha a szerver nem érhető el) – ugyanaz az egyetlen forrás, amit a szerver is használ. */
+export const PRO_PRICE = APP_PRO_PRICE.label;
 
 const BENEFITS = [
   'Minden mérkőzés, minden piac – nem csak napi 3 tipp',
@@ -35,10 +41,10 @@ const FREE_LIST = [
 export default function Pro() {
   const { user } = useAuth();
   const { configured, loggedIn, pro, profile, loading, error, reload } = usePlan();
-  const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
-  const billing = useAsync(() => api.billingConfig(), []);
-  const price = billing.data?.label ?? PRO_PRICE;
+  // Ár, kedvezményezett és a saját kérelmek – a SZERVER adja (az összeg nincs a kliensben beégetve)
+  const payments = useAsync(() => api.proPayments(), [loggedIn]);
+  const price = payments.data?.price.label ?? PRO_PRICE;
   const [msg, setMsg] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,15 +64,6 @@ export default function Pro() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutResult]);
   useEffect(() => { if (checkoutResult === 'success' && pro) { setMsg({ tone: 'info', text: 'Az előfizetésed aktív – köszönjük! Minden PRO funkció elérhető.' }); setSp({}, { replace: true }); } }, [pro, checkoutResult, setSp]);
-
-  const subscribe = async () => {
-    if (!loggedIn) { nav('/bejelentkezes', { state: { from: '/pro' } }); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const { url } = await api.checkout();
-      window.location.assign(url); // Stripe Checkout (a titkos kulcs a szerveren marad)
-    } catch (e) { setMsg({ tone: 'warn', text: (e as Error).message }); setBusy(false); }
-  };
 
   const syncNow = async () => {
     setBusy(true); setMsg(null);
@@ -116,7 +113,7 @@ export default function Pro() {
             <span className="text-3xl font-black tracking-tight text-primary">{price}</span>
             <span className="badge badge-blue">jelenlegi ár</span>
           </div>
-          <p className="mt-1 text-xs font-semibold text-text-muted">Bármikor lemondható. Biztonságos fizetés Stripe-on keresztül – a kártyaadatok nem kerülnek a mi szerverünkre.</p>
+          <p className="mt-1 text-xs font-semibold text-text-muted">Fizetés banki átutalással vagy Revoluton. A hozzáférést a befizetés ellenőrzése után, kézzel aktiváljuk.</p>
 
           <ul className="mt-4 space-y-2.5">
             {BENEFITS.map((t) => (
@@ -131,17 +128,31 @@ export default function Pro() {
                 {profile?.stripe_customer_id && <button className="btn w-full" onClick={openPortal} disabled={busy}>Előfizetés kezelése (számlák, lemondás)</button>}
               </>
             ) : (
-              <button className="btn btn-primary btn-lg w-full" onClick={subscribe} disabled={busy || (billing.data ? !billing.data.configured : false)}>
-                <Crown className="h-5 w-5" /> {busy ? 'Átirányítás a fizetéshez…' : 'PRO aktiválása'}
-              </button>
+              <a href="#pro-igenyles" className="btn btn-primary btn-lg w-full">
+                <Crown className="h-5 w-5" /> PRO előfizetés igénylése
+              </a>
             )}
             {!loggedIn && configured && <p className="text-center text-xs font-semibold text-text-muted">Nincs még fiókod? <Link to="/regisztracio" className="text-primary">Regisztrálj ingyen</Link></p>}
-            {billing.data && !billing.data.configured && <p className="text-center text-xs font-semibold text-warning">A fizetés még nincs beállítva a szerveren (Stripe kulcsok) – lásd README.</p>}
-            {loggedIn && billing.data?.configured && <button className="btn btn-sm btn-ghost w-full" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Státusz frissítése</button>}
+            {/* korábbi Stripe-ügyfeleknek: státusz-szinkron a Stripe-ból (új Stripe-terhelést nem indít) */}
+            {loggedIn && profile?.stripe_customer_id && <button className="btn btn-sm btn-ghost w-full" onClick={syncNow} disabled={busy} title="Az előfizetés állapotának lekérése közvetlenül a Stripe-ból">Stripe-státusz frissítése</button>}
           </div>
           {msg && <div className="mt-3"><Note tone={msg.tone}>{msg.text}</Note></div>}
         </section>
       </div>
+
+      {/* PRO igénylése kézi fizetéssel */}
+      <Card id="pro-igenyles" title="PRO előfizetés igénylése" className="scroll-mt-20">
+        {payments.loading && !payments.data ? <Loading />
+          : payments.error ? <ErrorBox message={payments.error} onRetry={payments.reload} />
+            : payments.data && (
+              <ManualPaymentSection
+                info={payments.data}
+                loggedIn={loggedIn}
+                stripeManaged={!!profile?.stripe_subscription_id && pro}
+                onRequested={() => { payments.reload(); void reload(); }}
+              />
+            )}
+      </Card>
 
       {/* Az előfizetésed */}
       {configured && loggedIn && (
@@ -170,7 +181,7 @@ export default function Pro() {
         <ReferralProgramCard />
       </section>
 
-      <Note>A TippStats elemző eszköz – egyetlen csomag sem ígér nyereséget. Az előfizetés státuszát csak a szerver módosíthatja; a felületről nem állítható át.</Note>
+      <Note>A TippStats elemző eszköz – egyetlen csomag sem ígér nyereséget. Az előfizetés státuszát csak a szerver módosíthatja (admin-jóváhagyás után); a felületről nem állítható át.</Note>
       <Disclaimer />
     </div>
   );

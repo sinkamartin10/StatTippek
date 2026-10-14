@@ -16,6 +16,7 @@ import Stripe from 'stripe';
 import type { Database } from '../db/database';
 import { findProfileByCustomer, getProfile, getUserFromRequest, profileIsPro, supabaseConfigured, updateProfile, type ProfileRow } from './supabaseAdmin';
 import { invalidateEntitlement } from './entitlement';
+import { APP_PRO_PRICE, formatAmount, type BillingInterval, type ProPrice } from '../../shared/manualPayment';
 
 const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -82,6 +83,27 @@ async function applySubscription(sub: Stripe.Subscription, userHint?: string | n
   });
   invalidateEntitlement(userId);
   console.log(`[stripe] profil frissítve: user=${userId} status=${status} sub=${sub.id} end=${toIso(end)}`);
+}
+
+/**
+ * A ma érvényes PRO-ár a KÉZI fizetéshez: ha a Stripe ár be van állítva, az
+ * (ugyanaz a forrás, mint a /config végponté), különben az alkalmazás eddigi
+ * „jelenlegi ár”-a (APP_PRO_PRICE). Stripe-terhelést NEM indít, csak olvas.
+ */
+export async function currentProPrice(): Promise<ProPrice> {
+  if (!stripe || !priceId) return APP_PRO_PRICE;
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    const amount = (price.unit_amount ?? 0) / 100;
+    const currency = price.currency.toUpperCase();
+    const interval: BillingInterval = price.recurring?.interval === 'year' ? 'year' : 'month';
+    if (!(amount > 0)) return APP_PRO_PRICE;
+    const label = `${formatAmount(amount, currency)}/${interval === 'year' ? 'év' : 'hó'}`;
+    return { amount, currency, interval, label, source: 'stripe' };
+  } catch (e) {
+    console.error('[stripe] ár lekérés (kézi fizetés):', (e as Error).message);
+    return APP_PRO_PRICE;
+  }
 }
 
 export function billingRouter(db: Database): Router {

@@ -3,6 +3,9 @@
  */
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
+import type {
+  AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo,
+} from '@shared/manualPayment';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
@@ -173,6 +176,17 @@ export const api = {
   checkout: () => request<{ url: string }>('/billing/checkout', { method: 'POST', body: '{}' }),
   billingPortal: () => request<{ url: string }>('/billing/portal', { method: 'POST', body: '{}' }),
   billingSync: () => request<{ synced: boolean; pro?: boolean; status?: string; reason?: string }>('/billing/sync', { method: 'POST', body: '{}' }),
+  // ---------- PRO kézi fizetés (banki átutalás / Revolut) ----------
+  // A kérelem CSAK ellenőrzést kér – a PRO-t kizárólag az admin jóváhagyása aktiválja a szerveren.
+  proPayments: () => request<ProPaymentInfo>('/pro-payments'),
+  requestProPayment: (method: PaymentMethod) =>
+    request<{ request: PaymentRequestView; created: boolean }>('/pro-payments', { method: 'POST', body: JSON.stringify({ method }) }),
+  adminProPayments: (status: PaymentRequestStatus | 'all' = 'pending') =>
+    request<AdminPaymentRequestView[]>(`?status=${encodeURIComponent(status)}`, {}, '/api/admin/pro-payments'),
+  adminApproveProPayment: (id: string) =>
+    request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }, '/api/admin/pro-payments'),
+  adminRejectProPayment: (id: string, note: string | null) =>
+    request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ note }) }, '/api/admin/pro-payments'),
   // ---------- Profil: megjelenítési név (a meglévő profiles táblán) ----------
   profileMe: () => request<ProfileMe>('/me', {}, '/api/profile'),
   /** A nevet mindig a hitelesített felhasználóhoz menti; a törzsben user_id-t nem küldünk. */

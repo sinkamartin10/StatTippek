@@ -30,9 +30,10 @@ import { SocialService } from './social/service';
 import { CoinRewardService } from './coins/rewards';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
-import { billingRouter, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
+import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
+import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter } from './billing/manualPayments';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
-import { supabaseConfigured } from './billing/supabaseAdmin';
+import { supabaseAdmin, supabaseConfigured } from './billing/supabaseAdmin';
 
 const container = buildContainer();
 // Modell-tipp archívum: a motor egyetlen hívási pontja (AnalysisService) rögzít bele
@@ -187,6 +188,10 @@ app.delete('/api/matches/:id/odds', requireAdmin);
 app.use('/api/admin/competition', requireAdmin, adminCompetitionRouter(competitionService));
 // Modell-kalibráció – kizárólag admin (státusz, kiértékelés, aktiválás, visszaállítás)
 app.use('/api/admin/model-learning', requireAdmin, modelLearningRouter(modelLearningService));
+// PRO kézi fizetés (banki átutalás / Revolut): a kérelem NEM aktivál; a jóváhagyás csak admin
+const manualPayments = supabaseAdmin ? new PostgresManualPaymentStore(supabaseAdmin) : null;
+app.use('/api/pro-payments', proPaymentsRouter(manualPayments, currentProPrice));
+app.use('/api/admin/pro-payments', requireAdmin, adminProPaymentsRouter(manualPayments));
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
 app.use('/api/profile', profileRouter(container.displayNames, progressionService, socialService));
@@ -249,6 +254,9 @@ app.listen(port, async () => {
       } else {
         console.log('Supabase séma ellenőrzés: minden tábla elérhető ✓');
       }
+      // 0020: kézi PRO-befizetések (a tábla nélkül a kérelem 500-at ad – a többi funkció működik)
+      const ppr = supabaseAdmin ? await supabaseAdmin.from('pro_payment_requests').select('id').limit(1) : null;
+      if (ppr?.error) console.warn('PRO kézi fizetés nem kész (hiányzik: pro_payment_requests). Futtasd le: supabase/migrations/0020_pro_payment_requests.sql');
       const missingCompetition = await container.competitions.healthCheck();
       if (missingCompetition.length) {
         console.warn('Tippverseny táblák hiányoznak:', missingCompetition.join(', '));
