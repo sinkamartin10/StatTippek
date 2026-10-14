@@ -115,6 +115,45 @@ export interface CompetitionMatchView extends CompetitionMatch {
 }
 
 // ---------------------------------------------------------------------------
+// Tömeges tippbeküldés (egy csomag = egy atomikus művelet)
+// ---------------------------------------------------------------------------
+
+/** Egy csomagban legfeljebb ennyi tipp (a verseny meccsszám-korlátjával azonos). */
+export const MAX_BATCH_PREDICTIONS = 200;
+
+export interface BatchPredictionInput {
+  competitionMatchId: string;
+  predictedHomeScore: number;
+  predictedAwayScore: number;
+}
+
+/** created = új tipp; updated = módosított; unchanged = már pontosan ez volt mentve (nem történt írás). */
+export type BatchItemOutcome = 'created' | 'updated' | 'unchanged';
+
+export interface BatchPredictionResult {
+  competitionMatchId: string;
+  outcome: BatchItemOutcome;
+  prediction: UserPrediction;
+}
+
+export interface BatchSubmitResponse {
+  saved: BatchPredictionResult[];
+  created: number;
+  updated: number;
+  unchanged: number;
+  /** FREE napi keret a mentés UTÁN; PRO-nál null */
+  dailyQuota: { limit: number; used: number; remaining: number; resetAt: string } | null;
+}
+
+/** Egy elutasított csomag tételes hibája (a csomagból ilyenkor SEMMI nem mentődik). */
+export interface BatchItemError {
+  /** null: a csomag egészére vonatkozó hiba */
+  competitionMatchId: string | null;
+  code: 'INVALID_SCORE' | 'DUPLICATE_MATCH' | 'MATCH_NOT_FOUND' | 'PREDICTION_CLOSED' | 'COMPETITION_NOT_FOUND' | 'COMPETITION_CLOSED';
+  message: string;
+}
+
+// ---------------------------------------------------------------------------
 // Pontozás
 // ---------------------------------------------------------------------------
 

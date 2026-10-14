@@ -13,7 +13,7 @@ import type {
   FormSummary, StandingRow, LeagueAverages, MatchResult,
 } from '@shared/types';
 import type {
-  AdminLeaderboardRow, Competition, CompetitionMatch, CompetitionMatchView, CompetitionReward,
+  AdminLeaderboardRow, BatchPredictionInput, BatchSubmitResponse, Competition, CompetitionMatch, CompetitionMatchView, CompetitionReward,
   LeaderboardRow, RewardStatus, UserPrediction,
 } from '@shared/competition';
 import type { HistoryEntry, ProfileSettings, TipsterStats } from '@shared/progression';
@@ -272,6 +272,11 @@ export const api = {
   submitCompetitionPrediction: (id: string, competitionMatchId: string, predictedHomeScore: number, predictedAwayScore: number) =>
     request<UserPrediction>(`/${encodeURIComponent(id)}/predictions`, {
       method: 'POST', body: JSON.stringify({ competitionMatchId, predictedHomeScore, predictedAwayScore }),
+    }, '/api/competition'),
+  /** Több tipp EGY atomikus műveletben: vagy mind mentődik, vagy egy sem (a szerver tételesen jelzi a hibát). */
+  submitCompetitionPredictions: (id: string, predictions: BatchPredictionInput[]) =>
+    request<BatchSubmitResponse>(`/${encodeURIComponent(id)}/predictions/batch`, {
+      method: 'POST', body: JSON.stringify({ predictions }),
     }, '/api/competition'),
 
   // ---------- Modell-tanulás – admin (a szerver ADMIN_EMAILS alapján engedi) ----------

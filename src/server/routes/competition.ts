@@ -19,7 +19,10 @@ import { Router, type Response } from 'express';
 import { planOf, requireAuthenticated } from '../billing/entitlement';
 import { FREE_DAILY_PREDICTION_LIMIT } from '../../shared/freeQuota';
 import { CompetitionError, type CompetitionService } from '../competition/service';
-import { SCORING_RULES, TIE_BREAK_RULES, type RewardStatus } from '../../shared/competition';
+import {
+  MAX_BATCH_PREDICTIONS, SCORING_RULES, TIE_BREAK_RULES,
+  type BatchItemError, type BatchPredictionInput, type RewardStatus,
+} from '../../shared/competition';
 
 const UUID = /^[0-9a-fA-F-]{36}$/;
 const LOCAL_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -152,6 +155,59 @@ export function competitionRouter(svc: CompetitionService): Router {
         competitionId, userId, matchId, home, away, new Date(), planOf(res).enforced, dailyLimitFor(res),
       );
       res.json(saved);
+    } catch (e) { handle(res, e); }
+  });
+
+  /**
+   * Több tipp leadása / módosítása EGYETLEN, atomikus művelettel.
+   *
+   *   POST /api/competition/:id/predictions/batch
+   *   { predictions: [{ competitionMatchId, predictedHomeScore, predictedAwayScore }, ...] }
+   *
+   * Ugyanaz a hitelesítés, csomag-szabály és napi keret, mint az egyenkénti
+   * végponton. Vagy minden tipp mentődik (200), vagy egy sem:
+   *   400 INVALID_BATCH / EMPTY_BATCH / BATCH_TOO_LARGE – formai hiba (errors: tételesen)
+   *   409 BATCH_REJECTED – nem a versenyhez tartozó vagy már lezárt meccs (errors: tételesen)
+   *   403 FREE_DAILY_LIMIT_REACHED – az új tippek együtt nem férnek a napi keretbe
+   * A tételekből KIZÁRÓLAG a competitionMatchId és a két gólszám olvasódik ki.
+   */
+  r.post('/:id/predictions/batch', requireAuthenticated, async (req, res) => {
+    const competitionId = typeof req.params.id === 'string' ? req.params.id : '';
+    if (!UUID.test(competitionId)) return badId(res);
+    const userId = ownerId(res);
+    if (!userId) return needAuth(res);
+
+    const raw = req.body?.predictions;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return res.status(400).json({ error: 'Nincs beküldendő tipp.', code: 'EMPTY_BATCH' });
+    }
+    if (raw.length > MAX_BATCH_PREDICTIONS) {
+      return res.status(400).json({ error: `Egy csomagban legfeljebb ${MAX_BATCH_PREDICTIONS} tipp küldhető.`, code: 'BATCH_TOO_LARGE' });
+    }
+    const items: BatchPredictionInput[] = [];
+    const errors: BatchItemError[] = [];
+    for (const it of raw) {
+      const matchId = typeof it?.competitionMatchId === 'string' ? it.competitionMatchId : '';
+      if (!UUID.test(matchId)) {
+        errors.push({ competitionMatchId: null, code: 'MATCH_NOT_FOUND', message: 'Érvénytelen mérkőzés-azonosító.' });
+        continue;
+      }
+      const home = intOf(it?.predictedHomeScore);
+      const away = intOf(it?.predictedAwayScore);
+      if (home == null || away == null) {
+        errors.push({ competitionMatchId: matchId, code: 'INVALID_SCORE', message: 'Add meg mindkét csapat tippelt gólszámát (0–99 egész szám).' });
+        continue;
+      }
+      items.push({ competitionMatchId: matchId, predictedHomeScore: home, predictedAwayScore: away });
+    }
+    if (errors.length) {
+      return res.status(400).json({ error: 'A tippcsomag hibás tételeket tartalmaz – semmi nem lett mentve.', code: 'INVALID_BATCH', errors });
+    }
+
+    try {
+      res.json(await svc.submitPredictionsBatch(
+        competitionId, userId, items, new Date(), planOf(res).enforced, dailyLimitFor(res),
+      ));
     } catch (e) { handle(res, e); }
   });
 

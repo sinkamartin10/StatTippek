@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type {
-  Competition, CompetitionMatch, CompetitionMatchStatus, CompetitionReward, CompetitionStatus,
+  BatchItemError, BatchItemOutcome, Competition, CompetitionMatch, CompetitionMatchStatus, CompetitionReward, CompetitionStatus,
   RewardStatus, RewardType, UserPrediction,
 } from '../../shared/competition';
 import type { DayWindow } from '../../shared/freeQuota';
@@ -28,6 +28,18 @@ export interface PredictionSubmitResult {
   /** a mentett tipp; 'limit_reached' esetén null */
   prediction: UserPrediction | null;
 }
+
+/** Egy csomagtétel a tárolónak (a szerver már formailag ellenőrizte). */
+export interface BatchStoreItem { competitionMatchId: string; home: number; away: number }
+
+/**
+ * A tömeges beküldés eredménye. 'limit_reached' és 'rejected' esetén
+ * SEMMI nem íródott (a csomag atomikus).
+ */
+export type BatchStoreResult =
+  | { outcome: 'saved'; used: number; results: { competitionMatchId: string; outcome: BatchItemOutcome; prediction: UserPrediction }[] }
+  | { outcome: 'limit_reached'; used: number; newCount: number }
+  | { outcome: 'rejected'; errors: BatchItemError[] };
 
 export interface NewCompetition {
   name: string;
@@ -99,6 +111,16 @@ export interface CompetitionStore {
     userId: string, competitionMatchId: string, home: number, away: number,
     dailyLimit: number | null, window: DayWindow,
   ): Promise<PredictionSubmitResult>;
+  /**
+   * Tippcsomag ATOMIKUS mentése: vagy minden tétel rögzül, vagy egy sem.
+   * Ugyanazok a szabályok, mint a `createOrUpdatePrediction`-nél (a módosítás
+   * nem fogyaszt kvótát; a csomag ÚJ tippjeinek együtt kell beleférniük a
+   * napi keretbe), és a verseny/meccs nyitottságát a tároló is újraellenőrzi.
+   */
+  submitPredictionsBatch(
+    userId: string, competitionId: string, items: BatchStoreItem[],
+    dailyLimit: number | null, window: DayWindow, now: Date,
+  ): Promise<BatchStoreResult>;
   /** A megadott napi ablakban LÉTREHOZOTT tippek száma (a submitted_at alapján). */
   countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number>;
   getPrediction(userId: string, competitionMatchId: string): Promise<UserPrediction | null>;
@@ -144,6 +166,22 @@ function toPrediction(r: Row): UserPrediction {
   };
 }
 
+const BATCH_OUTCOMES = new Set<string>(['created', 'updated', 'unchanged']);
+
+/** A 0019 függvény jsonb válaszának szigorú értelmezése (váratlan alak → kivétel). */
+function parseBatchResult(data: unknown): BatchStoreResult {
+  const r = (data ?? {}) as { outcome?: string; used?: number; newCount?: number; results?: Row[]; errors?: BatchItemError[] };
+  if (r.outcome === 'saved' && Array.isArray(r.results) && r.results.every((x) => BATCH_OUTCOMES.has(x.outcome) && x.prediction)) {
+    return {
+      outcome: 'saved', used: Number(r.used ?? 0),
+      results: r.results.map((x) => ({ competitionMatchId: String(x.competitionMatchId), outcome: x.outcome as BatchItemOutcome, prediction: toPrediction(x.prediction) })),
+    };
+  }
+  if (r.outcome === 'limit_reached') return { outcome: 'limit_reached', used: Number(r.used ?? 0), newCount: Number(r.newCount ?? 0) };
+  if (r.outcome === 'rejected' && Array.isArray(r.errors) && r.errors.length) return { outcome: 'rejected', errors: r.errors };
+  throw new Error(`[competition] submitPredictionsBatch: váratlan válasz (${JSON.stringify(data)})`);
+}
+
 function toReward(r: Row): CompetitionReward {
   return {
     id: r.id, competitionId: r.competition_id, userId: r.user_id, displayName: '',
@@ -181,6 +219,16 @@ export class PostgresCompetitionStore implements CompetitionStore {
     });
     if (probe.error && (probe.error as { code?: string }).code === 'PGRST202') {
       missing.push('submit_competition_prediction() függvény (0008_free_daily_quota.sql)');
+    }
+    // 0019: szintén érvénytelen időablakkal → az első ellenőrzésen elbukik, nem ír
+    const batchProbe = await this.db.rpc('submit_competition_predictions_batch', {
+      p_user_id: '00000000-0000-0000-0000-000000000000',
+      p_competition_id: '00000000-0000-0000-0000-000000000000',
+      p_items: [], p_daily_limit: null,
+      p_day_start: new Date(0).toISOString(), p_day_end: new Date(0).toISOString(),
+    });
+    if (batchProbe.error && (batchProbe.error as { code?: string }).code === 'PGRST202') {
+      missing.push('submit_competition_predictions_batch() függvény (0019_competition_prediction_batch.sql)');
     }
     return missing;
   }
@@ -291,6 +339,27 @@ export class PostgresCompetitionStore implements CompetitionStore {
       used: r.used ?? 0,
       prediction: r.prediction ? toPrediction(r.prediction) : null,
     };
+  }
+
+  /**
+   * Atomikus csomagmentés a 0019 migráció SQL-függvényével (egy tranzakció,
+   * ugyanaz a felhasználó-szintű advisory lock, mint a 0008-ban).
+   * A verseny/meccs nyitottságát a függvény az ADATBÁZIS idejével ellenőrzi.
+   */
+  async submitPredictionsBatch(
+    userId: string, competitionId: string, items: BatchStoreItem[],
+    dailyLimit: number | null, window: DayWindow, _now: Date,
+  ): Promise<BatchStoreResult> {
+    const { data, error } = await this.db.rpc('submit_competition_predictions_batch', {
+      p_user_id: userId,
+      p_competition_id: competitionId,
+      p_items: items.map((i) => ({ competitionMatchId: i.competitionMatchId, home: i.home, away: i.away })),
+      p_daily_limit: dailyLimit,
+      p_day_start: window.start,
+      p_day_end: window.end,
+    });
+    this.fail('submitPredictionsBatch', error);
+    return parseBatchResult(data);
   }
 
   async countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number> {
@@ -558,6 +627,69 @@ export class SqliteCompetitionStore implements CompetitionStore {
 
     if (res.changes === 0) return { outcome: 'limit_reached', used: countToday(), prediction: null };
     return { outcome: 'created', used: countToday(), prediction: await this.getPrediction(userId, competitionMatchId) };
+  }
+
+  /**
+   * Atomikus csomagmentés SQLite-on: egyetlen `BEGIN IMMEDIATE` tranzakció,
+   * await-pont nélkül (a `node:sqlite` szinkron), hiba esetén ROLLBACK – így
+   * részben mentett csomag nem maradhat. A szabályok a 0019 függvénnyel azonosak.
+   */
+  async submitPredictionsBatch(
+    userId: string, competitionId: string, items: BatchStoreItem[],
+    dailyLimit: number | null, window: DayWindow, now: Date,
+  ): Promise<BatchStoreResult> {
+    const t = now.getTime();
+    const comp = this.db.prepare('SELECT * FROM competition_rounds WHERE id = ?').get(competitionId) as Row | undefined;
+    if (!comp || comp.status === 'draft') {
+      return { outcome: 'rejected', errors: [{ competitionMatchId: null, code: 'COMPETITION_NOT_FOUND', message: 'A tippverseny nem található.' }] };
+    }
+    if (comp.status !== 'active' || t < Date.parse(comp.starts_at) || t >= Date.parse(comp.ends_at)) {
+      return { outcome: 'rejected', errors: [{ competitionMatchId: null, code: 'COMPETITION_CLOSED', message: 'A verseny jelenleg nem fogad tippet.' }] };
+    }
+    const getMatch = this.db.prepare('SELECT * FROM competition_matches WHERE id = ? AND competition_id = ?');
+    const getPred = this.db.prepare('SELECT * FROM user_predictions WHERE user_id = ? AND competition_match_id = ?');
+    const errors: BatchItemError[] = [];
+    let newCount = 0;
+    for (const i of items) {
+      const m = getMatch.get(i.competitionMatchId, competitionId) as Row | undefined;
+      if (!m) errors.push({ competitionMatchId: i.competitionMatchId, code: 'MATCH_NOT_FOUND', message: 'A mérkőzés nem ehhez a tippversenyhez tartozik.' });
+      else if (m.status !== 'scheduled' || t >= Date.parse(m.kickoff)) errors.push({ competitionMatchId: i.competitionMatchId, code: 'PREDICTION_CLOSED', message: 'A mérkőzés kezdése után már nem lehet tippelni.' });
+      else if (!getPred.get(userId, i.competitionMatchId)) newCount++;
+    }
+    if (errors.length) return { outcome: 'rejected', errors };
+
+    const used = (this.db.prepare('SELECT COUNT(*) AS n FROM user_predictions WHERE user_id = ? AND submitted_at >= ? AND submitted_at < ?')
+      .get(userId, window.start, window.end) as Row).n as number;
+    if (dailyLimit != null && used + newCount > dailyLimit) return { outcome: 'limit_reached', used, newCount };
+
+    const results: { competitionMatchId: string; outcome: BatchItemOutcome; prediction: UserPrediction }[] = [];
+    const stamp = new Date().toISOString();
+    const insert = this.db.prepare(`INSERT INTO user_predictions
+        (id, competition_match_id, user_id, predicted_home_score, predicted_away_score, points, submitted_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`);
+    const update = this.db.prepare('UPDATE user_predictions SET predicted_home_score = ?, predicted_away_score = ?, updated_at = ? WHERE id = ?');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const i of items) {
+        const existing = getPred.get(userId, i.competitionMatchId) as Row | undefined;
+        let outcome: BatchItemOutcome;
+        if (!existing) {
+          insert.run(randomUUID(), i.competitionMatchId, userId, i.home, i.away, stamp, stamp);
+          outcome = 'created';
+        } else if (existing.predicted_home_score === i.home && existing.predicted_away_score === i.away) {
+          outcome = 'unchanged';
+        } else {
+          update.run(i.home, i.away, stamp, existing.id as string);
+          outcome = 'updated';
+        }
+        results.push({ competitionMatchId: i.competitionMatchId, outcome, prediction: toPrediction(getPred.get(userId, i.competitionMatchId) as Row) });
+      }
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+    return { outcome: 'saved', used: used + newCount, results };
   }
 
   async countPredictionsCreatedIn(userId: string, window: DayWindow): Promise<number> {

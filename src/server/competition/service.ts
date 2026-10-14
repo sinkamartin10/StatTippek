@@ -8,7 +8,8 @@ import type { DisplayNameDirectory } from '../profile/displayNameDirectory';
 import {
   COMPETITION_STATUS_LABEL, REWARD_TIERS, compareLeaderboard, displayNameFor, isImmutable,
   predictionWindow, rankEntries, scorePrediction,
-  type AdminLeaderboardRow, type Competition, type CompetitionMatch, type CompetitionMatchView,
+  MAX_BATCH_PREDICTIONS,
+  type AdminLeaderboardRow, type BatchItemError, type BatchItemOutcome, type BatchPredictionInput, type BatchSubmitResponse, type Competition, type CompetitionMatch, type CompetitionMatchView,
   type CompetitionReward, type CompetitionStatus, type LeaderboardEntry, type LeaderboardRow,
   type PublicProfile, type RewardStatus, type UserPrediction,
 } from '../../shared/competition';
@@ -51,6 +52,16 @@ export interface CreateCompetitionInput {
 }
 
 const MAX_SYNC_MATCHES = 200;
+
+/** Elutasított csomag: tételes hibák, semmi sem mentődött. */
+function batchRejected(errors: BatchItemError[]): CompetitionError {
+  const closed = errors.some((e) => e.code === 'PREDICTION_CLOSED' || e.code === 'COMPETITION_CLOSED');
+  return new CompetitionError(
+    closed ? 'A csomagban már lezárt mérkőzés szerepel – semmi nem lett mentve. Frissítsd a listát, és küldd be újra a többi tippet.'
+      : 'A csomagban ehhez a versenyhez nem tartozó mérkőzés szerepel – semmi nem lett mentve.',
+    409, 'BATCH_REJECTED', { errors },
+  );
+}
 
 export class CompetitionService {
   /**
@@ -211,6 +222,100 @@ export class CompetitionService {
     await this.coins?.onPredictionSubmitted(userId, r.prediction!.id);
 
     return r.prediction!;
+  }
+
+  /**
+   * Több tipp leadása / módosítása EGY atomikus műveletben.
+   *
+   * Pontosan ugyanazok a szabályok, mint a `submitPrediction`-nél (név,
+   * verseny állapota, meccs-összetartozás, időablak, értékhatár, napi keret);
+   * a különbség, hogy a csomag CSAK EGÉSZÉBEN menthető: ha bármely tétel
+   * érvénytelen, vagy az új tippek együtt nem férnek bele a napi keretbe,
+   * semmi sem íródik, és a válasz tételesen megnevezi az érintett meccseket.
+   *
+   * Ismételt beküldés (dupla kattintás, újrapróbálás) biztonságos: a mentés
+   * értékadás, így ugyanaz a csomag másodszor 'unchanged' tételeket ad, nem
+   * hoz létre új sort és nem fogyaszt újra kvótát.
+   */
+  async submitPredictionsBatch(
+    competitionId: string,
+    userId: string,
+    items: BatchPredictionInput[],
+    now = new Date(),
+    requireDisplayName = true,
+    dailyLimit: number | null = null,
+  ): Promise<BatchSubmitResponse> {
+    if (requireDisplayName && !(await this.names.get(userId))) {
+      throw new CompetitionError(
+        'A Tippversenyben való részvételhez előbb állíts be egy megjelenítési nevet a profilodban.',
+        403, 'DISPLAY_NAME_REQUIRED',
+      );
+    }
+
+    // Formai ellenőrzés – minden hibát egyszerre jelzünk
+    if (!Array.isArray(items) || items.length === 0) throw new CompetitionError('Nincs beküldendő tipp.', 400, 'EMPTY_BATCH');
+    if (items.length > MAX_BATCH_PREDICTIONS) {
+      throw new CompetitionError(`Egy csomagban legfeljebb ${MAX_BATCH_PREDICTIONS} tipp küldhető.`, 400, 'BATCH_TOO_LARGE');
+    }
+    const formErrors: BatchItemError[] = [];
+    const seen = new Set<string>();
+    for (const i of items) {
+      if (seen.has(i.competitionMatchId)) {
+        formErrors.push({ competitionMatchId: i.competitionMatchId, code: 'DUPLICATE_MATCH', message: 'Ugyanarra a mérkőzésre csak egy tipp küldhető egy csomagban.' });
+      }
+      seen.add(i.competitionMatchId);
+      const ok = (n: number) => Number.isInteger(n) && n >= 0 && n <= 99;
+      if (!ok(i.predictedHomeScore) || !ok(i.predictedAwayScore)) {
+        formErrors.push({ competitionMatchId: i.competitionMatchId, code: 'INVALID_SCORE', message: 'Érvénytelen tipp: a gólszám 0 és 99 közötti egész szám lehet.' });
+      }
+    }
+    if (formErrors.length) throw new CompetitionError('A tippcsomag hibás tételeket tartalmaz – semmi nem lett mentve.', 400, 'INVALID_BATCH', { errors: formErrors });
+
+    const competition = await this.getPublic(competitionId);
+    if (isImmutable(competition.status)) {
+      throw new CompetitionError(`A verseny állapota „${COMPETITION_STATUS_LABEL[competition.status]}” – tipp már nem adható le.`, 409);
+    }
+
+    // Meccs-összetartozás és időablak – egyetlen lekérdezéssel (nincs N+1)
+    const matches = new Map((await this.store.listMatches(competitionId)).map((m) => [m.id, m]));
+    const ruleErrors: BatchItemError[] = [];
+    for (const i of items) {
+      const m = matches.get(i.competitionMatchId);
+      if (!m) { ruleErrors.push({ competitionMatchId: i.competitionMatchId, code: 'MATCH_NOT_FOUND', message: 'A mérkőzés nem ehhez a tippversenyhez tartozik.' }); continue; }
+      const w = predictionWindow(competition, m, now);
+      if (!w.open) ruleErrors.push({ competitionMatchId: i.competitionMatchId, code: 'PREDICTION_CLOSED', message: w.reason });
+    }
+    if (ruleErrors.length) throw batchRejected(ruleErrors);
+
+    // A mentés (és a napi keret) az UTOLSÓ, atomikus lépés
+    const window = budapestDayWindow(now);
+    const r = await this.store.submitPredictionsBatch(
+      userId, competitionId,
+      items.map((i) => ({ competitionMatchId: i.competitionMatchId, home: i.predictedHomeScore, away: i.predictedAwayScore })),
+      dailyLimit, window, now,
+    );
+    if (r.outcome === 'rejected') throw batchRejected(r.errors);
+    if (r.outcome === 'limit_reached') {
+      const quota = quotaFrom(r.used, window, dailyLimit!);
+      throw new CompetitionError(
+        `A csomagban ${r.newCount} új tipp van, de ma már csak ${quota.remaining} új tippet adhatsz le (${quota.limit} tipp naponta). Semmi nem lett mentve – csökkentsd az új tippek számát, vagy próbáld holnap. PRO előfizetéssel nincs napi korlát.`,
+        403, 'FREE_DAILY_LIMIT_REACHED', { ...quota, newPredictions: r.newCount },
+      );
+    }
+
+    // COIN (5c): ugyanúgy, mint az egyenkénti beküldésnél – a tippek MÁR
+    // commitolva vannak; a forráskulcs a tipp azonosítója, így az ismételt
+    // hívás nem fizet újra, és a hook a saját hibáját elnyeli.
+    for (const s of r.results) await this.coins?.onPredictionSubmitted(userId, s.prediction.id);
+
+    const count = (o: BatchItemOutcome) => r.results.filter((s) => s.outcome === o).length;
+    return {
+      saved: r.results,
+      created: count('created'),
+      updated: count('updated'),
+      unchanged: count('unchanged'),
+      dailyQuota: dailyLimit == null ? null : quotaFrom(r.used, window, dailyLimit),
+    };
   }
 
   /**
