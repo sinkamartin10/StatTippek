@@ -3,6 +3,7 @@
  */
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
+import type { DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
 } from '@shared/battles';
@@ -272,6 +273,11 @@ export const api = {
     request<UserPrediction>(`/${encodeURIComponent(id)}/predictions`, {
       method: 'POST', body: JSON.stringify({ competitionMatchId, predictedHomeScore, predictedAwayScore }),
     }, '/api/competition'),
+
+  // ---------- Modell-tanulás – admin, CSAK OLVASÓ hívások (a szerver ADMIN_EMAILS alapján engedi) ----------
+  // Szándékosan nincs itt kiértékelést, aktiválást vagy visszaállítást indító hívás.
+  adminLearningStatus: () => request<LearningStatus>('/status', {}, '/api/admin/model-learning'),
+  adminLearningDiagnostics: () => request<DiagnosticsReport>('/diagnostics', {}, '/api/admin/model-learning'),
 
   // ---------- Tippverseny – admin (a szerver ADMIN_EMAILS alapján engedi) ----------
   adminCompetitions: () => request<Competition[]>('', {}, '/api/admin/competition'),

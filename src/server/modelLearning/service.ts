@@ -29,6 +29,7 @@ import {
   type Observation, type Thresholds,
 } from './calibration';
 import type { ArchiveTrainingRow, ModelLearningStore } from './store';
+import { diagnose, type DiagnosticsReport } from './diagnostics';
 
 export class LearningTimeoutError extends Error {}
 
@@ -259,6 +260,23 @@ export class ModelLearningService {
       try { await this.store.finishRun(owner, this.now().toISOString(), 'failed', message, summary); } catch { /* a zár a lease lejártával felszabadul */ }
       return { status: 'failed', summary };
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Az alap motor hibáinak elemzése – CSAK OLVAS (nincs zár, nincs írás, nincs jelölt)
+  // -------------------------------------------------------------------------
+
+  /**
+   * A production modell (alap motor) kalibrációs és pontossági riportja az
+   * érvényes, lezárt, kezdés előtti megfigyeléseken – ugyanazzal a szűréssel és
+   * ugyanazzal a nyers `model_prob`-bal, mint a tanítás. Nem illeszt, nem ír az
+   * adatbázisba, nem hoz létre jelöltet és nem érinti az aktív modellt.
+   */
+  async diagnostics(): Promise<DiagnosticsReport> {
+    const rows = await this.store.loadArchive(this.base, this.t.maxRows);
+    const { obs, excluded } = this.buildObservations(rows);
+    if (rows.length >= this.t.maxRows) excluded.row_limit_reached = 1;
+    return diagnose(obs, excluded, { baseEngineVersion: this.base, now: this.now(), t: this.t });
   }
 
   // -------------------------------------------------------------------------

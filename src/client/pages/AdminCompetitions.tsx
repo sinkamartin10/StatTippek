@@ -51,7 +51,7 @@ export default function AdminCompetitions() {
         emoji="🛠️"
         title="Tippverseny – admin"
         text="Versenyek létrehozása, aktiválása, meccsek szinkronizálása, lezárás és jutalmak kezelése."
-        right={<Link to="/tippverseny" className="btn btn-sm">Nyilvános nézet</Link>}
+        right={<div className="flex flex-wrap gap-2"><Link to="/admin/modell-tanulas" className="btn btn-sm">Modell-tanulás</Link><Link to="/tippverseny" className="btn btn-sm">Nyilvános nézet</Link></div>}
       />
 
       <CreateForm leagues={leagues.data ?? []} onCreated={list.reload} />

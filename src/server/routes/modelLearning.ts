@@ -2,6 +2,7 @@
  * Modell-kalibráció – KIZÁRÓLAG ADMIN végpontok (a `requireAdmin` alá kötve).
  *
  *   GET  /status            – aktív/jelölt verziók, utolsó futás, metrikák, okok
+ *   GET  /diagnostics       – az alap motor hibaelemzése (csak olvas, nem illeszt, nem ír)
  *   POST /evaluate          – korlátos, zárral védett kiértékelés indítása
  *   POST /shadow-evaluate/:modelId – prospektív, mintán kívüli kiértékelés
  *   POST /promote/:modelId  – explicit aktiválás (élesben jelenleg tiltva)
@@ -32,6 +33,10 @@ export function modelLearningRouter(svc: ModelLearningService): Router {
 
   r.get('/status', async (_req, res) => {
     try { res.json(await svc.status()); } catch (e) { fail(res, e); }
+  });
+
+  r.get('/diagnostics', async (_req, res) => {
+    try { res.json(await svc.diagnostics()); } catch (e) { fail(res, e); }
   });
 
   r.post('/evaluate', async (_req, res) => {

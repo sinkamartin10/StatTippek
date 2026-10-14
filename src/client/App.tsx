@@ -11,6 +11,7 @@ import Profile from './pages/Profile';
 import Competitions from './pages/Competitions';
 import CompetitionDetail from './pages/CompetitionDetail';
 import AdminCompetitions from './pages/AdminCompetitions';
+import AdminModelLearning from './pages/AdminModelLearning';
 import MyStats from './pages/MyStats';
 import Battles from './pages/Battles';
 import BattleDetail from './pages/BattleDetail';
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/tippverseny/:id" element={<CompetitionDetail />} />
         {/* A felületi védelem csak kényelmi – a jogosultságot a szerver ellenőrzi (ADMIN_EMAILS) */}
         <Route path="/admin/tippverseny" element={<RequireAuth><AdminCompetitions /></RequireAuth>} />
+        <Route path="/admin/modell-tanulas" element={<RequireAuth><AdminModelLearning /></RequireAuth>} />
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
         <Route path="/modell-archivum" element={<TipArchive />} />

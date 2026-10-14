@@ -143,3 +143,57 @@ export interface LearningStatus {
   }[];
   recentEvents: { at: string; kind: string; modelId: string | null; details: unknown }[];
 }
+
+// ---------- Az alap motor hibaelemzése (diagnostics-v1) – csak olvasó riport ----------
+
+export interface ReliabilityBin {
+  from: number;
+  to: number;
+  observations: number;
+  meanPredicted: number | null;
+  observedRate: number | null;
+  /** a tényleges gyakoriság 95%-os Wilson-intervalluma */
+  observedCi: [number, number] | null;
+}
+
+export interface DiagnosticsGroup {
+  key: string;
+  matches: number;
+  observations: number;
+  logLoss: number;
+  brier: number;
+  meanPredicted: number;
+  observedRate: number;
+}
+
+export interface NaiveBaselineComparison {
+  description: string;
+  /** a baseline által lefedett (elég korábbi adattal rendelkező) megfigyelések – a páros összevetés csak ezeken fut */
+  coveredMatches: number;
+  coveredObservations: number;
+  uncoveredObservations: number;
+  model: ScoreSummary;
+  baseline: ScoreSummary;
+  /** (baseline − modell) mérkőzés-átlagolt log loss; pozitív = a MODELL a jobb */
+  modelLogLossAdvantage: number;
+  modelLogLossAdvantageCi: [number, number];
+  /** (baseline − modell) Brier; pozitív = a modell a jobb */
+  modelBrierAdvantage: number;
+}
+
+export interface DiagnosticsReport {
+  method: string;
+  baseEngineVersion: string;
+  generatedAt: string;
+  period: { firstKickoff: string; lastKickoff: string; distinctKickoffDays: number } | null;
+  sizes: { matches: number; observations: number };
+  excluded: Record<string, number>;
+  model: ScoreSummary | null;
+  reliability: ReliabilityBin[];
+  byMarketType: DiagnosticsGroup[];
+  byLeague: DiagnosticsGroup[];
+  naiveBaseline: NaiveBaselineComparison | null;
+  sufficiency: { enoughForConclusions: boolean; notes: string[] };
+  /** amit a riport NEM bizonyít */
+  limitations: string[];
+}
