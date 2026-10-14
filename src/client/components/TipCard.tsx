@@ -28,10 +28,10 @@ export function TipCard({ entry, pro }: { entry: TipListEntry; pro: boolean }) {
   const why = t.reasonsFor[0] ?? t.supportingStats[0] ?? null;
 
   return (
-    <article className="card card-lift flex flex-col gap-4 p-4 sm:p-5">
+    <article className="card card-lift flex min-w-0 flex-col gap-4 p-4 sm:p-5">
       {/* Fejléc: bajnokság + kezdés */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-text-muted">
-        <span className="truncate">{entry.leagueName}</span>
+        <span className="min-w-0 break-words">{entry.leagueName}</span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1">
           <Clock className="h-3.5 w-3.5" /> <span className="mono">{fmtTime(entry.kickoff)}</span>
           <span className="font-semibold">· {fmtDayLabel(entry.kickoff)}</span>
@@ -45,15 +45,16 @@ export function TipCard({ entry, pro }: { entry: TipListEntry; pro: boolean }) {
         <div className="text-lg font-extrabold leading-snug tracking-tight transition group-hover:text-primary">{away}</div>
       </Link>
 
-      {/* Ajánlás + odds */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="col-span-2 rounded-xl border border-primary/20 bg-primary-soft p-3">
+      {/* Ajánlás + odds – mobilon a piacnév kapja a fennmaradó szélességet és több sorba törhet
+          (soha nem vágódik le), az odds-doboz csak a tartalmához szükséges helyet foglalja; sm felett 2/3 + 1/3. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-3">
+        <div className="min-w-0 rounded-xl border border-primary/20 bg-primary-soft p-3 sm:col-span-2">
           <div className="text-[11px] font-extrabold uppercase tracking-wide text-primary-strong">🎯 Tipp</div>
-          <div className="mt-0.5 truncate text-base font-extrabold text-text" title={t.label}>{t.label}</div>
+          <div className="mt-0.5 break-words text-base font-extrabold leading-snug text-text" title={t.label}>{t.label}</div>
         </div>
-        <div className="rounded-xl border border-border bg-card-2 p-3 text-center">
-          <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">💰 Odds</div>
-          <div className="mono mt-0.5 text-xl font-extrabold">{fo(t.odds)}</div>
+        <div className="min-w-[4.75rem] rounded-xl border border-border bg-card-2 p-3 text-center">
+          <div className="whitespace-nowrap text-[11px] font-extrabold uppercase tracking-wide text-text-muted">💰 Odds</div>
+          <div className="mono mt-0.5 whitespace-nowrap text-xl font-extrabold">{fo(t.odds)}</div>
         </div>
       </div>
 
