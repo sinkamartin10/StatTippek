@@ -22,7 +22,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ENGINE_VERSION } from '../../shared/engine/version';
 import {
   CALIBRATION_METHOD, LEARNING_THRESHOLDS, SERVING_NOTE,
-  type CalibrationParams, type GateResult, type LearningRunSummary, type LearningStatus, type ShadowEvaluationResult,
+  type CalibrationParams, type DiagnosticRun, type DiagnosticSnapshotResponse, type GateResult, type LearningRunSummary, type LearningStatus,
+  type ShadowEvaluationResult,
 } from '../../shared/modelLearning';
 import {
   applyCalibration, byMatch, chronologicalSplit, compare, evaluateGates, fitCandidate, groupReport,
@@ -273,10 +274,54 @@ export class ModelLearningService {
    * adatbázisba, nem hoz létre jelöltet és nem érinti az aktív modellt.
    */
   async diagnostics(): Promise<DiagnosticsReport> {
+    return (await this.computeDiagnostics()).report;
+  }
+
+  private async computeDiagnostics(): Promise<{ report: DiagnosticsReport; fingerprint: string }> {
     const rows = await this.store.loadArchive(this.base, this.t.maxRows);
     const { obs, excluded } = this.buildObservations(rows);
     if (rows.length >= this.t.maxRows) excluded.row_limit_reached = 1;
-    return diagnose(obs, excluded, { baseEngineVersion: this.base, now: this.now(), t: this.t });
+    // a kiértékelt minta ujjlenyomata (tartalom-alapú, mint a jelöltnél): azonos érték = azonos minta
+    const fingerprint = sha256(obs.map((o) => `${o.matchId}|${o.market}|${o.marketType}|${o.leagueId}|${o.kickoff}|${o.generatedAt}|${o.prob}|${o.y}`).sort().join('\n'));
+    return { report: diagnose(obs, excluded, { baseEngineVersion: this.base, now: this.now(), t: this.t }), fingerprint };
+  }
+
+  /**
+   * Explicit (admin által indított) diagnosztikai futás: kiszámolja a riportot
+   * a MEGLÉVŐ `diagnose()`-zal, és az aggregált eredményt EGYSZER rögzíti az
+   * append-only előzményben (0018). Ugyanazzal az idempotencia-kulccsal
+   * ismételt kérés nem számol újra és nem ír új sort (`replayed: true`).
+   * Hibás számítás vagy sikertelen mentés: kivétel, rekord nem jön létre.
+   * Nem illeszt jelöltet, nem ír archívumot, nem érinti az aktív modellt.
+   */
+  async snapshotDiagnostics(actor: string, idempotencyKey: string): Promise<DiagnosticSnapshotResponse> {
+    const existing = await this.store.getDiagnosticRunByKey(idempotencyKey);
+    if (existing) return { run: existing, replayed: true, report: null };
+    const { report, fingerprint } = await this.computeDiagnostics();
+    const nb = report.naiveBaseline;
+    const fin = (x: number | null | undefined) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    const ci = nb && Number.isFinite(nb.modelLogLossAdvantageCi[0]) && Number.isFinite(nb.modelLogLossAdvantageCi[1]) ? nb.modelLogLossAdvantageCi : null;
+    const run: Omit<DiagnosticRun, 'id'> = {
+      createdAt: report.generatedAt, status: 'succeeded', baseEngineVersion: report.baseEngineVersion, method: report.method,
+      dataFingerprint: fingerprint, observations: report.sizes.observations, matches: report.sizes.matches, period: report.period,
+      logLoss: fin(report.model?.logLoss), brier: fin(report.model?.brier), ece: fin(report.model?.ece),
+      naive: nb ? {
+        coveredMatches: nb.coveredMatches, coveredObservations: nb.coveredObservations,
+        modelLogLoss: fin(nb.model.logLoss), baselineLogLoss: fin(nb.baseline.logLoss),
+        modelBrier: fin(nb.model.brier), baselineBrier: fin(nb.baseline.brier),
+        modelLogLossAdvantage: fin(nb.modelLogLossAdvantage), modelLogLossAdvantageCi: ci ? [ci[0], ci[1]] : null,
+        modelBrierAdvantage: fin(nb.modelBrierAdvantage),
+      } : null,
+      enoughForConclusions: report.sufficiency.enoughForConclusions,
+      notes: report.sufficiency.notes,
+    };
+    const saved = await this.store.insertDiagnosticRun({ idempotencyKey, actor, excluded: report.excluded, run });
+    return { run: saved.run, replayed: !saved.created, report: saved.created ? report : null };
+  }
+
+  /** A legutóbbi rögzített diagnosztikai futások (csak olvas). */
+  async diagnosticHistory(limit: number): Promise<DiagnosticRun[]> {
+    return this.store.listDiagnosticRuns(limit);
   }
 
   // -------------------------------------------------------------------------

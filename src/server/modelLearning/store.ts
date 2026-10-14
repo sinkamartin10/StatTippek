@@ -14,7 +14,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import type { CalibrationStatus, LearningRunSummary } from '../../shared/modelLearning';
+import type { CalibrationStatus, DiagnosticRun, LearningRunSummary } from '../../shared/modelLearning';
 
 /** Egy archív sor a tanításhoz (a „statisztikába számító” nézetből). */
 export interface ArchiveTrainingRow {
@@ -77,6 +77,14 @@ export interface LearningEvent {
   details: unknown;
 }
 
+/** Egy rögzítendő diagnosztikai futás (append-only előzmény, 0018). */
+export interface NewDiagnosticRun {
+  idempotencyKey: string;
+  actor: string | null;
+  excluded: Record<string, number>;
+  run: Omit<DiagnosticRun, 'id'>;
+}
+
 export interface ModelLearningStore {
   /** A „statisztikába számító” archív sorok (alap motor, élő adat), időrendben, kötött számban. */
   loadArchive(baseEngineVersion: string, maxRows: number): Promise<ArchiveTrainingRow[]>;
@@ -97,6 +105,14 @@ export interface ModelLearningStore {
   listEvents(limit: number): Promise<LearningEvent[]>;
   /** Egy modell adott típusú legutolsó eseménye (pl. az utolsó árnyék-kiértékelés). */
   latestEvent(modelId: string, kind: string): Promise<LearningEvent | null>;
+  /**
+   * Diagnosztikai futás rögzítése (0018). Azonos idempotencia-kulcsnál NEM ír
+   * új sort: a már rögzített futást adja vissza `created: false`-szal.
+   */
+  insertDiagnosticRun(r: NewDiagnosticRun): Promise<{ run: DiagnosticRun; created: boolean }>;
+  getDiagnosticRunByKey(idempotencyKey: string): Promise<DiagnosticRun | null>;
+  /** A legutóbbi futások, a legújabbal kezdve. */
+  listDiagnosticRuns(limit: number): Promise<DiagnosticRun[]>;
 }
 
 const ARCHIVE_COLUMNS = 'id, match_id, market, market_type, league_id, generated_at, kickoff, result_kickoff, model_prob, settlement_status, engine_version, origin, pre_kickoff, home_goals, away_goals, provenance, served_prob, served_model';
@@ -124,6 +140,52 @@ function toArchive(r: Row): ArchiveTrainingRow {
 }
 
 const parseJson = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
+
+/** Egy futás adatbázis-oszlopai (mindkét adapter ugyanazokkal az oszlopokkal). */
+function diagnosticRunColumns(r: NewDiagnosticRun) {
+  const x = r.run;
+  return {
+    created_at: x.createdAt, idempotency_key: r.idempotencyKey, actor: r.actor, status: x.status,
+    base_engine_version: x.baseEngineVersion, method: x.method, data_fingerprint: x.dataFingerprint,
+    observations: x.observations, matches: x.matches,
+    first_kickoff: x.period?.firstKickoff ?? null, last_kickoff: x.period?.lastKickoff ?? null, distinct_kickoff_days: x.period?.distinctKickoffDays ?? null,
+    log_loss: x.logLoss, brier: x.brier, ece: x.ece,
+    naive_covered_matches: x.naive?.coveredMatches ?? null, naive_covered_observations: x.naive?.coveredObservations ?? null,
+    naive_model_log_loss: x.naive?.modelLogLoss ?? null, naive_baseline_log_loss: x.naive?.baselineLogLoss ?? null,
+    naive_model_brier: x.naive?.modelBrier ?? null, naive_baseline_brier: x.naive?.baselineBrier ?? null,
+    naive_advantage: x.naive?.modelLogLossAdvantage ?? null,
+    naive_advantage_ci_lo: x.naive?.modelLogLossAdvantageCi?.[0] ?? null, naive_advantage_ci_hi: x.naive?.modelLogLossAdvantageCi?.[1] ?? null,
+    naive_brier_advantage: x.naive?.modelBrierAdvantage ?? null,
+    enough_for_conclusions: x.enoughForConclusions, notes: x.notes, excluded: r.excluded,
+  };
+}
+
+const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+
+/** Adatbázis-sor -> API-forma. Az idempotencia-kulcs és az indító NEM kerül ki. */
+function toDiagnosticRun(r: Row): DiagnosticRun {
+  const first = iso(r.first_kickoff), last = iso(r.last_kickoff);
+  const covered = r.naive_covered_matches == null ? null : Number(r.naive_covered_matches);
+  const lo = numOrNull(r.naive_advantage_ci_lo), hi = numOrNull(r.naive_advantage_ci_hi);
+  const notes = parseJson(r.notes);
+  return {
+    id: String(r.id), createdAt: iso(r.created_at)!, status: 'succeeded',
+    baseEngineVersion: String(r.base_engine_version), method: String(r.method), dataFingerprint: String(r.data_fingerprint),
+    observations: Number(r.observations), matches: Number(r.matches),
+    period: first && last ? { firstKickoff: first, lastKickoff: last, distinctKickoffDays: Number(r.distinct_kickoff_days) } : null,
+    logLoss: numOrNull(r.log_loss), brier: numOrNull(r.brier), ece: numOrNull(r.ece),
+    naive: covered == null ? null : {
+      coveredMatches: covered, coveredObservations: Number(r.naive_covered_observations),
+      modelLogLoss: numOrNull(r.naive_model_log_loss), baselineLogLoss: numOrNull(r.naive_baseline_log_loss),
+      modelBrier: numOrNull(r.naive_model_brier), baselineBrier: numOrNull(r.naive_baseline_brier),
+      modelLogLossAdvantage: numOrNull(r.naive_advantage),
+      modelLogLossAdvantageCi: lo != null && hi != null ? [lo, hi] : null,
+      modelBrierAdvantage: numOrNull(r.naive_brier_advantage),
+    },
+    enoughForConclusions: r.enough_for_conclusions === true || Number(r.enough_for_conclusions) === 1,
+    notes: Array.isArray(notes) ? notes.filter((x: unknown): x is string => typeof x === 'string') : [],
+  };
+}
 
 function toVersion(r: Row): VersionRow {
   return {
@@ -256,6 +318,30 @@ export class PostgresModelLearningStore implements ModelLearningStore {
     const r = (data ?? [])[0] as Row | undefined;
     return r ? { at: iso(r.at)!, kind: r.kind, modelId: r.model_id ?? null, actor: r.actor ?? null, details: r.details } : null;
   }
+
+  async insertDiagnosticRun(r: NewDiagnosticRun): Promise<{ run: DiagnosticRun; created: boolean }> {
+    // ütközésnél (ugyanaz a kulcs) nem ír – a meglévő futást adjuk vissza (a mintája: insertVersion)
+    const { data, error } = await this.db.from('model_learning_diagnostic_runs')
+      .upsert(diagnosticRunColumns(r), { onConflict: 'idempotency_key', ignoreDuplicates: true }).select('id');
+    this.fail('insertDiagnosticRun', error);
+    const created = (data ?? []).length === 1;
+    const run = await this.getDiagnosticRunByKey(r.idempotencyKey);
+    if (!run) throw new Error('[model-learning] insertDiagnosticRun: a futás nem rögzült');
+    return { run, created };
+  }
+
+  async getDiagnosticRunByKey(key: string): Promise<DiagnosticRun | null> {
+    const { data, error } = await this.db.from('model_learning_diagnostic_runs').select('*').eq('idempotency_key', key).maybeSingle();
+    this.fail('getDiagnosticRunByKey', error);
+    return data ? toDiagnosticRun(data) : null;
+  }
+
+  async listDiagnosticRuns(limit: number): Promise<DiagnosticRun[]> {
+    const { data, error } = await this.db.from('model_learning_diagnostic_runs').select('*')
+      .order('created_at', { ascending: false }).order('id', { ascending: true }).limit(limit);
+    this.fail('listDiagnosticRuns', error);
+    return ((data ?? []) as Row[]).map(toDiagnosticRun);
+  }
 }
 
 // ===========================================================================
@@ -318,6 +404,37 @@ export class SqliteModelLearningStore implements ModelLearningStore {
       CREATE TRIGGER IF NOT EXISTS model_learning_state_no_delete BEFORE DELETE ON model_learning_state
       BEGIN SELECT RAISE(ABORT, 'model_learning: a sorok nem törölhetők (DELETE)'); END;
       CREATE TRIGGER IF NOT EXISTS model_learning_events_no_delete BEFORE DELETE ON model_learning_events
+      BEGIN SELECT RAISE(ABORT, 'model_learning: a sorok nem törölhetők (DELETE)'); END;
+      -- A 0018 megfelelője: diagnosztikai futások, append-only
+      CREATE TABLE IF NOT EXISTS model_learning_diagnostic_runs (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) BETWEEN 8 AND 100 AND idempotency_key NOT GLOB '*[^A-Za-z0-9-]*'),
+        actor TEXT,
+        status TEXT NOT NULL DEFAULT 'succeeded' CHECK (status = 'succeeded'),
+        base_engine_version TEXT NOT NULL,
+        method TEXT NOT NULL,
+        data_fingerprint TEXT NOT NULL CHECK (length(data_fingerprint) = 64),
+        observations INTEGER NOT NULL,
+        matches INTEGER NOT NULL,
+        first_kickoff TEXT, last_kickoff TEXT, distinct_kickoff_days INTEGER,
+        log_loss REAL, brier REAL, ece REAL,
+        naive_covered_matches INTEGER, naive_covered_observations INTEGER,
+        naive_model_log_loss REAL, naive_baseline_log_loss REAL, naive_model_brier REAL, naive_baseline_brier REAL,
+        naive_advantage REAL, naive_advantage_ci_lo REAL, naive_advantage_ci_hi REAL, naive_brier_advantage REAL,
+        enough_for_conclusions INTEGER NOT NULL CHECK (enough_for_conclusions IN (0, 1)),
+        notes TEXT NOT NULL DEFAULT '[]',
+        excluded TEXT NOT NULL DEFAULT '{}',
+        CHECK (observations >= 0 AND matches >= 0 AND matches <= observations),
+        CHECK ((first_kickoff IS NULL AND last_kickoff IS NULL AND distinct_kickoff_days IS NULL)
+          OR (first_kickoff IS NOT NULL AND last_kickoff IS NOT NULL AND first_kickoff <= last_kickoff AND distinct_kickoff_days >= 1)),
+        CHECK ((naive_advantage_ci_lo IS NULL) = (naive_advantage_ci_hi IS NULL)
+          AND (naive_advantage_ci_lo IS NULL OR naive_advantage_ci_lo <= naive_advantage_ci_hi))
+      );
+      CREATE INDEX IF NOT EXISTS idx_model_learning_diagnostic_runs_created ON model_learning_diagnostic_runs (created_at DESC, id);
+      CREATE TRIGGER IF NOT EXISTS model_learning_diagnostic_runs_guard BEFORE UPDATE ON model_learning_diagnostic_runs
+      BEGIN SELECT RAISE(ABORT, 'model_learning_diagnostic_runs: a rögzített diagnosztikai futás nem módosítható'); END;
+      CREATE TRIGGER IF NOT EXISTS model_learning_diagnostic_runs_no_delete BEFORE DELETE ON model_learning_diagnostic_runs
       BEGIN SELECT RAISE(ABORT, 'model_learning: a sorok nem törölhetők (DELETE)'); END;
     `);
   }
@@ -402,5 +519,25 @@ export class SqliteModelLearningStore implements ModelLearningStore {
     const r = this.db.prepare('SELECT at, kind, model_id, actor, details FROM model_learning_events WHERE model_id = ? AND kind = ? ORDER BY at DESC, rowid DESC LIMIT 1')
       .get(modelId, kind) as Row | undefined;
     return r ? { at: String(r.at), kind: String(r.kind), modelId: r.model_id ?? null, actor: r.actor ?? null, details: parseJson(r.details) } : null;
+  }
+
+  async insertDiagnosticRun(r: NewDiagnosticRun): Promise<{ run: DiagnosticRun; created: boolean }> {
+    const c = diagnosticRunColumns(r);
+    const cols = Object.keys(c);
+    const vals = Object.values(c).map((v) => (typeof v === 'boolean' ? (v ? 1 : 0) : v !== null && typeof v === 'object' ? JSON.stringify(v) : v));
+    const res = this.db.prepare(`INSERT OR IGNORE INTO model_learning_diagnostic_runs (id, ${cols.join(', ')}) VALUES (?, ${cols.map(() => '?').join(', ')})`)
+      .run(randomUUID(), ...(vals as (string | number | null)[]));
+    const run = await this.getDiagnosticRunByKey(r.idempotencyKey);
+    if (!run) throw new Error('[model-learning] insertDiagnosticRun: a futás nem rögzült');
+    return { run, created: Number(res.changes) === 1 };
+  }
+
+  async getDiagnosticRunByKey(key: string): Promise<DiagnosticRun | null> {
+    const r = this.db.prepare('SELECT * FROM model_learning_diagnostic_runs WHERE idempotency_key = ?').get(key) as Row | undefined;
+    return r ? toDiagnosticRun(r) : null;
+  }
+
+  async listDiagnosticRuns(limit: number): Promise<DiagnosticRun[]> {
+    return (this.db.prepare('SELECT * FROM model_learning_diagnostic_runs ORDER BY created_at DESC, id ASC LIMIT ?').all(limit) as Row[]).map(toDiagnosticRun);
   }
 }

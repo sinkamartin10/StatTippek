@@ -3,6 +3,8 @@
  *
  *   GET  /status            – aktív/jelölt verziók, utolsó futás, metrikák, okok
  *   GET  /diagnostics       – az alap motor hibaelemzése (csak olvas, nem illeszt, nem ír)
+ *   POST /snapshots         – diagnosztika kiszámítása ÉS egyszeri rögzítése (Idempotency-Key kötelező)
+ *   GET  /history?limit=30  – a rögzített diagnosztikai futások (legújabb elöl; limit 1–100)
  *   POST /evaluate          – korlátos, zárral védett kiértékelés indítása
  *   POST /shadow-evaluate/:modelId – prospektív, mintán kívüli kiértékelés
  *   POST /promote/:modelId  – explicit aktiválás (élesben jelenleg tiltva)
@@ -14,8 +16,10 @@
 import { Router, type Response } from 'express';
 import { planOf } from '../billing/entitlement';
 import type { ModelLearningService } from '../modelLearning/service';
+import { DIAGNOSTIC_HISTORY_DEFAULT_LIMIT, DIAGNOSTIC_HISTORY_MAX_LIMIT } from '../../shared/modelLearning';
 
 const ID = /^cal-[0-9a-f]{12}$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9-]{8,100}$/;
 
 /** Az auditba kerülő szereplő: a hitelesített felhasználó azonosítója (e-mail nem). */
 function actorOf(res: Response): string {
@@ -37,6 +41,37 @@ export function modelLearningRouter(svc: ModelLearningService): Router {
 
   r.get('/diagnostics', async (_req, res) => {
     try { res.json(await svc.diagnostics()); } catch (e) { fail(res, e); }
+  });
+
+  // Explicit diagnosztikai futás + EGYSZERI rögzítés (append-only előzmény, 0018).
+  // Kötelező `Idempotency-Key`: ugyanazzal a kulccsal ismételt kérés nem hoz létre új sort.
+  r.post('/snapshots', async (req, res) => {
+    const key = String(req.header('idempotency-key') ?? '');
+    if (!IDEMPOTENCY_KEY.test(key)) {
+      res.status(400).json({ error: 'Hiányzó vagy érvénytelen Idempotency-Key fejléc.', code: 'BAD_REQUEST' });
+      return;
+    }
+    try {
+      const out = await svc.snapshotDiagnostics(actorOf(res), key);
+      res.status(out.replayed ? 200 : 201).json(out);
+    } catch (e) {
+      console.error('[model-learning] diagnosztika rögzítése', e);
+      res.status(500).json({ error: 'A diagnosztikai futás nem rögzült.', code: 'SNAPSHOT_FAILED' });
+    }
+  });
+
+  // A rögzített futások, a legújabbal kezdve. limit: 1–100 egész (nagyobb → 100), alapból 30.
+  r.get('/history', async (req, res) => {
+    const raw = req.query.limit;
+    let limit = DIAGNOSTIC_HISTORY_DEFAULT_LIMIT;
+    if (raw !== undefined) {
+      if (typeof raw !== 'string' || !/^\d{1,6}$/.test(raw) || Number(raw) < 1) {
+        res.status(400).json({ error: 'Érvénytelen limit (1–100 közötti egész szám).', code: 'BAD_REQUEST' });
+        return;
+      }
+      limit = Math.min(DIAGNOSTIC_HISTORY_MAX_LIMIT, Number(raw));
+    }
+    try { res.json({ runs: await svc.diagnosticHistory(limit), limit }); } catch (e) { fail(res, e); }
   });
 
   r.post('/evaluate', async (_req, res) => {

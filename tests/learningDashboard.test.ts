@@ -152,7 +152,7 @@ describe('irányítópult – API-hívások és hozzáférés', () => {
   let server: Server | null = null;
   afterEach(async () => { vi.unstubAllGlobals(); if (server) await new Promise((r) => server!.close(() => r(null))); server = null; });
 
-  it('9) a frissítés csak a két csak olvasó GET-et hívja; kiértékelést, aktiválást, visszaállítást a kliens nem ismer', async () => {
+  it('9) a status/diagnostics hívás csak GET; kiértékelést, aktiválást, visszaállítást a kliens nem ismer', async () => {
     const calls: { url: string; method: string }[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
@@ -165,7 +165,9 @@ describe('irányítópult – API-hívások és hozzáférés', () => {
       { url: '/api/admin/model-learning/diagnostics', method: 'GET' },
     ]);
     const keys = Object.keys(api).filter((k) => /learning/i.test(k));
-    expect(keys.sort()).toEqual(['adminLearningDiagnostics', 'adminLearningStatus']);
+    // a diagnosztika-rögzítés (snapshot) az egyetlen író hívás; kiértékelő/aktiváló/visszaállító nincs
+    expect(keys.sort()).toEqual(['adminLearningDiagnostics', 'adminLearningHistory', 'adminLearningSnapshot', 'adminLearningStatus']);
+    expect(keys.some((k) => /evaluat|promot|rollback|shadow/i.test(k))).toBe(false);
   });
 
   it('1–2) admin hozzáfér; névtelen 401, nem admin (akár PRO) 403 – a diagnosztika nem ír és nem illeszt', async () => {

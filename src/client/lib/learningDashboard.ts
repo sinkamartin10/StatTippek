@@ -4,7 +4,7 @@
  * Minden érték a backend válaszából jön; hiányzó vagy nem véges szám SOHA nem
  * jelenik meg 0-ként vagy sikerként, hanem „Nincs adat”-ként.
  */
-import type { DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
+import type { DiagnosticRun, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 
 export const NO_DATA = 'Nincs adat';
 export const NOT_AVAILABLE = 'Nem érhető el';
@@ -159,4 +159,71 @@ export function promotionRequirements(s: Pick<LearningStatus, 'thresholds' | 'pr
 export function naiveComparable(r: DiagnosticsReport): boolean {
   const n = r.naiveBaseline;
   return !!n && n.model.matches === n.baseline.matches && n.model.observations === n.baseline.observations && n.coveredMatches > 0;
+}
+
+// ---------- Diagnosztikai előzmények ----------
+
+/** Kattintásonként egy kulcs; újrapróbálásnál ugyanezt kell küldeni. */
+export function newIdempotencyKey(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+export interface HistoryRow {
+  run: DiagnosticRun;
+  /** ugyanaz az ujjlenyomat, mint az időben előző futásé → ugyanazon a mintán mért */
+  sameSampleAsPrevious: boolean;
+}
+
+/** A tábla sorai (legújabb elöl), a mintaazonosság jelölésével. */
+export function historyRows(runs: DiagnosticRun[]): HistoryRow[] {
+  return runs.map((run, i) => ({ run, sameSampleAsPrevious: i + 1 < runs.length && runs[i + 1].dataFingerprint === run.dataFingerprint }));
+}
+
+export interface HistoryPoint {
+  t: number;
+  value: number;
+  /** a futás mintája (tooltiphez) */
+  matches: number;
+  observations: number;
+  enough: boolean;
+  /** csak az előnynél: [érték − alsó, felső − érték] */
+  err?: [number, number];
+}
+
+/**
+ * Egy mutató időbeli pontjai (legrégebbi elöl), CSAK tényleges futásokból;
+ * hiányzó érték kimarad (nem 0). Elegendő és kevés mintájú pontok külön.
+ */
+export function historyPoints(runs: DiagnosticRun[], metric: 'logLoss' | 'brier' | 'ece' | 'advantage'): { enough: HistoryPoint[]; insufficient: HistoryPoint[] } {
+  const enough: HistoryPoint[] = [], insufficient: HistoryPoint[] = [];
+  for (const r of [...runs].reverse()) {
+    const t = Date.parse(r.createdAt);
+    let value: number | null;
+    let err: [number, number] | undefined;
+    if (metric === 'advantage') {
+      value = r.naive?.modelLogLossAdvantage ?? null;
+      const ci = r.naive?.modelLogLossAdvantageCi;
+      if (value != null && ci) err = [value - ci[0], ci[1] - value];
+    } else value = r[metric];
+    if (!finite(value) || !Number.isFinite(t)) continue;
+    const p: HistoryPoint = { t, value, matches: r.matches, observations: r.observations, enough: r.enoughForConclusions, ...(err ? { err } : {}) };
+    (r.enoughForConclusions ? enough : insufficient).push(p);
+  }
+  return { enough, insufficient };
+}
+
+/**
+ * Egyfutásos kapu: amíg az előző hívás fut, az újabb hívás NEM indul el
+ * (null-t ad). Szinkron jelzővel dolgozik, így a gyors, egymás utáni
+ * kattintások között sem függ a React-állapot frissülésétől.
+ */
+export function singleFlight<T>(fn: () => Promise<T>): () => Promise<T | null> {
+  let running = false;
+  return async () => {
+    if (running) return null;
+    running = true;
+    try { return await fn(); } finally { running = false; }
+  };
 }

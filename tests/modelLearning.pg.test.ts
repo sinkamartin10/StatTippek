@@ -127,6 +127,7 @@ describe.skipIf(!ENABLED)('V1 – PostgreSQL 17 szerződés és műveletek (lok�
         result_kickoff = '2026-10-01T18:00Z' where match_id = 'legacy1';`);
     for (const p of ['../supabase/migrations/0015_model_learning.sql', '../supabase/migrations/0016_tip_archive_provenance.sql',
       '../supabase/migrations/0015_model_learning.sql', '../supabase/migrations/0016_tip_archive_provenance.sql']) apply(p);
+    apply('../supabase/migrations/0018_model_learning_diagnostic_runs.sql'); // a store diagnosztikai előzmény-táblája
   });
 
   it('SZERZŐDÉS: a forráskód minden PostgREST-oszlopa létezik, és a service_role-nak megvan a joga', () => {

@@ -197,3 +197,58 @@ export interface DiagnosticsReport {
   /** amit a riport NEM bizonyít */
   limitations: string[];
 }
+
+// ---------- Diagnosztikai előzmények (időbélyegzett, append-only) ----------
+
+/** A lekérhető előzmények felső korlátja egy kérésben. */
+export const DIAGNOSTIC_HISTORY_MAX_LIMIT = 100;
+export const DIAGNOSTIC_HISTORY_DEFAULT_LIMIT = 30;
+
+/**
+ * Egy SIKERES, explicit (admin által indított) diagnosztikai futás tartósan
+ * tárolt, aggregált eredménye. Csak a riport által ténylegesen kiszámolt
+ * értékek; ami nem számolódott ki, az `null`. Tippet, felhasználói adatot
+ * vagy az indító azonosítóját nem tartalmazza.
+ */
+export interface DiagnosticRun {
+  id: string;
+  createdAt: string;
+  status: 'succeeded';
+  baseEngineVersion: string;
+  method: string;
+  /** a kiértékelt megfigyelés-halmaz ujjlenyomata – azonos érték = azonos minta */
+  dataFingerprint: string;
+  observations: number;
+  matches: number;
+  period: { firstKickoff: string; lastKickoff: string; distinctKickoffDays: number } | null;
+  logLoss: number | null;
+  brier: number | null;
+  ece: number | null;
+  naive: {
+    coveredMatches: number;
+    coveredObservations: number;
+    modelLogLoss: number | null;
+    baselineLogLoss: number | null;
+    modelBrier: number | null;
+    baselineBrier: number | null;
+    /** (baseline − modell) log loss; pozitív = a modell a jobb */
+    modelLogLossAdvantage: number | null;
+    modelLogLossAdvantageCi: [number, number] | null;
+    modelBrierAdvantage: number | null;
+  } | null;
+  enoughForConclusions: boolean;
+  notes: string[];
+}
+
+export interface DiagnosticSnapshotResponse {
+  run: DiagnosticRun;
+  /** true: ugyanazzal az idempotencia-kulccsal már rögzült futás – nem készült új */
+  replayed: boolean;
+  /** a teljes riport – csak új futásnál (a tárolt rekord csak az aggregátumokat őrzi) */
+  report: DiagnosticsReport | null;
+}
+
+export interface DiagnosticHistoryResponse {
+  runs: DiagnosticRun[];
+  limit: number;
+}
