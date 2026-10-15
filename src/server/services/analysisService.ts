@@ -9,14 +9,28 @@ import { marketLabel } from '../../shared/engine/markets';
 import { randomUUID } from 'node:crypto';
 import type { Container } from '../container';
 import { baselineServed, type TipArchiveService } from '../tipArchive/service';
+import { XG_MODEL_INFO } from '../../shared/engine/xsAnalysis';
+
+/**
+ * A PRO-elemzés kiszolgálója (több ligás modell). `serve` mindig ad elemzést: a több ligás
+ * modellét, vagy – ha az nem szolgálhat ki – az alap elemzést a visszaesés okával.
+ */
+export interface ProModelServing {
+  serve(match: Match, base: MatchAnalysis): MatchAnalysis;
+}
+
+/** Melyik elemzés-változat: FREE (és minden alap-fogyasztó) = alap motor; PRO = több ligás modell, ha lehet. */
+export type AnalysisVariant = 'base' | 'pro';
 
 const RESEARCH_TTL_MS = 30 * 60_000;
 const ANALYSIS_TTL_MS = 5 * 60_000;
 
+interface AnalysisPair { base: MatchAnalysis; pro: MatchAnalysis }
+
 export class AnalysisService {
-  private cache = new Map<string, { at: number; value: MatchAnalysis }>();
+  private cache = new Map<string, { at: number; value: AnalysisPair }>();
   /** párhuzamos kérések ugyanarra a meccsre egyetlen számítást indítanak */
-  private inflight = new Map<string, Promise<MatchAnalysis | null>>();
+  private inflight = new Map<string, Promise<AnalysisPair | null>>();
 
   /** a még futó archívum-írások (a tesztek ezt várhatják meg) */
   private archiveWrites = new Set<Promise<unknown>>();
@@ -35,7 +49,12 @@ export class AnalysisService {
    * (analyzeMatch) lefut, ezért minden fogyasztó (mérkőzésoldal, Tippek lista,
    * szelvényépítő, tippmentés) kimenete innen rögzül.
    */
-  constructor(private c: Container, private archive: Pick<TipArchiveService, 'record'> | null = null) {}
+  constructor(
+    private c: Container,
+    private archive: Pick<TipArchiveService, 'record'> | null = null,
+    /** PRO-kiszolgálás (xs-strength-1). null = a PRO is az alap motort kapja (pl. demo/helyi adat). */
+    private proModel: ProModelServing | null = null,
+  ) {}
 
   /** Megvárja a folyamatban lévő archívum-írásokat (tesztekhez, leállításhoz). */
   async archiveIdle(): Promise<void> {
@@ -104,7 +123,17 @@ export class AnalysisService {
     return r;
   }
 
-  async analyze(matchId: string, opts: { forceResearch?: boolean } = {}): Promise<MatchAnalysis | null> {
+  /**
+   * Egy meccs elemzése. `variant: 'base'` (alapértelmezés): az alap motor (xg-poisson-1) – FREE és
+   * minden korábbi fogyasztó. `variant: 'pro'`: a PRO-nak kiszolgált elemzés (több ligás modell,
+   * vagy az alap a visszaesés okával). Mindkettő ugyanabból az egyetlen számításból jön.
+   */
+  async analyze(matchId: string, opts: { forceResearch?: boolean; variant?: AnalysisVariant } = {}): Promise<MatchAnalysis | null> {
+    const pair = await this.analyzePair(matchId, opts);
+    return pair ? (opts.variant === 'pro' ? pair.pro : pair.base) : null;
+  }
+
+  private analyzePair(matchId: string, opts: { forceResearch?: boolean }): Promise<AnalysisPair | null> {
     const running = this.inflight.get(matchId);
     if (running && !opts.forceResearch) return running;
     const p = this.analyzeInner(matchId, opts).finally(() => this.inflight.delete(matchId));
@@ -112,7 +141,7 @@ export class AnalysisService {
     return p;
   }
 
-  private async analyzeInner(matchId: string, opts: { forceResearch?: boolean }): Promise<MatchAnalysis | null> {
+  private async analyzeInner(matchId: string, opts: { forceResearch?: boolean }): Promise<AnalysisPair | null> {
     const match = await this.c.data.getMatch(matchId);
     if (!match) return null;
     const odds = await this.resolveOdds(match);
@@ -132,10 +161,17 @@ export class AnalysisService {
     const league = leagues.find((l) => l.id === match.leagueId);
     if (!league || !homeTeam || !awayTeam) return null;
 
-    const analysis = analyzeMatch({ match, league, homeTeam, awayTeam, results, odds, research, now: new Date().toISOString(), modelOptions, seasonStart });
-    this.cache.set(key, { at: Date.now(), value: analysis });
-    this.recordInArchive(analysis);
-    return analysis;
+    const analysis: MatchAnalysis = { ...analyzeMatch({ match, league, homeTeam, awayTeam, results, odds, research, now: new Date().toISOString(), modelOptions, seasonStart }), model: XG_MODEL_INFO };
+    let pro = analysis;
+    if (this.proModel) {
+      try { pro = this.proModel.serve(match, analysis); }
+      catch (e) { console.error('[xs] PRO-kiszolgálás hiba, alap motor:', (e as Error).message); pro = { ...analysis, model: { ...XG_MODEL_INFO, fallbackReason: 'A több ligás modell hibát jelzett – az alap motor szolgál ki.', fallbackCode: 'error' } }; }
+    }
+    const pair = { base: analysis, pro };
+    this.cache.set(key, { at: Date.now(), value: pair });
+    // Az archívum a PRO-nak kiszolgált tippeket rögzíti (meccsenként EGY modell – nincs verzió-pingpong)
+    this.recordInArchive(pro);
+    return pair;
   }
 
   /**
@@ -180,9 +216,9 @@ export class AnalysisService {
   }
 
   /** "Mai tippek": minden, a napon még le nem játszott meccs tippjei. */
-  async tipsForDate(date: string): Promise<TipListEntry[]> {
+  async tipsForDate(date: string, variant: AnalysisVariant = 'base'): Promise<TipListEntry[]> {
     const matches = await this.c.data.getMatches({ date, status: 'scheduled' });
-    const analyses = await this.analyzeMany(matches);
+    const analyses = await this.analyzeMany(matches, variant);
     const out: TipListEntry[] = [];
     matches.forEach((m, i) => {
       const a = analyses[i];
@@ -190,7 +226,7 @@ export class AnalysisService {
       for (const tip of a.tips) {
         out.push({
           tip, matchId: m.id, matchLabel: `${a.homeTeam.name} – ${a.awayTeam.name}`, kickoff: m.kickoff,
-          leagueId: a.league.id, leagueName: a.league.name, dataQuality: a.dataQuality, origin: a.origin,
+          leagueId: a.league.id, leagueName: a.league.name, dataQuality: a.dataQuality, origin: a.origin, model: a.model,
         });
       }
     });
@@ -198,13 +234,13 @@ export class AnalysisService {
   }
 
   /** Több meccs elemzése párhuzamosan (legfeljebb 3 egyszerre). */
-  private async analyzeMany(matches: Match[]): Promise<(MatchAnalysis | null)[]> {
+  private async analyzeMany(matches: Match[], variant: AnalysisVariant = 'base'): Promise<(MatchAnalysis | null)[]> {
     const out: (MatchAnalysis | null)[] = new Array(matches.length).fill(null);
     let next = 0;
     const worker = async () => {
       while (next < matches.length) {
         const i = next++;
-        try { out[i] = await this.analyze(matches[i].id); } catch (e) { console.error('[analyze]', matches[i].id, (e as Error).message); }
+        try { out[i] = await this.analyze(matches[i].id, { variant }); } catch (e) { console.error('[analyze]', matches[i].id, (e as Error).message); }
       }
     };
     await Promise.all(Array.from({ length: Math.min(3, matches.length) }, worker));
@@ -217,7 +253,8 @@ export class AnalysisService {
    */
   async buildSlips(from: string, to: string, opts: SlipBuildOptions): Promise<SlipBuildResponse> {
     const matches = (await this.c.data.getMatches({ from, to, status: 'scheduled' })).slice(0, 60);
-    const analyses = await this.analyzeMany(matches);
+    // a szelvényépítő PRO-funkció (requirePro): a PRO-nak kiszolgált elemzésből dolgozik
+    const analyses = await this.analyzeMany(matches, 'pro');
     const legs: SlipLeg[] = [];
     let withOdds = 0;
     analyses.forEach((a, i) => {
@@ -244,12 +281,12 @@ export class AnalysisService {
    * Szelvény mentése a HITELESÍTETT felhasználó nevében: minden láb tippként rögzül (ha még nincs),
    * a szelvény a lábak (predictions) azonosítóit tárolja.
    */
-  async saveSlip(userId: string, strategy: SlipStrategy, label: string, legs: { matchId: string; market: string }[]): Promise<SlipRecord | null> {
+  async saveSlip(userId: string, strategy: SlipStrategy, label: string, legs: { matchId: string; market: string }[], variant: AnalysisVariant = 'pro'): Promise<SlipRecord | null> {
     const ids: string[] = [];
     let totalOdds = 1, jointProb = 1;
     for (const leg of legs) {
       let rec = await this.c.db.getPredictionByMarket(userId, leg.matchId, leg.market);
-      if (!rec) rec = await this.savePrediction(userId, leg.matchId, leg.market, 'manuális');
+      if (!rec) rec = await this.savePrediction(userId, leg.matchId, leg.market, 'manuális', variant);
       if (!rec) return null;
       // Odds nélküli láb nem kerülhet szelvényre: az összodds értelmezhetetlen lenne (és az adatbázis is elutasítja)
       if (rec.odds == null || !(rec.odds > 1)) return null;
@@ -273,8 +310,9 @@ export class AnalysisService {
   }
 
   /** Tipp mentése a HITELESÍTETT felhasználó előzményeihez. Ugyanarra a meccsre és piacra csak egyszer. */
-  async savePrediction(userId: string, matchId: string, market: string, predictionType: 'modell' | 'manuális' = 'modell'): Promise<PredictionRecord | null> {
-    const a = await this.analyze(matchId);
+  async savePrediction(userId: string, matchId: string, market: string, predictionType: 'modell' | 'manuális' = 'modell', variant: AnalysisVariant = 'base'): Promise<PredictionRecord | null> {
+    // a felhasználó azt a valószínűséget menti, amit látott: PRO-nak a PRO-elemzésből
+    const a = await this.analyze(matchId, { variant });
     if (!a || !a.poisson) return null;
     const already = await this.c.db.getPredictionByMarket(userId, matchId, market);
     if (already) return null;

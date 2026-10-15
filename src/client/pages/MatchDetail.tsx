@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { Bookmark, CheckCircle2, ExternalLink, RefreshCw, XCircle } from 'lucide-react';
 import type { FormSummary, MatchAnalysis, TipSuggestion, TipCategory } from '@shared/types';
 import { api } from '../lib/api';
+import { ModelBadge, ModelNote } from '../components/ModelBadge';
 import { fmtDateTime, num, odds as fo, pct, pct100, signed, useAsync } from '../lib/format';
 import { Card, Disclaimer, EmptyState, ErrorBox, FormPills, ImportanceBadge, Loading, Note, OriginBadge, ProbBar, QualityBadge, Stat, TeamLink } from '../components/ui';
 import { CorrectScoreChart, FormGoalsChart, FormTrendChart, GoalDistChart, OneXTwoChart, OverUnderChart } from '../components/charts';
@@ -68,6 +69,7 @@ function MatchDetailInner({ id, pro }: { id: string; pro: boolean }) {
         </div>
       </nav>
 
+      <ModelNote model={an.model} />
       {an.insufficientData && (
         <Note tone="warn">
           <strong>Ehhez a mérkőzéshez jelenleg nem áll rendelkezésre elegendő ellenőrizhető adat.</strong> A modell nem futtatható; az alábbiakban csak a meglévő adatok jelennek meg.
@@ -99,7 +101,7 @@ function Header({ an, onRefresh, refreshing }: { an: MatchAnalysis; onRefresh: (
       <div className="bg-primary-soft p-5">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <span className="font-semibold text-text/90">{an.league.name}</span><span>· {an.league.country}</span>{m.round && <span>· {m.round}</span>}
-          <ImportanceBadge importance={m.importance} /><OriginBadge origin={an.origin} /><QualityBadge q={an.dataQuality} showScore />
+          <ImportanceBadge importance={m.importance} /><OriginBadge origin={an.origin} /><QualityBadge q={an.dataQuality} showScore /><ModelBadge model={an.model} />
         </div>
         <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <TeamLink id={an.homeTeam.id} name={an.homeTeam.name} className="text-right text-2xl font-extrabold tracking-tight md:text-3xl" />

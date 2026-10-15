@@ -33,13 +33,22 @@ import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter } from './billing/manualPayments';
 import { proStatsRouters, supabaseActiveProCounter } from './billing/proStats';
+import { EspnProvider } from './data/espnProvider';
+import { createXsModel, scheduleXsRefresh, xsAdminRouter } from './model/xsBootstrap';
+import { PostgresXsStore, SqliteXsStore } from './model/xsStore';
 import { attachPlan, requireAdmin, requirePro } from './billing/entitlement';
 import { supabaseAdmin, supabaseConfigured } from './billing/supabaseAdmin';
 
 const container = buildContainer();
 // Modell-tipp archívum: a motor egyetlen hívási pontja (AnalysisService) rögzít bele
 const tipArchiveService = new TipArchiveService(container.tipArchive, container.data);
-const service = new AnalysisService(container, tipArchiveService);
+// PRO-modell: több ligás erősségmodell (xs-strength-1) – csak élő ESPN-adatnál; vészkapcsoló: XS_MODEL_ENABLED=false.
+// Tartós tanítóadat: Supabase (0021), kulcs nélkül helyi SQLite. A tábla hiánya nem dönti el a szervert.
+const xsModel = createXsModel(process.env, container.data instanceof EspnProvider ? container.data : null, () => (supabaseAdmin
+  ? new PostgresXsStore(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '', process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
+  : new SqliteXsStore(container.db.sqliteHandle())));
+console.log(`PRO-modell (xs-strength-1): ${xsModel ? 'bekapcsolva' : 'KIKAPCSOLVA – a PRO is az alap motort kapja'}`);
+const service = new AnalysisService(container, tipArchiveService, xsModel);
 // Modell-kalibráció: árnyék-kiértékelés. Az aktiválás SZÁNDÉKOSAN tiltva – a kiszolgált
 // modell az alap motor (xg-poisson-1), amíg az archívum nem rögzíti a kiszolgált ÉS az
 // alap valószínűséget is (lásd SERVING_NOTE). A tanulás nem fut felhasználói kérésben.
@@ -197,6 +206,8 @@ app.use('/api/admin/pro-payments', requireAdmin, adminProPaymentsRouter(manualPa
 const proStats = proStatsRouters(container.db, supabaseAdmin ? supabaseActiveProCounter(supabaseAdmin) : null);
 app.use('/api/pro-stats', proStats.pub);
 app.use('/api/admin/pro-stats', requireAdmin, proStats.admin);
+// PRO-modell (xs-strength-1) állapota – csak admin: becslés-azonosító, időhatár, tanítóadat, hibák
+app.use('/api/admin/xs-model', requireAdmin, xsAdminRouter(xsModel));
 app.use('/api/competition', competitionRouter(competitionService));
 // Profil: megjelenítési név (a meglévő profiles táblán) – minden írás a hitelesített userhez kötve
 app.use('/api/profile', profileRouter(container.displayNames, progressionService, socialService));
@@ -262,6 +273,15 @@ app.listen(port, async () => {
       // 0020: kézi PRO-befizetések (a tábla nélkül a kérelem 500-at ad – a többi funkció működik)
       const ppr = supabaseAdmin ? await supabaseAdmin.from('pro_payment_requests').select('id').limit(1) : null;
       if (ppr?.error) console.warn('PRO kézi fizetés nem kész (hiányzik: pro_payment_requests). Futtasd le: supabase/migrations/0020_pro_payment_requests.sql');
+      // 0021: a több ligás modell tartós tanítóadata (nélküle memóriából dolgozik, újraindulás után újratölt)
+      if (xsModel && supabaseAdmin) {
+        const missingXs: string[] = [];
+        for (const t of ['xs_training_matches', 'xs_training_months', 'xs_model_fits']) {
+          const { error } = await supabaseAdmin.from(t).select('*').limit(1);
+          if (error) missingXs.push(t);
+        }
+        if (missingXs.length) console.warn(`A több ligás modell tanítóadata nem tartós (hiányzik: ${missingXs.join(', ')}) – minden újraindulás után újra letölti a lezárt hónapokat. Futtasd le: supabase/migrations/0021_xs_model_training.sql`);
+      }
       const missingCompetition = await container.competitions.healthCheck();
       if (missingCompetition.length) {
         console.warn('Tippverseny táblák hiányoznak:', missingCompetition.join(', '));
@@ -288,6 +308,10 @@ app.listen(port, async () => {
         console.warn('Modell-kalibráció nem kész (a kiértékelés addig nem fut):', missingLearning.join(', '));
         console.warn('Futtasd le a Supabase SQL Editorban (sorrendben, ami hiányzik): supabase/migrations/0015_model_learning.sql, 0016_tip_archive_provenance.sql');
       }
+    }
+    if (xsModel) {
+      // a tanítóadat-gyűjtés és a becslés a háttérben fut; addig a PRO az alap motort kapja (megjelölt okkal)
+      scheduleXsRefresh(xsModel);
     }
     const pruned = container.db.pruneCache();
     if (pruned) console.log(`Lejárt cache-sorok törölve: ${pruned}`);

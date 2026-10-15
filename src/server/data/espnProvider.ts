@@ -15,6 +15,8 @@ import type { HttpCache } from '../db/database';
 import { DERBIES, TEAMS as DEMO_TEAMS } from './demo/leagues';
 import type { CornerFetch, CornerRef, MatchDataProvider, MatchQuery } from './provider';
 import { candidateMonths, espnMonthKey, monthEndUtc, parseScoreboardCorners, shiftMonth, type ParsedCorners } from './espnCorners';
+import { parseScoreboardResults, type ScoreboardResult } from './scoreboardResults';
+import { HISTORY_ONLY_DOMESTIC, closedBefore, dedupeResults, extendedRequests, requestKey, type CoverageReason, type TeamState } from './historyPlan';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 
@@ -39,7 +41,7 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'fifa-friendly', name: 'Válogatott barátságos', country: 'Válogatott (nemzetközi)', countryCode: 'INT', tier: 0, international: true },
 ];
 
-const SLUG: Record<string, string> = {
+export const SLUG: Record<string, string> = {
   'eng-pl': 'eng.1', 'esp-ll': 'esp.1', 'ita-sa': 'ita.1', 'ger-bl': 'ger.1', 'fra-l1': 'fra.1',
   'uefa-ucl': 'uefa.champions', 'uefa-uel': 'uefa.europa', 'uefa-uecl': 'uefa.europa.conf', 'usa-mls': 'usa.1',
   'eng-ch': 'eng.2', 'esp-l2': 'esp.2', 'ita-sb': 'ita.2', 'ger-b2': 'ger.2', 'fra-l2': 'fra.2',
@@ -112,22 +114,28 @@ export class EspnProvider implements MatchDataProvider {
 
   private async slot(): Promise<void> {
     if (this.inflight < 4) { this.inflight++; return; }
+    // a felszabaduló helyet a release() közvetlenül nekünk adja át (a számláló közben nem csökken)
     await new Promise<void>((r) => this.queue.push(r));
-    this.inflight++;
   }
   private release() {
-    this.inflight--;
-    this.queue.shift()?.();
+    const next = this.queue.shift();
+    if (next) next(); else this.inflight--;
   }
 
-  private async call(path: string, ttlMs: number): Promise<Json | null> {
+  /**
+   * @param opts.retain false: a választ NEM tartjuk meg (se memóriában, se a SQLite-cache-ben) –
+   * tömeges, egyszer feldolgozott lekérésekhez (a több ligás modell ~1250 havi listája
+   * feldolgozatlanul ~430 MB heap lenne). A meglévő cache-bejegyzést ilyenkor is használjuk.
+   */
+  private async call(path: string, ttlMs: number, opts: { retain?: boolean } = {}): Promise<Json | null> {
+    const retain = opts.retain !== false;
     const url = `${BASE}/${path}`;
     const hit = this.mem.get(url);
     if (hit && Date.now() - hit.at < hit.ttl) return hit.data;
     const stored = this.cache?.get(url, ttlMs);
     if (stored) {
       const data = JSON.parse(stored);
-      this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
+      if (retain) this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
       return data;
     }
     await this.slot();
@@ -138,8 +146,10 @@ export class EspnProvider implements MatchDataProvider {
         return null;
       }
       const data = await res.json();
-      this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
-      this.cache?.set(url, JSON.stringify(data));
+      if (retain) {
+        this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
+        this.cache?.set(url, JSON.stringify(data));
+      }
       return data;
     } catch (e) {
       console.error(`[espn] ${path} -> kivétel:`, (e as Error).message);
@@ -422,6 +432,105 @@ export class EspnProvider implements MatchDataProvider {
     const [lg, h, a] = await Promise.all([this.getLeagueResults(match.leagueId), this.getTeamResults(match.homeTeamId), this.getTeamResults(match.awayTeamId)]);
     const seen = new Set<string>();
     return [...lg, ...h, ...a].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  }
+
+  // ---------- Bővített előzmény – KÍSÉRLETI, az éles elemzés NEM használja ----------
+
+  /** csapat → csak-előzmény hazai bajnokság (pl. por-pl), a csak-előzmény ligák csapatlistáiból */
+  private historyTeamLeague = new Map<string, string>();
+  private historyTeamsLoaded = false;
+
+  private async loadHistoryOnlyTeams(): Promise<void> {
+    if (this.historyTeamsLoaded) return;
+    for (const [leagueId, { slug }] of Object.entries(HISTORY_ONLY_DOMESTIC)) {
+      const data = await this.call(`${slug}/teams`, 24 * HOUR);
+      for (const t of (data?.sports?.[0]?.leagues?.[0]?.teams ?? []) as Json[]) {
+        if (t?.team?.id != null) this.historyTeamLeague.set(`espn-${t.team.id}`, leagueId);
+      }
+    }
+    this.historyTeamsLoaded = true;
+  }
+
+  /**
+   * Csapat-menetrend REGISZTRÁCIÓ NÉLKÜL: a szolgáltató közös állapotát (csapatlista,
+   * csapat–sorozat hozzárendelés, meccs- és oddstár) nem módosítja, így az éles
+   * `getResultsForAnalysis` viselkedése a bővített letöltéstől független marad.
+   */
+  private async scheduleWithoutRegistering(externalId: number, leagueId: string, season?: number): Promise<MatchResult[]> {
+    const slug = SLUG[leagueId] ?? HISTORY_ONLY_DOMESTIC[leagueId]?.slug;
+    if (!slug) return [];
+    const data = await this.call(`${slug}/teams/${externalId}/schedule${season ? `?season=${season}` : ''}`, 3 * HOUR);
+    const out: MatchResult[] = [];
+    for (const ev of (data?.events ?? []) as Json[]) {
+      const comp = ev.competitions?.[0];
+      if (!comp?.status?.type?.completed) continue;
+      const home = comp.competitors?.find((c: Json) => c.homeAway === 'home');
+      const away = comp.competitors?.find((c: Json) => c.homeAway === 'away');
+      if (!home?.team?.id || !away?.team?.id) continue;
+      const hg = parseFloat(String(home.score?.value ?? home.score?.displayValue ?? home.score));
+      const ag = parseFloat(String(away.score?.value ?? away.score?.displayValue ?? away.score));
+      if (!Number.isFinite(hg) || !Number.isFinite(ag)) continue;
+      out.push({ id: `espn-${slug}-${ev.id}`, leagueId, date: new Date(ev.date).toISOString(), homeTeamId: `espn-${home.team.id}`, awayTeamId: `espn-${away.team.id}`, homeGoals: hg, awayGoals: ag, origin: 'live' });
+    }
+    return out;
+  }
+
+  /**
+   * KÍSÉRLETI, bővített előzmény egy meccshez: a változatlan éles adatkör
+   * (`getResultsForAnalysis`) + a `historyPlan` bővítései (előző kupaidény, kiesett csapat
+   * előző élvonalbeli idénye, válogatott naptári ablak, csak-előzmény hazai bajnokság).
+   * Egy meccs egyszer szerepel; csak a kezdés előtt legalább 3 órával indult meccsek.
+   * Az éles elemzés és a tippek NEM használják.
+   */
+  async getResultsForAnalysisExtended(match: Match): Promise<{ results: MatchResult[]; sourceOf: Map<string, CoverageReason | 'alap'>; duplicates: number; requests: number }> {
+    const base = await this.getResultsForAnalysis(match);
+    const state = (id: string): TeamState => {
+      const t = this.teams.get(id);
+      const competitions = [...(this.teamSlugs.get(id) ?? [])].map((s) => LEAGUE_BY_SLUG[s]).filter(Boolean);
+      return { id, leagueId: t?.leagueId ?? match.leagueId, competitions };
+    };
+    const nowIso = new Date().toISOString();
+    const isIntl = (l: string) => ESPN_LEAGUES.find((x) => x.id === l)?.international ?? false;
+    await this.loadHistoryOnlyTeams();
+    const reqs = extendedRequests(match, state(match.homeTeamId), state(match.awayTeamId), nowIso, { international: isIntl }, (id) => this.historyTeamLeague.get(id) ?? null);
+    const seenReq = new Set<string>();
+    const sourceOf = new Map<string, CoverageReason | 'alap'>(base.map((r) => [r.id, 'alap']));
+    const extra: { r: MatchResult; reason: CoverageReason }[] = [];
+    let requests = 0;
+    for (const req of reqs) {
+      if (req.onlyIfFewerThan) {
+        const n = base.filter((r) => r.leagueId === req.onlyIfFewerThan!.leagueId && (r.homeTeamId === req.teamId || r.awayTeamId === req.teamId)).length;
+        if (n >= req.onlyIfFewerThan.count) continue;
+      }
+      const ids = req.teamId === '*' ? [...this.teams.values()].filter((t) => this.teamSlugs.get(t.id)?.has(SLUG[req.leagueId])).map((t) => t.id) : [req.teamId];
+      for (const id of ids) {
+        const key = requestKey({ ...req, teamId: id }, nowIso);
+        if (seenReq.has(key)) continue;
+        seenReq.add(key);
+        const ext = this.teams.get(id)?.externalId;
+        if (ext == null) continue;
+        requests++;
+        for (const r of await this.scheduleWithoutRegistering(ext, req.leagueId, req.season === 'current' ? undefined : req.season)) extra.push({ r, reason: req.reason });
+      }
+    }
+    const merged = dedupeResults([...base, ...extra.map((x) => x.r)]);
+    for (const x of extra) if (!sourceOf.has(x.r.id)) sourceOf.set(x.r.id, x.reason);
+    const results = closedBefore(merged.results, match.kickoff, 3);
+    return { results, sourceOf, duplicates: merged.duplicates, requests };
+  }
+
+  /**
+   * Egy sorozat egy havi eredménylistája (a több ligás modell tanítóadata). Ugyanaz az
+   * ESPN-végpont, mint a szögletadaté; a választ NEM tartjuk meg (a tartós tárolás a 0021
+   * táblák dolga – memóriában ~430 MB lenne). Regisztráció NÉLKÜL – a szolgáltató közös
+   * állapotát nem módosítja. null = nem érhető el.
+   */
+  async monthResults(competitionId: string, yyyymm: string): Promise<ScoreboardResult[] | null> {
+    const slug = SLUG[competitionId] ?? HISTORY_ONLY_DOMESTIC[competitionId]?.slug;
+    if (!slug || !/^\d{6}$/.test(yyyymm)) return null;
+    const closed = monthEndUtc(yyyymm) + 3 * 24 * HOUR < Date.now();
+    const data = await this.call(`${slug}/scoreboard?dates=${yyyymm}`, closed ? 30 * 24 * HOUR : 30 * MIN, { retain: false });
+    return data ? parseScoreboardResults(data, slug, competitionId).results : null;
   }
 
   async getOdds(matchId: string): Promise<MatchOdds | null> {

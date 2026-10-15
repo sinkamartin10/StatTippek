@@ -377,7 +377,37 @@ export interface MatchAnalysis {
    * válaszból a szerver eltávolítja (`redactAnalysisForFree`).
    */
   corners?: CornerAnalysis | null;
+  /**
+   * A kiszolgált előrejelző modell és – több ligás modellnél – az adatminőségi
+   * kategóriája. Hiányzik = az alap motor (`xg-poisson-1`) régi formájú válasza.
+   */
+  model?: ServedModelInfo;
 }
+
+/** Melyik modell állította elő az elemzés valószínűségeit és tippjeit. */
+export interface ServedModelInfo {
+  id: 'xg-poisson-1' | 'xs-strength-1';
+  /** emberi megnevezés */
+  label: string;
+  /** csak `xs-strength-1`: a validációból származó adatminőségi kategória */
+  quality?: 'elegendo' | 'korlatozott' | 'keves_regularizalt' | 'elegtelen';
+  qualityLabel?: string;
+  /** a kategória indoklása (bizonytalanság, adathiány) */
+  qualityReason?: string;
+  /** a log-várhatógól-ráták összevont bizonytalansága */
+  sdLog?: number;
+  /** a becslés ujjlenyomata (tanítóadat + paraméterek + időpont) – reprodukálhatóság */
+  fitId?: string;
+  /** a tanítóadat időhatára: csak az ennél legalább 3 órával korábban kezdődött, lezárt meccsek */
+  fitCutoff?: string;
+  trainedMatches?: number;
+  /** ha a több ligás modell helyett az alap motor szolgált ki: miért */
+  fallbackReason?: string;
+  /** a visszaesés gépi kódja (megfigyelhetőség: az admin-állapot ezek szerint számol) */
+  fallbackCode?: XsFallbackCode;
+}
+
+export type XsFallbackCode = 'not_ready' | 'stale_fit' | 'competition' | 'leakage' | 'quality' | 'error';
 
 // ---------- Szögletek (corners-nb-1) – a gólmodelltől elkülönített réteg ----------
 
@@ -549,6 +579,8 @@ export interface TipListEntry {
   leagueName: string;
   dataQuality: DataQuality;
   origin: DataOrigin;
+  /** a tippet előállító modell (PRO: több ligás modell, ha az adatminőség engedi) */
+  model?: ServedModelInfo;
 }
 
 // ---------- Szelvények (kombinációk) ----------

@@ -6,6 +6,7 @@
  */
 import { Link } from 'react-router-dom';
 import { Clock, Lock, Sparkles } from 'lucide-react';
+import { ModelBadge } from './ModelBadge';
 import type { TipListEntry } from '@shared/types';
 import { fmtDayLabel, fmtTime, odds as fo, pct, signed } from '../lib/format';
 import { Accordion, ConfidenceMeter, QualityBadge } from './ui';
@@ -65,6 +66,7 @@ export function TipCard({ entry, pro }: { entry: TipListEntry; pro: boolean }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className={`badge ${CATEGORY_BADGE[t.category] ?? 'badge-muted'}`}>{t.category}</span>
         <QualityBadge q={entry.dataQuality} />
+        <ModelBadge model={entry.model} />
         <span className="badge badge-muted" title="Egymástól független statisztikai mutatók, amelyek alátámasztják">
           {t.supportingIndicators}/{t.supportingStats.length} mutató
         </span>

@@ -75,7 +75,9 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
         if (!freeMatchIds(day).has(m.id)) return res.status(403).json({ error: 'Ez a mérkőzés PRO előfizetéssel elemezhető.', code: 'PRO_REQUIRED' });
       }
       // A kutatás kényszerített frissítése külső hívásokat indít – csak PRO kérheti
-      const a = await svc.analyze(req.params.id, { forceResearch: plan.pro && req.query.refresh === '1' });
+      // MODELLVÁLASZTÁS: PRO → több ligás modell (xs-strength-1), ha az adatminőség engedi; FREE → alap motor.
+      // A csomagot KIZÁRÓLAG a szerveroldali jogosultság (planOf) dönti el.
+      const a = await svc.analyze(req.params.id, { forceResearch: plan.pro && req.query.refresh === '1', variant: plan.pro ? 'pro' : 'base' });
       if (!a) return res.status(404).json({ error: 'A mérkőzés nem található.' });
       res.json(plan.pro ? a : redactAnalysisForFree(a));
     } catch (e) {
@@ -132,7 +134,7 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
     const userId = ownerId(res);
     if (!userId) return needAuth(res);
     if (await c.db.hasPrediction(userId, req.params.id, market)) return res.status(409).json({ error: 'Ez a tipp már el van mentve ehhez a mérkőzéshez.' });
-    const rec = await svc.savePrediction(userId, req.params.id, market, 'manuális');
+    const rec = await svc.savePrediction(userId, req.params.id, market, 'manuális', planOf(res).pro ? 'pro' : 'base');
     if (!rec) return res.status(400).json({ error: 'A tipp nem menthető (nincs modell-eredmény ehhez a mérkőzéshez).' });
     res.json(rec);
   });
@@ -140,8 +142,9 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
   r.get('/tips', async (req, res) => {
     const date = qd(req.query.date) ?? localDateKey(new Date().toISOString());
     try {
-      const list = await svc.tipsForDate(date);
-      res.json(planOf(res).pro ? list : redactTipsForFree(list));
+      const pro = planOf(res).pro;
+      const list = await svc.tipsForDate(date, pro ? 'pro' : 'base');
+      res.json(pro ? list : redactTipsForFree(list));
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'A tippek nem állíthatók elő: ' + (e as Error).message });

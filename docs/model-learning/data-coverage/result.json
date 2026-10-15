@@ -1,0 +1,253 @@
+{
+ "generatedAt": "2026-10-15T13:22:19.851Z",
+ "engine": "xg-poisson-1",
+ "scoreboards": 1224,
+ "matches": 26366,
+ "historyOnly": {
+  "por-pl": 918,
+  "ned-ed": 927,
+  "sco-pr": 508,
+  "bel-pl": 939,
+  "tur-sl": 1028,
+  "aut-bl": 585,
+  "sui-sl": 498,
+  "gre-sl": 712,
+  "den-sl": 579,
+  "nor-el": 720,
+  "swe-al": 703,
+  "isr-pl": 480,
+  "cyp-1d": 240,
+  "rou-l1": 719,
+  "nir-pr": 513,
+  "wal-pr": 390,
+  "mlt-pl": 379
+ },
+ "duplicates": 0,
+ "leaks": 0,
+ "periods": {
+  "2024-25": {
+   "targets": 5195,
+   "cold": 4516,
+   "warm": 4586,
+   "extended": 4788,
+   "gained": 272,
+   "lost": 0,
+   "byCompetition": {
+    "eng-ch": {
+     "targets": 556,
+     "cold": 524,
+     "warm": 538,
+     "extended": 538
+    },
+    "eng-pl": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "esp-l2": {
+     "targets": 467,
+     "cold": 430,
+     "warm": 445,
+     "extended": 445
+    },
+    "esp-ll": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "fifa-friendly": {
+     "targets": 166,
+     "cold": 46,
+     "warm": 46,
+     "extended": 67
+    },
+    "fifa-wcq-uefa": {
+     "targets": 48,
+     "cold": 31,
+     "warm": 31,
+     "extended": 36
+    },
+    "fra-l1": {
+     "targets": 306,
+     "cold": 306,
+     "warm": 306,
+     "extended": 306
+    },
+    "fra-l2": {
+     "targets": 306,
+     "cold": 279,
+     "warm": 294,
+     "extended": 294
+    },
+    "ger-b2": {
+     "targets": 306,
+     "cold": 278,
+     "warm": 290,
+     "extended": 290
+    },
+    "ger-bl": {
+     "targets": 306,
+     "cold": 306,
+     "warm": 306,
+     "extended": 306
+    },
+    "ita-sa": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "ita-sb": {
+     "targets": 390,
+     "cold": 354,
+     "warm": 368,
+     "extended": 368
+    },
+    "uefa-nl": {
+     "targets": 179,
+     "cold": 86,
+     "warm": 86,
+     "extended": 86
+    },
+    "uefa-ucl": {
+     "targets": 185,
+     "cold": 113,
+     "warm": 113,
+     "extended": 168
+    },
+    "uefa-uecl": {
+     "targets": 146,
+     "cold": 39,
+     "warm": 39,
+     "extended": 83
+    },
+    "uefa-uel": {
+     "targets": 184,
+     "cold": 80,
+     "warm": 80,
+     "extended": 157
+    },
+    "usa-mls": {
+     "targets": 510,
+     "cold": 504,
+     "warm": 504,
+     "extended": 504
+    }
+   }
+  },
+  "2025-26": {
+   "targets": 5281,
+   "cold": 4508,
+   "warm": 4573,
+   "extended": 4855,
+   "gained": 347,
+   "lost": 0,
+   "byCompetition": {
+    "eng-ch": {
+     "targets": 556,
+     "cold": 525,
+     "warm": 538,
+     "extended": 538
+    },
+    "eng-pl": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "esp-l2": {
+     "targets": 468,
+     "cold": 431,
+     "warm": 444,
+     "extended": 444
+    },
+    "esp-ll": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "fifa-friendly": {
+     "targets": 367,
+     "cold": 88,
+     "warm": 88,
+     "extended": 182
+    },
+    "fifa-wcq-uefa": {
+     "targets": 152,
+     "cold": 102,
+     "warm": 102,
+     "extended": 110
+    },
+    "fra-l1": {
+     "targets": 305,
+     "cold": 305,
+     "warm": 305,
+     "extended": 305
+    },
+    "fra-l2": {
+     "targets": 306,
+     "cold": 274,
+     "warm": 289,
+     "extended": 289
+    },
+    "ger-b2": {
+     "targets": 306,
+     "cold": 284,
+     "warm": 295,
+     "extended": 295
+    },
+    "ger-bl": {
+     "targets": 306,
+     "cold": 306,
+     "warm": 306,
+     "extended": 306
+    },
+    "ita-sa": {
+     "targets": 380,
+     "cold": 380,
+     "warm": 380,
+     "extended": 380
+    },
+    "ita-sb": {
+     "targets": 390,
+     "cold": 355,
+     "warm": 368,
+     "extended": 368
+    },
+    "uefa-nl": {
+     "targets": 4,
+     "cold": 0,
+     "warm": 0,
+     "extended": 0
+    },
+    "uefa-ucl": {
+     "targets": 186,
+     "cold": 111,
+     "warm": 111,
+     "extended": 167
+    },
+    "uefa-uecl": {
+     "targets": 151,
+     "cold": 45,
+     "warm": 45,
+     "extended": 79
+    },
+    "uefa-uel": {
+     "targets": 184,
+     "cold": 82,
+     "warm": 82,
+     "extended": 172
+    },
+    "usa-mls": {
+     "targets": 460,
+     "cold": 460,
+     "warm": 460,
+     "extended": 460
+    }
+   }
+  }
+ }
+}

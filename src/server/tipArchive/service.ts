@@ -88,9 +88,21 @@ export interface ServedSnapshot {
 
 const SERVED_CALIBRATION = /^\+cal-[0-9a-f]{12}$/;
 
-/** Az alap motor kiszolgálása: a kiszolgált érték pontosan a nyers kimenet. */
+/** A több ligás modell motorverziója (az archívumban külön `engine_version`-ként rögzül). */
+export const XS_ENGINE_VERSION = 'xs-strength-1';
+
+/**
+ * Az elemzést előállító motor verziója: a PRO-nak kiszolgált több ligás modell
+ * (`xs-strength-1`) saját verzióként rögzül, minden más az alap motor. Így az
+ * xg-poisson-1 sorai (és a rá épülő kalibrációs diagnosztika) nem keverednek az új modellel.
+ */
+export function engineOf(a: MatchAnalysis): string {
+  return a.model?.id === XS_ENGINE_VERSION ? XS_ENGINE_VERSION : ENGINE_VERSION;
+}
+
+/** A motor saját kimenetének kiszolgálása: a kiszolgált érték pontosan a nyers kimenet. */
 export function baselineServed(a: MatchAnalysis): ServedSnapshot {
-  return { model: ENGINE_VERSION, probs: Object.fromEntries(a.tips.map((t) => [t.market, t.modelProb])) };
+  return { model: engineOf(a), probs: Object.fromEntries(a.tips.map((t) => [t.market, t.modelProb])) };
 }
 
 export class ProvenanceError extends Error {}
@@ -353,7 +365,8 @@ export class TipArchiveService {
     let inserted = 0;
     if (a.poisson && a.tips.length) {
       // Eredet-ellenőrzés: ha nem garantálható, nem rögzítünk (a hívó naplózza)
-      validateServed(a, served);
+      const engine = engineOf(a);
+      validateServed(a, served, engine);
       const m = a.match;
       const kickoff = new Date(m.kickoff).toISOString();
       const generatedAt = new Date(a.generatedAt).toISOString();
@@ -361,7 +374,7 @@ export class TipArchiveService {
       const tips = a.tips.filter((t) => (seen.has(t.market) ? false : (seen.add(t.market), true)));
       const wanted = new Map(tips.map((t) => [t.market, {
         tip: t,
-        hash: contentHash(m.id, t.market, t.category, t.modelProb, ENGINE_VERSION, { model: served.model, prob: served.probs[t.market] }),
+        hash: contentHash(m.id, t.market, t.category, t.modelProb, engine, { model: served.model, prob: served.probs[t.market] }),
       }]));
 
       // ÁLLAPOT ELŐBB, SOROK UTÁNA: ha a meccsnek még nincs tárolt állapota,
@@ -381,7 +394,7 @@ export class TipArchiveService {
           market,
           versionNo: (last?.versionNo ?? 0) + 1,
           contentHash: hash,
-          engineVersion: ENGINE_VERSION,
+          engineVersion: engine,
           generatedAt,
           origin: a.origin,
           matchLabel: `${a.homeTeam.name} – ${a.awayTeam.name}`,

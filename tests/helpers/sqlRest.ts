@@ -157,8 +157,10 @@ class Builder {
   }
   insert(v: Record<string, unknown> | Record<string, unknown>[]) { this.kind = 'insert'; this.payload = Array.isArray(v) ? v : [v]; return this; }
   upsert(v: Record<string, unknown> | Record<string, unknown>[], o: { onConflict?: string; ignoreDuplicates?: boolean } = {}) {
+    // ignoreDuplicates → `resolution=ignore-duplicates` (DO NOTHING); különben `merge-duplicates`
+    // (DO UPDATE SET <minden küldött oszlop> = EXCLUDED.<oszlop>) – a PostgREST-tel azonosan
     this.kind = 'upsert'; this.payload = Array.isArray(v) ? v : [v]; this.onConflict = o.onConflict ?? null; this.ignoreDup = !!o.ignoreDuplicates;
-    if (!this.ignoreDup) throw new Error('csak ignoreDuplicates upsert támogatott');
+    if (!this.onConflict) throw new Error('upsert csak onConflict-tal támogatott');
     return this;
   }
   update(v: Record<string, unknown>) { this.kind = 'update'; this.payload = [v]; return this; }
@@ -218,7 +220,8 @@ class Builder {
     } else if (this.kind === 'insert' || this.kind === 'upsert') {
       const keys = [...new Set(this.payload.flatMap((p) => Object.keys(p)))];
       const body = lit(JSON.stringify(this.payload));
-      const conflict = this.kind === 'upsert' ? ` ON CONFLICT (${this.onConflict!.split(',').map((c) => ident(c.trim())).join(', ')}) DO NOTHING` : '';
+      const conflict = this.kind !== 'upsert' ? ''
+        : ` ON CONFLICT (${this.onConflict!.split(',').map((c) => ident(c.trim())).join(', ')}) ${this.ignoreDup ? 'DO NOTHING' : `DO UPDATE SET ${keys.map((k) => `${ident(k)} = EXCLUDED.${ident(k)}`).join(', ')}`}`;
       const ins = `INSERT INTO ${rel} (${keys.map(ident).join(', ')}) SELECT ${keys.map(ident).join(', ')} FROM json_populate_recordset(NULL::${rel}, ${body}::json)${conflict}`;
       sql = this.returning == null
         ? `${ins}; select json_build_object('data', null, 'count', null);`
