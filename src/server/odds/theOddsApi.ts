@@ -47,35 +47,46 @@ export function nameSimilarity(a: string, b: string): number {
 
 export class TheOddsApiProvider {
   readonly name = 'The Odds API (több fogadóiroda, legjobb odds)';
-  private mem = new Map<string, { at: number; data: Json[] }>();
+  private mem = new Map<string, { at: number; data: Json[]; fetchedAt: number | null }>();
 
   constructor(private apiKey: string, private cache?: HttpCache) {}
 
-  private async events(sport: string): Promise<Json[]> {
+  /**
+   * A sportág eseménylistája és a forrásválasz SAJÁT lekérésének ideje (cache-találatnál az
+   * eredeti lekérésé; null = ismeretlen). Ugyanaz az egy hívás, mint eddig – új hívás nincs.
+   */
+  private async events(sport: string): Promise<{ data: Json[]; fetchedAt: number | null }> {
     const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds?regions=eu,uk&markets=h2h,totals,btts&oddsFormat=decimal&apiKey=${this.apiKey}`;
     const cacheKey = `odds-api:${sport}`;
     const hit = this.mem.get(cacheKey);
-    if (hit && Date.now() - hit.at < 15 * 60_000) return hit.data;
-    const stored = this.cache?.get(cacheKey, 15 * 60_000);
-    if (stored) { const data = JSON.parse(stored); this.mem.set(cacheKey, { at: Date.now(), data }); return data; }
+    if (hit && Date.now() - hit.at < 15 * 60_000) return { data: hit.data, fetchedAt: hit.fetchedAt };
+    const entry = this.cache?.getEntry ? this.cache.getEntry(cacheKey, 15 * 60_000) : null;
+    const stored = entry ? entry.body : this.cache?.getEntry ? null : this.cache?.get(cacheKey, 15 * 60_000) ?? null;
+    if (stored) {
+      const data = JSON.parse(stored);
+      const fetchedAt = entry ? entry.fetchedAt : null;
+      this.mem.set(cacheKey, { at: Date.now(), data, fetchedAt });
+      return { data, fetchedAt };
+    }
     try {
       const res = await fetch(url);
-      if (!res.ok) { console.error(`[odds-api] ${sport} -> HTTP ${res.status}`); return []; }
+      if (!res.ok) { console.error(`[odds-api] ${sport} -> HTTP ${res.status}`); return { data: [], fetchedAt: null }; }
+      const fetchedAt = Date.now();
       const data = (await res.json()) as Json[];
-      if (!Array.isArray(data)) return [];
-      this.mem.set(cacheKey, { at: Date.now(), data });
+      if (!Array.isArray(data)) return { data: [], fetchedAt: null };
+      this.mem.set(cacheKey, { at: Date.now(), data, fetchedAt });
       this.cache?.set(cacheKey, JSON.stringify(data));
-      return data;
+      return { data, fetchedAt };
     } catch (e) {
       console.error(`[odds-api] ${sport} -> kivétel:`, (e as Error).message);
-      return [];
+      return { data: [], fetchedAt: null };
     }
   }
 
   async getOdds(match: Match, league: League, home: Team, away: Team): Promise<MatchOdds | null> {
     const sport = SPORT_KEYS[league.id];
     if (!sport) return null;
-    const list = await this.events(sport);
+    const { data: list, fetchedAt } = await this.events(sport);
     const kick = new Date(match.kickoff).getTime();
     let best: Json = null, bestScore = 0;
     for (const ev of list) {
@@ -119,6 +130,10 @@ export class TheOddsApiProvider {
       retrievedAt: new Date().toISOString(),
       markets,
       bookmakers,
+      // a saját lekérésünk ideje (nem a bukmékerek `last_update`-je); a piaconként legjobb ár
+      // több irodát keverhet → csak akkor egyirodás, ha minden piac ugyanattól származik
+      ...(fetchedAt != null ? { observedAt: new Date(fetchedAt).toISOString() } : {}),
+      observation: { via: 'the-odds-api', singleBook: books.length === 1 },
     };
   }
 }

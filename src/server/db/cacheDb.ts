@@ -20,6 +20,11 @@ import type { ResearchResult, SourceRecord } from '../../shared/types';
 export interface HttpCache {
   get(url: string, maxAgeMs: number): string | null;
   set(url: string, body: string): void;
+  /**
+   * Mint a `get`, de a bejegyzés EREDETI lekérési idejével (ms) – a forrásadat korához.
+   * Opcionális (visszafelé kompatibilis): hiányában a lekérési idő ismeretlen.
+   */
+  getEntry?(url: string, maxAgeMs: number): { body: string; fetchedAt: number } | null;
 }
 
 export class CacheDb {
@@ -72,6 +77,11 @@ export class CacheDb {
         const row = db.prepare(`SELECT fetched_at, body FROM http_cache WHERE url = ?`).get(url) as { fetched_at: number; body: string } | undefined;
         if (!row || Date.now() - row.fetched_at > maxAgeMs) return null;
         return row.body;
+      },
+      getEntry(url, maxAgeMs) {
+        const row = db.prepare(`SELECT fetched_at, body FROM http_cache WHERE url = ?`).get(url) as { fetched_at: number; body: string } | undefined;
+        if (!row || Date.now() - row.fetched_at > maxAgeMs) return null;
+        return { body: row.body, fetchedAt: Number(row.fetched_at) };
       },
       set(url, body) {
         db.prepare(`INSERT OR REPLACE INTO http_cache VALUES (?,?,?)`).run(url, Date.now(), body);

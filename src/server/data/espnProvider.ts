@@ -98,7 +98,8 @@ type Json = any;
 export class EspnProvider implements MatchDataProvider {
   readonly name = 'ESPN nyilvános API (élő, kulcs nélkül)';
   readonly origin = 'live' as const;
-  private mem = new Map<string, { at: number; ttl: number; data: Json }>();
+  /** `at`: a memóriába kerülés ideje (a TTL ehhez mér – változatlan viselkedés); `fetchedAt`: a forrás eredeti lekérése (null = ismeretlen) */
+  private mem = new Map<string, { at: number; ttl: number; data: Json; fetchedAt: number | null }>();
   private inflight = 0;
   private queue: (() => void)[] = [];
   private teams = new Map<string, Team>();
@@ -129,15 +130,27 @@ export class EspnProvider implements MatchDataProvider {
    * feldolgozatlanul ~430 MB heap lenne). A meglévő cache-bejegyzést ilyenkor is használjuk.
    */
   private async call(path: string, ttlMs: number, opts: { retain?: boolean } = {}): Promise<Json | null> {
+    return (await this.callMeta(path, ttlMs, opts))?.data ?? null;
+  }
+
+  /**
+   * Mint a `call`, de a válasz FORRÁS-lekérésének idejével (ms): hálózati kérésnél a válasz
+   * megérkezése, cache-találatnál a cache-bejegyzés eredeti lekérése (null, ha a cache ezt nem
+   * közli). null = sikertelen lekérés (hálózat, HTTP-hiba) – ilyenkor semmit nem szabad
+   * „eltűntnek” tekinteni.
+   */
+  private async callMeta(path: string, ttlMs: number, opts: { retain?: boolean } = {}): Promise<{ data: Json; fetchedAt: number | null } | null> {
     const retain = opts.retain !== false;
     const url = `${BASE}/${path}`;
     const hit = this.mem.get(url);
-    if (hit && Date.now() - hit.at < hit.ttl) return hit.data;
-    const stored = this.cache?.get(url, ttlMs);
+    if (hit && Date.now() - hit.at < hit.ttl) return { data: hit.data, fetchedAt: hit.fetchedAt };
+    const entry = this.cache?.getEntry ? this.cache.getEntry(url, ttlMs) : null;
+    const stored = entry ? entry.body : this.cache?.getEntry ? null : this.cache?.get(url, ttlMs) ?? null;
     if (stored) {
       const data = JSON.parse(stored);
-      if (retain) this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
-      return data;
+      const fetchedAt = entry ? entry.fetchedAt : null;
+      if (retain) this.mem.set(url, { at: Date.now(), ttl: ttlMs, data, fetchedAt });
+      return { data, fetchedAt };
     }
     await this.slot();
     try {
@@ -146,12 +159,13 @@ export class EspnProvider implements MatchDataProvider {
         console.error(`[espn] ${path} -> HTTP ${res.status}`);
         return null;
       }
+      const fetchedAt = Date.now(); // a válasz megérkezése – a saját lekérésünk ideje
       const data = await res.json();
       if (retain) {
-        this.mem.set(url, { at: Date.now(), ttl: ttlMs, data });
+        this.mem.set(url, { at: Date.now(), ttl: ttlMs, data, fetchedAt });
         this.cache?.set(url, JSON.stringify(data));
       }
-      return data;
+      return { data, fetchedAt };
     } catch (e) {
       console.error(`[espn] ${path} -> kivétel:`, (e as Error).message);
       return null;
@@ -213,8 +227,11 @@ export class EspnProvider implements MatchDataProvider {
    * @param remember false esetén a meccset és az oddsot NEM írja a közös
    * memóriabeli térképekbe (a `getMatchFresh` így nem változtatja meg, mit
    * lát a többi fogyasztó a `getMatch`-en át).
+   * @param obs a forrásválasz: lekérési ideje, és hogy az esemény odds-mezője MÉRVADÓ-e. Mérvadó
+   * csak a sikeresen lekért scoreboard (ott az ESPN az eseményhez közli az oddsot); ha egy mérvadó
+   * válaszban az eseménynél nincs használható odds, a korábbi odds törlődik (eltűnt vonal).
    */
-  private toMatch(ev: Json, leagueId: string, remember = true): Match | null {
+  private toMatch(ev: Json, leagueId: string, remember = true, obs: { fetchedAt: number | null; via: 'espn-scoreboard' | 'espn-summary'; authoritative: boolean } | null = null): Match | null {
     const comp = ev.competitions?.[0];
     if (!comp) return null;
     const slug = SLUG[leagueId];
@@ -256,38 +273,55 @@ export class EspnProvider implements MatchDataProvider {
     };
     if (!remember) return m;
     this.matches.set(m.id, m);
-    const odds = this.toOdds(m.id, comp.odds?.[0]);
+    const odds = this.toOdds(m.id, comp.odds?.[0], obs, status);
     if (odds) this.odds.set(m.id, odds);
+    // eltűnt vonal: a friss, SIKERES scoreboard ugyanerre az eseményre már nem közöl oddsot →
+    // a régi érték nem maradhat használható (sikertelen lekérésnél ide el sem jutunk)
+    else if (obs?.authoritative) this.odds.delete(m.id);
     return m;
   }
 
-  private toOdds(matchId: string, o: Json): MatchOdds | null {
+  private toOdds(matchId: string, o: Json, obs: { fetchedAt: number | null; via: 'espn-scoreboard' | 'espn-summary' } | null = null, status?: Match['status']): MatchOdds | null {
     if (!o) return null;
     const markets: Record<string, number> = {};
+    // piaconként feljegyezzük, melyik vonalból jött az ár (a piacok értéke változatlan)
+    const priceKind: Record<string, 'close' | 'open' | 'unverified'> = {};
     const ml = o.moneyline;
     const pick = (x: Json) => americanToDecimal(x?.close?.odds ?? x?.open?.odds);
+    const kind = (x: Json): 'close' | 'open' => (americanToDecimal(x?.close?.odds) != null ? 'close' : 'open');
     const h = pick(ml?.home), d = pick(ml?.draw), a = pick(ml?.away);
-    if (h) markets['1'] = h;
-    if (d) markets['X'] = d;
-    if (a) markets['2'] = a;
+    if (h) { markets['1'] = h; priceKind['1'] = kind(ml?.home); }
+    if (d) { markets['X'] = d; priceKind['X'] = kind(ml?.draw); }
+    if (a) { markets['2'] = a; priceKind['2'] = kind(ml?.away); }
     const line = parseFloat(String(o.total?.over?.close?.line ?? o.total?.over?.open?.line ?? o.overUnder ?? '').replace(/[ou]/i, ''));
     if (Number.isFinite(line) && [0.5, 1.5, 2.5, 3.5, 4.5].includes(line)) {
       const ov = pick(o.total?.over), un = pick(o.total?.under);
-      if (ov) markets[`O${line}`] = ov;
-      if (un) markets[`U${line}`] = un;
+      // az under saját vonala: csak akkor igazolt, ha a forrás közli, és egyezik az over vonalával
+      const uLine = parseFloat(String(o.total?.under?.close?.line ?? o.total?.under?.open?.line ?? '').replace(/[ou]/i, ''));
+      if (ov) { markets[`O${line}`] = ov; priceKind[`O${line}`] = o.total?.over?.close?.line != null || o.total?.over?.open?.line != null ? kind(o.total?.over) : 'unverified'; }
+      if (un) { markets[`U${line}`] = un; priceKind[`U${line}`] = uLine === line ? kind(o.total?.under) : 'unverified'; }
     }
     if (!Object.keys(markets).length) return null;
-    return { matchId, source: 'live', bookmaker: o.provider?.name ? `${o.provider.name} (ESPN)` : 'ESPN', retrievedAt: new Date().toISOString(), markets };
+    return {
+      matchId, source: 'live', bookmaker: o.provider?.name ? `${o.provider.name} (ESPN)` : 'ESPN', retrievedAt: new Date().toISOString(), markets,
+      // az ESPN egy eseményhez EGY iroda (provider) vonalait közli, egy válaszban
+      ...(obs?.fetchedAt != null ? { observedAt: new Date(obs.fetchedAt).toISOString() } : {}),
+      ...(obs ? { observation: { via: obs.via, singleBook: !!o.provider?.name, matchStatus: status, priceKind } } : {}),
+    };
   }
 
   private async scoreboard(leagueId: string, dateKey: string): Promise<Match[]> {
     const d = dateKey.replace(/-/g, '');
     const today = localDateKey(new Date().toISOString());
     const ttl = dateKey < today ? 6 * HOUR : 5 * MIN;
-    const data = await this.call(`${SLUG[leagueId]}/scoreboard?dates=${d}`, ttl);
+    const res = await this.callMeta(`${SLUG[leagueId]}/scoreboard?dates=${d}`, ttl);
+    const data = res?.data;
     const start = data?.leagues?.[0]?.season?.startDate;
     if (start) this.seasonStart.set(leagueId, new Date(start).toISOString());
-    return ((data?.events ?? []) as Json[]).map((ev) => this.toMatch(ev, leagueId)).filter((m): m is Match => !!m);
+    // csak sikeres, esemény-listát tartalmazó válasz mérvadó az oddsra (hibás/üres szerkezetnél semmit nem törlünk)
+    const authoritative = !!res && Array.isArray(data?.events);
+    const obs = res ? { fetchedAt: res.fetchedAt, via: 'espn-scoreboard' as const, authoritative } : null;
+    return ((authoritative ? data.events : []) as Json[]).map((ev) => this.toMatch(ev, leagueId, true, obs)).filter((m): m is Match => !!m);
   }
 
   async getLeagues(): Promise<League[]> { return ESPN_LEAGUES; }
@@ -340,7 +374,8 @@ export class EspnProvider implements MatchDataProvider {
     const data = await this.call(`${m[1]}/summary?event=${m[2]}`, 5 * MIN);
     const comp = data?.header?.competitions?.[0];
     if (!comp) return null;
-    return this.toMatch({ id: m[2], date: comp.date, status: comp.status, competitions: [comp] }, leagueId);
+    // a summary nem mérvadó az oddsra (nem töröl), és megfigyelési időt sem ad → az innen jövő odds nem igazolható
+    return this.toMatch({ id: m[2], date: comp.date, status: comp.status, competitions: [comp] }, leagueId, true, { fetchedAt: null, via: 'espn-summary', authoritative: false });
   }
 
   /**

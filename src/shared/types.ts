@@ -70,11 +70,35 @@ export interface MatchOdds {
   /** honnan származik: 'manual' = felhasználó adta meg, 'demo', 'live' */
   source: 'manual' | 'demo' | 'live';
   bookmaker?: string;
+  /** az odds-objektum ÖSSZEÁLLÍTÁSÁNAK (feldolgozásának) ideje – NEM a forrás lekérésének ideje (cache-találatnál is „most”) */
   retrievedAt: string;
   /** piackód -> tizedes odds */
   markets: Record<string, number>;
   /** piackód -> fogadóiroda neve (ha piaconként más irodától származik a legjobb odds) */
   bookmakers?: Record<string, string>;
+  /**
+   * A forrásválasz SAJÁT lekérésének ideje (cache-találatnál az eredeti lekérésé). Ez NEM az odds
+   * tényleges változásának ideje – azt a forrás (ESPN) nem közli –, csak annyit igazol, hogy az odds
+   * legkésőbb ekkor így állt. Ismeretlen → hiányzik (ilyenkor a frissesség nem igazolható).
+   */
+  observedAt?: string;
+  /** a megfigyelés körülményei – az árrésmentesítés és a frissesség-ellenőrzés ebből dönt (hiány = nem igazolható) */
+  observation?: OddsObservation;
+}
+
+export interface OddsObservation {
+  /** melyik forrásválaszból */
+  via: 'espn-scoreboard' | 'espn-summary' | 'the-odds-api';
+  /** minden piac EGYETLEN irodától és EGYETLEN forrásválaszból származik (az árrésmentesítés feltétele) */
+  singleBook: boolean;
+  /** a mérkőzés állapota a forrásválasz szerint a megfigyeléskor (ismeretlen → hiányzik) */
+  matchStatus?: MatchStatus;
+  /**
+   * Piaconként: melyik vonalból származik az ár. 'close' = a forrás aktuális vonala; 'open' = nyitó
+   * vonal (régebbi ár – más megfigyelés); 'unverified' = a piac azonosítása (pl. a totals-vonal) nem
+   * igazolható. Az árrésmentesítés csak 'close' árakat fogad el. Hiányzik → nem igazolható.
+   */
+  priceKind?: Record<string, 'close' | 'open' | 'unverified'>;
 }
 
 // ---------- Kutatómotor (internetes keresés) ----------
@@ -651,4 +675,47 @@ export interface SlipBuildResponse {
   candidateLegs: number;
   slips: Slip[];
   notes: string[];
+}
+
+// ---------- Edge Radar (kísérleti, PRO) – GET /api/edge-radar válasza ----------
+
+/** Egy sor – csak a publikálható mezők. `edgePp` és `modelId` csak érvényes (nem kizárt) sorban. EV nincs. */
+export interface EdgeRadarItem {
+  matchId: string;
+  leagueId: string;
+  kickoff: string;
+  market: string;
+  outcome: string | null;
+  odds: number;
+  bookmaker: string | null;
+  source: string;
+  observedAt: string | null;
+  ageMs: number | null;
+  rawImplied: number | null;
+  devig: number | null;
+  devigReason: string | null;
+  modelId: string | null;
+  edgePp: number | null;
+  excluded: boolean;
+  /** gépi kizárási ok (pl. 'stale', 'analysis_odds_mismatch') */
+  excludeReason: string | null;
+}
+
+export interface EdgeRadarResponse {
+  version: number;
+  date: string;
+  generatedAt: string;
+  items: EdgeRadarItem[];
+  meta: {
+    experimental: true;
+    modelVariant: 'base' | 'pro';
+    matches: number;
+    rows: number;
+    usable: number;
+    excluded: number;
+    partial: boolean;
+    failedMatchIds: string[];
+    devigMethod: 'proportional';
+    notice: string[];
+  };
 }
