@@ -28,6 +28,8 @@ export interface Team {
   externalId?: number;
   /** alternatív (pl. angol) nevek – külső források párosításához */
   altNames?: string[];
+  /** a csapat címere, ahogy az adatforrás (ESPN) közli – csak https://a.espncdn.com/; nincs = semleges ikon */
+  logo?: string;
 }
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed';
@@ -581,6 +583,9 @@ export interface TipListEntry {
   origin: DataOrigin;
   /** a tippet előállító modell (PRO: több ligás modell, ha az adatminőség engedi) */
   model?: ServedModelInfo;
+  /** a hazai / vendég csapat címere (Team.logo) – a megjelenítéshez */
+  homeLogo?: string;
+  awayLogo?: string;
 }
 
 // ---------- Szelvények (kombinációk) ----------
@@ -588,6 +593,9 @@ export interface TipListEntry {
 export interface SlipLeg {
   matchId: string;
   matchLabel: string;
+  /** a hazai / vendég csapat címere (Team.logo) – a megjelenítéshez */
+  homeLogo?: string;
+  awayLogo?: string;
   leagueName: string;
   kickoff: string;
   market: string;

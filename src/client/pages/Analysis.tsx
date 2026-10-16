@@ -5,6 +5,7 @@ import { Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtDayLabel, fmtTime, todayKey, useAsync } from '../lib/format';
 import { Card, Disclaimer, ErrorBox, ImportanceBadge, Loading, EmptyState } from '../components/ui';
+import { Matchup } from '../components/TeamCrest';
 
 export default function Analysis() {
   const [q, setQ] = useState('');
@@ -37,7 +38,7 @@ export default function Analysis() {
                   {list.slice(0, 80).map((m) => (
                     <tr key={m.id}>
                       <td className="mono whitespace-nowrap">{fmtDayLabel(m.kickoff)} {fmtTime(m.kickoff)}</td>
-                      <td className="font-semibold">{m.homeTeam?.name} – {m.awayTeam?.name}</td>
+                      <td className="font-semibold"><Matchup home={m.homeTeam?.name ?? m.homeTeamId} away={m.awayTeam?.name ?? m.awayTeamId} homeLogo={m.homeTeam?.logo} awayLogo={m.awayTeam?.logo} /></td>
                       <td className="text-muted">{m.league?.name}</td>
                       <td><ImportanceBadge importance={m.importance} /></td>
                       <td><Link to={`/meccs/${encodeURIComponent(m.id)}`} className="btn btn-sm btn-primary"><Sparkles className="h-3.5 w-3.5" /> Elemzés</Link></td>

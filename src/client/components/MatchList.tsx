@@ -7,6 +7,7 @@ import type { MatchWithTeams } from '../lib/api';
 import { fmtDayLabel, fmtTime, STATUS_LABEL, todayKey } from '../lib/format';
 import { EmptyState, ImportanceBadge, OriginBadge } from './ui';
 import { ProLock } from '../auth/PlanContext';
+import { TeamName } from './TeamCrest';
 
 export interface MatchFilterState {
   date: string;
@@ -90,8 +91,8 @@ export function MatchCard({ m, locked }: { m: MatchWithTeams; locked?: boolean }
 
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-0.5">
-          <Link to={`/csapat/${m.homeTeamId}`} className="block truncate text-base font-extrabold transition hover:text-primary">{m.homeTeam?.name ?? m.homeTeamId}</Link>
-          <Link to={`/csapat/${m.awayTeamId}`} className="block truncate text-base font-extrabold transition hover:text-primary">{m.awayTeam?.name ?? m.awayTeamId}</Link>
+          <Link to={`/csapat/${m.homeTeamId}`} className="flex min-w-0 text-base font-extrabold transition hover:text-primary"><TeamName name={m.homeTeam?.name ?? m.homeTeamId} logo={m.homeTeam?.logo} /></Link>
+          <Link to={`/csapat/${m.awayTeamId}`} className="flex min-w-0 text-base font-extrabold transition hover:text-primary"><TeamName name={m.awayTeam?.name ?? m.awayTeamId} logo={m.awayTeam?.logo} /></Link>
         </div>
         <div className="shrink-0 rounded-xl bg-surface px-3 py-2 text-center">
           {finished && m.homeGoals != null ? (

@@ -5,6 +5,7 @@ import { Bookmark, CheckCircle2, ExternalLink, RefreshCw, XCircle } from 'lucide
 import type { FormSummary, MatchAnalysis, TipSuggestion, TipCategory } from '@shared/types';
 import { api } from '../lib/api';
 import { ModelBadge, ModelNote } from '../components/ModelBadge';
+import { TeamCrest, TeamName } from '../components/TeamCrest';
 import { fmtDateTime, num, odds as fo, pct, pct100, signed, useAsync } from '../lib/format';
 import { Card, Disclaimer, EmptyState, ErrorBox, FormPills, ImportanceBadge, Loading, Note, OriginBadge, ProbBar, QualityBadge, Stat, TeamLink } from '../components/ui';
 import { CorrectScoreChart, FormGoalsChart, FormTrendChart, GoalDistChart, OneXTwoChart, OverUnderChart } from '../components/charts';
@@ -32,7 +33,9 @@ export default function MatchDetail() {
       <div className="space-y-6">
         <div className="card p-5">
           <div className="field-label">{match.league?.name} · {match.league?.country} · {fmtDateTime(match.kickoff)}</div>
-          <div className="mt-2 text-2xl font-extrabold tracking-tight">{match.homeTeam?.name} <span className="text-muted">vs</span> {match.awayTeam?.name}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xl font-extrabold tracking-tight">
+            <TeamName name={match.homeTeam?.name ?? match.homeTeamId} logo={match.homeTeam?.logo} size="md" wrap /> <span className="text-muted">vs</span> <TeamName name={match.awayTeam?.name ?? match.awayTeamId} logo={match.awayTeam?.logo} size="md" wrap />
+          </div>
         </div>
         <LockedBlock title="Ez a mérkőzés PRO előfizetéssel elemezhető" text={`A FREE csomagban ezen a napon ${free.total} mérkőzésből ${free.quota} elemzése ingyenes (a kezdési idő szerinti első ${free.quota}). PRO előfizetéssel minden mérkőzés teljes elemzése, a modell indoklásai és a részletes statisztikák is elérhetők.`} />
         <Disclaimer />
@@ -103,13 +106,20 @@ function Header({ an, onRefresh, refreshing }: { an: MatchAnalysis; onRefresh: (
           <span className="font-semibold text-text/90">{an.league.name}</span><span>· {an.league.country}</span>{m.round && <span>· {m.round}</span>}
           <ImportanceBadge importance={m.importance} /><OriginBadge origin={an.origin} /><QualityBadge q={an.dataQuality} showScore /><ModelBadge model={an.model} />
         </div>
-        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-          <TeamLink id={an.homeTeam.id} name={an.homeTeam.name} className="text-right text-2xl font-extrabold tracking-tight md:text-3xl" />
+        {/* mobilon egymás alatt (a hosszú nevek ne törjenek szó közben), sm-től három oszlop */}
+        <div className="mt-3 grid grid-cols-1 items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4">
+          <div className="flex min-w-0 flex-col items-center gap-2 sm:items-end">
+            <TeamCrest name={an.homeTeam.name} logo={an.homeTeam.logo} size="lg" />
+            <TeamLink id={an.homeTeam.id} name={an.homeTeam.name} className="max-w-full break-words text-center text-2xl font-extrabold tracking-tight sm:text-right md:text-3xl" />
+          </div>
           <div className="text-center">
             {m.status === 'finished' && m.homeGoals != null ? <div className="mono text-3xl font-black">{m.homeGoals}–{m.awayGoals}</div> : <div className="text-xl font-bold text-muted">vs</div>}
             <div className="mono mt-1 text-xs text-muted">{fmtDateTime(m.kickoff)}</div>
           </div>
-          <TeamLink id={an.awayTeam.id} name={an.awayTeam.name} className="text-2xl font-extrabold tracking-tight md:text-3xl" />
+          <div className="flex min-w-0 flex-col items-center gap-2 sm:items-start">
+            <TeamCrest name={an.awayTeam.name} logo={an.awayTeam.logo} size="lg" />
+            <TeamLink id={an.awayTeam.id} name={an.awayTeam.name} className="max-w-full break-words text-center text-2xl font-extrabold tracking-tight sm:text-left md:text-3xl" />
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {m.importanceReasons.map((r) => <span key={r} className="badge badge-muted">{r}</span>)}

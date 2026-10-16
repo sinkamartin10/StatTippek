@@ -7,6 +7,7 @@
 import { Link } from 'react-router-dom';
 import { Clock, Lock, Sparkles } from 'lucide-react';
 import { ModelBadge } from './ModelBadge';
+import { TeamName } from './TeamCrest';
 import type { TipListEntry } from '@shared/types';
 import { fmtDayLabel, fmtTime, odds as fo, pct, signed } from '../lib/format';
 import { Accordion, ConfidenceMeter, QualityBadge } from './ui';
@@ -41,9 +42,9 @@ export function TipCard({ entry, pro }: { entry: TipListEntry; pro: boolean }) {
 
       {/* Mérkőzés */}
       <Link to={`/meccs/${encodeURIComponent(entry.matchId)}#tippek`} className="group block">
-        <div className="text-lg font-extrabold leading-snug tracking-tight transition group-hover:text-primary">{home}</div>
+        <div className="flex text-lg font-extrabold leading-snug tracking-tight transition group-hover:text-primary"><TeamName name={home} logo={entry.homeLogo} size="md" wrap /></div>
         <div className="my-0.5 text-[11px] font-extrabold uppercase tracking-widest text-text-muted">vs</div>
-        <div className="text-lg font-extrabold leading-snug tracking-tight transition group-hover:text-primary">{away}</div>
+        <div className="flex text-lg font-extrabold leading-snug tracking-tight transition group-hover:text-primary"><TeamName name={away} logo={entry.awayLogo} size="md" wrap /></div>
       </Link>
 
       {/* Ajánlás + odds – mobilon a piacnév kapja a fennmaradó szélességet és több sorba törhet

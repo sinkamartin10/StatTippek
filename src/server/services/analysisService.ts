@@ -227,6 +227,7 @@ export class AnalysisService {
         out.push({
           tip, matchId: m.id, matchLabel: `${a.homeTeam.name} – ${a.awayTeam.name}`, kickoff: m.kickoff,
           leagueId: a.league.id, leagueName: a.league.name, dataQuality: a.dataQuality, origin: a.origin, model: a.model,
+          homeLogo: a.homeTeam.logo, awayLogo: a.awayTeam.logo,
         });
       }
     });
@@ -263,7 +264,7 @@ export class AnalysisService {
       for (const t of a.tips) {
         if (t.odds == null || t.impliedProb == null || t.diffPoints == null) continue;
         legs.push({
-          matchId: matches[i].id, matchLabel: `${a.homeTeam.name} – ${a.awayTeam.name}`, leagueName: a.league.name, kickoff: matches[i].kickoff,
+          matchId: matches[i].id, matchLabel: `${a.homeTeam.name} – ${a.awayTeam.name}`, homeLogo: a.homeTeam.logo, awayLogo: a.awayTeam.logo, leagueName: a.league.name, kickoff: matches[i].kickoff,
           market: t.market, label: t.label, modelProb: t.modelProb, odds: t.odds, bookmaker: a.odds?.bookmakers?.[t.market] ?? a.odds?.bookmaker ?? null,
           impliedProb: t.impliedProb, diffPoints: t.diffPoints, category: t.category, supportingIndicators: t.supportingIndicators, dataQuality: a.dataQuality.level,
         });

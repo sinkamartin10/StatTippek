@@ -5,6 +5,7 @@ import { fmtDateTime, num, pct100, useAsync } from '../lib/format';
 import { MatchGrid } from '../components/MatchList';
 import { Card, Disclaimer, ErrorBox, FormPills, Loading, OriginBadge, Stat } from '../components/ui';
 import { FormGoalsChart } from '../components/charts';
+import { Matchup, TeamCrest } from '../components/TeamCrest';
 
 export default function Team() {
   const { id = '' } = useParams();
@@ -32,6 +33,7 @@ export default function Team() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
+        <TeamCrest name={d.team.name} logo={d.team.logo} size="lg" />
         <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{d.team.name}</h1>
         <span className="mt-1.5 text-sm font-semibold text-text-muted">{d.league?.name} · {d.team.country}</span>
         <OriginBadge origin={d.origin} />
@@ -57,7 +59,7 @@ export default function Team() {
               {d.recent.map((m) => (
                 <tr key={m.id}>
                   <td className="mono text-xs">{fmtDateTime(m.date)}</td>
-                  <td className="font-semibold">{m.homeTeam?.name ?? m.homeTeamId} – {m.awayTeam?.name ?? m.awayTeamId}</td>
+                  <td className="font-semibold"><Matchup home={m.homeTeam?.name ?? m.homeTeamId} away={m.awayTeam?.name ?? m.awayTeamId} homeLogo={m.homeTeam?.logo} awayLogo={m.awayTeam?.logo} /></td>
                   <td className="field-label">{m.league?.name}</td>
                   <td className="mono font-bold">{m.homeGoals}–{m.awayGoals}{m.htHomeGoals != null && <span className="ml-1 text-xs font-normal text-muted">({m.htHomeGoals}–{m.htAwayGoals})</span>}</td>
                   <td><Link to={`/meccs/${encodeURIComponent(m.id)}`} className="btn btn-sm">Elemzés</Link></td>

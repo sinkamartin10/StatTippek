@@ -10,6 +10,7 @@ import { api } from '../lib/api';
 import { fmtDateTime, fmtTime, odds as fo, pct, signed, todayKey, useAsync } from '../lib/format';
 import { Accordion, Card, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader, StatCard } from '../components/ui';
 import { LockedBlock, usePlan } from '../auth/PlanContext';
+import { Matchup, splitMatchLabel } from '../components/TeamCrest';
 
 const STRATEGY_INFO: Record<SlipStrategy, { title: string; desc: string }> = {
   'legnagyobb esély': { title: 'Legnagyobb esély', desc: 'A lábak modell-valószínűségének szorzata a lehető legnagyobb, az összodds alsó korlátja mellett.' },
@@ -17,7 +18,7 @@ const STRATEGY_INFO: Record<SlipStrategy, { title: string; desc: string }> = {
   'modell-előny': { title: 'Modell-előny', desc: 'Csak olyan lábak, ahol a modell a piacnál magasabb esélyt becsül; a modell-valószínűség × odds szorzatot maximalizálja. Kockázatosabb – a modell tévedését is felnagyítja.' },
 };
 
-interface Pick { matchId: string; market: string; label: string; matchLabel: string; leagueName: string; kickoff: string; odds: number; modelProb: number }
+interface Pick { matchId: string; market: string; label: string; matchLabel: string; homeLogo?: string; awayLogo?: string; leagueName: string; kickoff: string; odds: number; modelProb: number }
 
 export default function Slips() {
   const { pro } = usePlan();
@@ -66,7 +67,7 @@ function SlipWorkspace() {
     if (picks.length >= 8) { setMsg({ tone: 'warn', text: 'Egy szelvényre legfeljebb 8 láb kerülhet.' }); return; }
     if (hasMatch(t.matchId)) { setMsg({ tone: 'warn', text: 'Egy mérkőzés csak egyszer szerepelhet a szelvényen.' }); return; }
     setMsg(null);
-    setPicks([...picks, { matchId: t.matchId, market: t.tip.market, label: t.tip.label, matchLabel: t.matchLabel, leagueName: t.leagueName, kickoff: t.kickoff, odds: t.tip.odds, modelProb: t.tip.modelProb }]);
+    setPicks([...picks, { matchId: t.matchId, market: t.tip.market, label: t.tip.label, matchLabel: t.matchLabel, homeLogo: t.homeLogo, awayLogo: t.awayLogo, leagueName: t.leagueName, kickoff: t.kickoff, odds: t.tip.odds, modelProb: t.tip.modelProb }]);
   };
   const remove = (matchId: string, market: string) => { setMsg(null); setPicks(picks.filter((p) => !(p.matchId === matchId && p.market === market))); };
 
@@ -100,7 +101,7 @@ function SlipWorkspace() {
                       return (
                         <li key={t.matchId + t.tip.market} className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card-2 p-3">
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-extrabold">{t.matchLabel}</div>
+                            <div className="flex min-w-0 text-sm font-extrabold"><Matchup home={splitMatchLabel(t.matchLabel)[0]} away={splitMatchLabel(t.matchLabel)[1]} homeLogo={t.homeLogo} awayLogo={t.awayLogo} /></div>
                             <div className="truncate text-xs font-semibold text-text-muted">{t.tip.label} · {t.leagueName} · <span className="mono">{fmtTime(t.kickoff)}</span></div>
                           </div>
                           <div className="mono text-right text-xs font-bold">
@@ -132,7 +133,7 @@ function SlipWorkspace() {
                 {picks.map((p) => (
                   <li key={p.matchId + p.market} className="flex items-start gap-2 rounded-xl border border-border bg-card-2 p-3">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-extrabold">{p.matchLabel}</div>
+                      <div className="flex min-w-0 text-sm font-extrabold"><Matchup home={splitMatchLabel(p.matchLabel)[0]} away={splitMatchLabel(p.matchLabel)[1]} homeLogo={p.homeLogo} awayLogo={p.awayLogo} /></div>
                       <div className="truncate text-xs font-semibold text-text-muted">{p.label} · <span className="mono">{fmtTime(p.kickoff)}</span></div>
                     </div>
                     <span className="mono shrink-0 text-sm font-extrabold">{fo(p.odds)}</span>
@@ -273,7 +274,7 @@ function SlipCard({ slip, onSaved }: { slip: Slip; onSaved: () => void }) {
           <li key={l.matchId + l.market} className="rounded-xl border border-border bg-card-2 p-2.5 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <Link to={`/meccs/${encodeURIComponent(l.matchId)}#tippek`} className="block truncate font-extrabold transition hover:text-primary">{l.matchLabel}</Link>
+                <Link to={`/meccs/${encodeURIComponent(l.matchId)}#tippek`} className="flex min-w-0 font-extrabold transition hover:text-primary"><Matchup home={splitMatchLabel(l.matchLabel)[0]} away={splitMatchLabel(l.matchLabel)[1]} homeLogo={l.homeLogo} awayLogo={l.awayLogo} /></Link>
                 <div className="text-xs font-semibold text-text-muted">{l.leagueName} · {fmtDateTime(l.kickoff).slice(0, 13)} {fmtTime(l.kickoff)}</div>
               </div>
               <div className="mono shrink-0 text-right"><div className="font-extrabold">{fo(l.odds)}</div><div className="text-xs font-bold text-primary">{pct(l.modelProb)}</div></div>

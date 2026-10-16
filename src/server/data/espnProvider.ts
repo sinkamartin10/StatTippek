@@ -15,6 +15,7 @@ import type { HttpCache } from '../db/database';
 import { DERBIES, TEAMS as DEMO_TEAMS } from './demo/leagues';
 import type { CornerFetch, CornerRef, MatchDataProvider, MatchQuery } from './provider';
 import { candidateMonths, espnMonthKey, monthEndUtc, parseScoreboardCorners, shiftMonth, type ParsedCorners } from './espnCorners';
+import { espnTeamLogo } from '../../shared/teamLogo';
 import { parseScoreboardResults, type ScoreboardResult } from './scoreboardResults';
 import { HISTORY_ONLY_DOMESTIC, closedBefore, dedupeResults, extendedRequests, requestKey, type CoverageReason, type TeamState } from './historyPlan';
 
@@ -165,6 +166,8 @@ export class EspnProvider implements MatchDataProvider {
     const id = `espn-${raw.id}`;
     const league = ESPN_LEAGUES.find((l) => l.id === leagueId)!;
     const existing = this.teams.get(id);
+    // címer: csak amit az ESPN maga közöl (a.espncdn.com) – nincs URL-kitalálás
+    const logo = espnTeamLogo(raw);
     if (!existing) {
       const en = String(raw.displayName ?? raw.name);
       const hu = slug === NATIONAL_SLUG || slug.startsWith('fifa.') ? NATION_HU[en] : undefined;
@@ -176,11 +179,15 @@ export class EspnProvider implements MatchDataProvider {
         country: league.international ? '–' : league.country,
         leagueId,
         externalId: Number(raw.id),
+        logo,
       });
     } else if (existing.leagueId !== leagueId && !league.international && ESPN_LEAGUES.find((l) => l.id === existing.leagueId)?.international) {
       // ha először kupából ismertük meg, a hazai bajnokság lesz az elsődleges
       this.teams.set(id, { ...existing, leagueId, country: league.country });
     }
+    // ha először címer nélküli forrásból ismertük meg, a később kapott címert pótoljuk
+    const cur = this.teams.get(id)!;
+    if (!cur.logo && logo) this.teams.set(id, { ...cur, logo });
     if (!this.teamSlugs.has(id)) this.teamSlugs.set(id, new Set());
     this.teamSlugs.get(id)!.add(slug);
     return this.teams.get(id)!;
