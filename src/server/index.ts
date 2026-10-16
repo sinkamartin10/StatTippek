@@ -12,6 +12,8 @@ import { tipArchiveRouter } from './routes/tipArchive';
 import { ModelLearningService } from './modelLearning/service';
 import { modelLearningRouter } from './routes/modelLearning';
 import { apiRouter } from './routes/api';
+import { edgeRadarEnabled, edgeRadarRouter } from './routes/edgeRadar';
+import { EdgeService, edgeDepsFrom } from './edge/edgeService';
 import { CornerService } from './corners/service';
 import { adminCompetitionRouter, competitionRouter } from './routes/competition';
 import { CompetitionService } from './competition/service';
@@ -188,6 +190,9 @@ app.use('/api/billing', billingRouter(container.db));
 app.use('/api', attachPlan);
 // PRO-csak végpontok: szelvényépítő, előzmények, tipp mentése
 app.use(['/api/slips', '/api/history'], requirePro);
+// Edge Radar (KÍSÉRLETI): csak PRO – a modellváltozatot a szerveroldali csomag dönti el; EV-t nem ad ki
+app.use('/api/edge-radar', requirePro, edgeRadarRouter(new EdgeService(edgeDepsFrom(container, service))));
+console.log(`Edge Radar: ${edgeRadarEnabled(process.env) ? 'bekapcsolva' : 'KIKAPCSOLVA (EDGE_RADAR_ENABLED nincs true-ra állítva)'}`);
 app.post('/api/matches/:id/predictions', requirePro);
 // Globális állapotot módosító végpontok: csak admin (ADMIN_EMAILS)
 app.post('/api/settings', requireAdmin);

@@ -7,6 +7,7 @@ import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo,
 } from '@shared/manualPayment';
 import type { AdminProStats, PublicProCount } from '@shared/proStats';
+import type { EdgeRadarResponse } from '@shared/types';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
@@ -164,6 +165,8 @@ export const api = {
   deleteOdds: (id: string) => request<{ ok: true }>(`/matches/${encodeURIComponent(id)}/odds`, { method: 'DELETE' }),
   savePrediction: (id: string, market: string) => request<PredictionRecord>(`/matches/${encodeURIComponent(id)}/predictions`, { method: 'POST', body: JSON.stringify({ market }) }),
   tips: (date?: string) => request<TipListEntry[]>(`/tips${qs({ date })}`),
+  /** Edge Radar (kísérleti, PRO – a szerver requirePro-val véd); a dátum kötelező YYYY-MM-DD */
+  edgeRadar: (date: string) => request<EdgeRadarResponse>(`/edge-radar${qs({ date })}`),
   standings: (leagueId: string) => request<StandingsResponse>(`/standings/${encodeURIComponent(leagueId)}`),
   team: (id: string) => request<TeamResponse>(`/teams/${encodeURIComponent(id)}`),
   search: (q: string) => request<SearchResponse>(`/search${qs({ q })}`),

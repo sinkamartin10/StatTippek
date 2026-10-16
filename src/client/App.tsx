@@ -6,6 +6,7 @@ import Matches from './pages/Matches';
 import Analysis from './pages/Analysis';
 import Tips from './pages/Tips';
 import Slips from './pages/Slips';
+import EdgeRadarPage from './pages/EdgeRadar';
 import Pro from './pages/Pro';
 import Profile from './pages/Profile';
 import Competitions from './pages/Competitions';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/elemzes" element={<Analysis />} />
         <Route path="/tippek" element={<Tips />} />
         <Route path="/szelvenyek" element={<Slips />} />
+        <Route path="/edge-radar" element={<EdgeRadarPage />} />
         <Route path="/pro" element={<Pro />} />
         <Route path="/profil" element={<Profile />} />
         {/* Nyilvános játékosprofil – a megjelenítési név az azonosító, user_id SOHA */}

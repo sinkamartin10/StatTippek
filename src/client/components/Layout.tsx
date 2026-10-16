@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Archive, BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
-  Bell, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
+  Bell, Radar, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
   type LucideIcon,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
@@ -22,14 +22,14 @@ import { CoinBalancePill, CoinsProvider } from './CoinsProvider';
  * EGYETLEN útvonal sem veszett el: ami korábban a sávban volt, az itt a
  * megfelelő csoportban szerepel, és mobilon továbbra is mind látszik.
  */
-const PRIMARY = [
+export const PRIMARY = [
   { to: '/tippek', label: 'Tippek', icon: Lightbulb },
   { to: '/tippverseny', label: 'Tippverseny', icon: Trophy },
   { to: '/shop', label: 'Shop', icon: ShoppingBag },
 ];
 
 /** „Játék” – amit a felhasználó SAJÁT magáról és a játékmenetről néz. */
-const PLAY = [
+export const PLAY = [
   { to: '/dashboard', label: 'Áttekintés', icon: LayoutDashboard },
   { to: '/battles', label: '1v1 Battle', icon: Swords },
   { to: '/statisztikaim', label: 'Statisztikáim', icon: ChartLine },
@@ -39,10 +39,11 @@ const PLAY = [
 ];
 
 /** „Felfedezés” – adat, elemzés, beállítások. */
-const EXPLORE = [
+export const EXPLORE = [
   { to: '/felfedezes', label: 'Játékosok', icon: UserSearch },
   { to: '/meccsek', label: 'Mai meccsek', icon: CalendarDays },
   { to: '/elemzes', label: 'Elemzés', icon: Sparkles },
+  { to: '/edge-radar', label: 'Edge Radar', icon: Radar },
   { to: '/statisztikak', label: 'Statisztikák', icon: BarChart3 },
   { to: '/modell-archivum', label: 'Modell-tipp archívum', icon: Archive },
   { to: '/forrasok', label: 'Források', icon: BookOpen },
