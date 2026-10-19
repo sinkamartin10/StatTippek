@@ -67,6 +67,7 @@ Alternatíva `VITE_API_URL` nélkül: a `public/_redirects`-ben egy proxy sor a 
    - Éles üzemhez élő kulcsok (`sk_live_…`) és élő Price ID.
 3. **Supabase SQL** – ha még nem futott: `supabase/migrations/0001_profiles.sql`, majd `0002_security.sql`.
 4. **Időzóna:** a szerver hosztján `TZ=Europe/Budapest` (a FREE napi kvóta és a „mai meccsek” a szerver napját használja).
+5. **Heti PRO-csomag (opcionális):** `PRO_WEEKLY_ENABLED` – alapból tiltva (csak `true` / `1` / `on` / `yes` engedélyezi). Bekapcsolni csak a `supabase/migrations/0022_pro_payment_weekly.sql` sikeres futása és az adatbázis utóellenőrzése után szabad; részletek és ellenőrző lekérdezések: [`docs/pro-weekly.md`](docs/pro-weekly.md).
 
 ## Mi kerül a repóba és mi nem
 

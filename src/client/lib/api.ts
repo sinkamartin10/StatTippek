@@ -4,7 +4,7 @@
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
 import type {
-  AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo,
+  AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo, ProPlanId,
 } from '@shared/manualPayment';
 import type { AdminProStats, PublicProCount } from '@shared/proStats';
 import type { EdgeRadarResponse } from '@shared/types';
@@ -183,12 +183,14 @@ export const api = {
   // ---------- PRO kézi fizetés (banki átutalás / Revolut) ----------
   // A kérelem CSAK ellenőrzést kér – a PRO-t kizárólag az admin jóváhagyása aktiválja a szerveren.
   proPayments: () => request<ProPaymentInfo>('/pro-payments'),
-  requestProPayment: (method: PaymentMethod) =>
-    request<{ request: PaymentRequestView; created: boolean }>('/pro-payments', { method: 'POST', body: JSON.stringify({ method }) }),
+  /** csak a fizetési mód és a csomag AZONOSÍTÓJA megy – az összeget/időtartamot a szerver adja */
+  requestProPayment: (method: PaymentMethod, plan: ProPlanId) =>
+    request<{ request: PaymentRequestView; created: boolean }>('/pro-payments', { method: 'POST', body: JSON.stringify({ method, plan }) }),
   adminProPayments: (status: PaymentRequestStatus | 'all' = 'pending') =>
     request<AdminPaymentRequestView[]>(`?status=${encodeURIComponent(status)}`, {}, '/api/admin/pro-payments'),
-  adminApproveProPayment: (id: string) =>
-    request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }, '/api/admin/pro-payments'),
+  /** az admin által ELLENŐRZÖTT összeg, pénznem és mód – a szerver összeveti a kérelemmel */
+  adminApproveProPayment: (id: string, verified: { amount: number; currency: string; method: PaymentMethod }) =>
+    request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify(verified) }, '/api/admin/pro-payments'),
   adminRejectProPayment: (id: string, note: string | null) =>
     request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ note }) }, '/api/admin/pro-payments'),
   // ---------- PRO-felhasználószám (mindig a tényleges aktív PRO-k száma; az admin csak a megjelenítést kapcsolja) ----------

@@ -57,7 +57,8 @@ export function AdminPaymentCard({ r, onDone }: { r: AdminPaymentRequestView; on
     setBusy(true); setMsg(null);
     try {
       if (kind === 'approve') {
-        const out = await api.adminApproveProPayment(r.id);
+        // a megerősítő lépésben jóváhagyott összeg/mód megy a szerverhez, ami összeveti a kérelemmel
+        const out = await api.adminApproveProPayment(r.id, { amount: r.amount, currency: r.currency, method: r.method });
         setMsg({ tone: 'info', text: out.request.activatedUntil ? `Jóváhagyva – PRO eddig: ${fmtDateTime(out.request.activatedUntil)}.` : 'Jóváhagyva (a fiók már korlátlan PRO volt, a lejárat nem változott).' });
       } else {
         await api.adminRejectProPayment(r.id, note.trim() || null);
@@ -107,7 +108,7 @@ export function AdminPaymentCard({ r, onDone }: { r: AdminPaymentRequestView; on
           )}
           {step === 'confirm-approve' && (
             <div className="space-y-2">
-              <p className="text-sm font-bold">Biztosan beérkezett {formatAmount(r.amount, r.currency)} a(z) „{r.reference}” közleménnyel? A jóváhagyás aktiválja a PRO-t ({INTERVAL_LABEL[r.interval]}).</p>
+              <p className="text-sm font-bold">Biztosan beérkezett {formatAmount(r.amount, r.currency)} ({PAYMENT_METHOD_LABEL[r.method]}) a(z) „{r.reference}” közleménnyel? A jóváhagyás aktiválja a PRO-t ({INTERVAL_LABEL[r.interval]}).</p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="btn btn-primary" onClick={() => { if (!busy) void approveGate.current(); }} disabled={busy}>{busy ? 'Feldolgozás…' : 'Igen, beérkezett – PRO aktiválása'}</button>
                 <button type="button" className="btn" onClick={() => setStep('idle')} disabled={busy}>Mégse</button>

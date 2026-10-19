@@ -33,7 +33,7 @@ import { CoinRewardService } from './coins/rewards';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
-import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter } from './billing/manualPayments';
+import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter, proWeeklyEnabled } from './billing/manualPayments';
 import { proStatsRouters, supabaseActiveProCounter } from './billing/proStats';
 import { EspnProvider } from './data/espnProvider';
 import { createXsModel, scheduleXsRefresh, xsAdminRouter } from './model/xsBootstrap';
@@ -207,6 +207,7 @@ app.use('/api/admin/model-learning', requireAdmin, modelLearningRouter(modelLear
 const manualPayments = supabaseAdmin ? new PostgresManualPaymentStore(supabaseAdmin) : null;
 app.use('/api/pro-payments', proPaymentsRouter(manualPayments, currentProPrice));
 app.use('/api/admin/pro-payments', requireAdmin, adminProPaymentsRouter(manualPayments));
+console.log(`Heti PRO-csomag: ${proWeeklyEnabled(process.env) ? 'rendelhető' : 'TILTVA (PRO_WEEKLY_ENABLED nincs true-ra állítva)'}`);
 // Nyilvános PRO-felhasználószám: mindig a TÉNYLEGES aktív PRO-k száma; az admin csak a megjelenítést kapcsolja
 const proStats = proStatsRouters(container.db, supabaseAdmin ? supabaseActiveProCounter(supabaseAdmin) : null);
 app.use('/api/pro-stats', proStats.pub);

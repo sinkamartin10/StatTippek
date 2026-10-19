@@ -2,7 +2,8 @@
  * PRO előfizetés kézi fizetéssel (banki átutalás / Revolut).
  *
  *  GET  /api/pro-payments                    ár + kedvezményezett adatai; bejelentkezve a saját kérelmek
- *  POST /api/pro-payments                    „Befizetés elküldve ellenőrzésre” → FÜGGŐ kérelem (PRO-t NEM aktivál)
+ *  POST /api/pro-payments                    „Befizetés elküldve ellenőrzésre” → FÜGGŐ kérelem (PRO-t NEM aktivál);
+ *                                            törzs: { method, plan: 'month' | 'week' } – az árat a szerver adja
  *  GET  /api/admin/pro-payments?status=      kérelmek listája (csak admin)
  *  POST /api/admin/pro-payments/:id/approve  jóváhagyás + PRO aktiválás egy tranzakcióban (csak admin)
  *  POST /api/admin/pro-payments/:id/reject   elutasítás (csak admin)
@@ -10,20 +11,27 @@
  * Biztonság:
  *  - a kérelmezőt KIZÁRÓLAG a hitelesített token azonosítja (res.locals.plan.user);
  *    a törzsből csak a fizetési mód olvasódik ki – userId, összeg, státusz, PRO soha,
- *  - az összeget és az időtartamot a szerver írja be (currentProPrice), nem a kliens,
+ *  - az összeget és az időtartamot a szerver írja be (havi: currentProPrice, heti: APP_WEEKLY_PRO_PRICE),
+ *    nem a kliens; a kliens csak a csomag azonosítóját küldi,
+ *  - a jóváhagyáskor az admin által ellenőrzött összeg és mód egyezzen a kérelemmel; ez a SAJÁT
+ *    kérelemre is igaz (az egyetlen admin a saját, ténylegesen beérkezett befizetését is jóváhagyhatja –
+ *    az adminjogot ettől függetlenül a szerver ellenőrzi: requireAdmin / ADMIN_EMAILS),
  *  - a kérelem elküldése nem változtat a jogosultságon; a PRO-t az admin jóváhagyása
  *    aktiválja, ugyanúgy, mint eddig a Stripe webhook: a profiles két előfizetési
  *    mezőjének szerveroldali (service_role) írásával, majd a jogosultság-cache ürítésével,
  *  - ugyanaz a kérelem nem dolgozható fel kétszer (zárolt, feltételes állapotváltás),
- *  - élő Stripe-előfizetésű fiókot kézzel nem aktiválunk (stripe_conflict).
+ *  - élő Stripe-előfizetésű fiókot kézzel nem aktiválunk (stripe_conflict),
+ *  - a heti csomag ÚJ rendelését a PRO_WEEKLY_ENABLED szerveroldali kapcsoló engedi (alapból tiltva):
+ *    tiltva a heti rendelés 503 PLAN_UNAVAILABLE, kérelem nélkül – soha nem lesz belőle havi; a már
+ *    meglévő heti kérelmek admin-kezelése (lista, jóváhagyás, elutasítás) a kapcsolótól független.
  */
 import { Router, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { invalidateEntitlement, planOf, requireAuthenticated } from './entitlement';
 import {
-  PAYEE, PAYMENT_METHODS, type AdminPaymentRequestView, type BillingInterval, type PaymentMethod,
-  type PaymentRequestStatus, type PaymentRequestView, type ProPaymentInfo, type ProPrice,
+  APP_WEEKLY_PRO_PRICE, PAYEE, PAYMENT_METHODS, PRO_PLAN_IDS, type AdminPaymentRequestView, type BillingInterval, type PaymentMethod,
+  type PaymentRequestStatus, type PaymentRequestView, type ProPaymentInfo, type ProPlanId, type ProPlanOption, type ProPrice,
 } from '../../shared/manualPayment';
 
 // ---------------------------------------------------------------------------
@@ -57,6 +65,8 @@ export interface ManualPaymentStore {
   /** Új függő kérelem; ha már van függő kérelme, AZT adja vissza (created: false) – nem hoz létre másodikat. */
   createPending(r: NewRequest): Promise<{ request: StoredRequest; created: boolean }>;
   listForUser(userId: string, limit: number): Promise<StoredRequest[]>;
+  /** Egy kérelem azonosító szerint (null, ha nincs). */
+  get(id: string): Promise<StoredRequest | null>;
   list(status: PaymentRequestStatus | null, limit: number): Promise<StoredRequest[]>;
   profileStates(userIds: string[]): Promise<Map<string, ProfileState>>;
   /** Jóváhagyás + PRO aktiválás atomikusan (Postgres: approve_pro_payment_request). */
@@ -99,6 +109,12 @@ export class PostgresManualPaymentStore implements ManualPaymentStore {
     }
     this.fail('createPending', error);
     return { request: await this.byId(String((data ?? [])[0]?.id)), created: true };
+  }
+
+  async get(id: string): Promise<StoredRequest | null> {
+    const { data, error } = await this.db.from('pro_payment_requests').select('*').eq('id', id).maybeSingle();
+    this.fail('get', error);
+    return data ? toRequest(data) : null;
   }
 
   private async byId(id: string): Promise<StoredRequest> {
@@ -178,6 +194,11 @@ export class MemoryManualPaymentStore implements ManualPaymentStore {
     return { request: { ...req }, created: true };
   }
 
+  async get(id: string): Promise<StoredRequest | null> {
+    const r = this.requests.get(id);
+    return r ? { ...r } : null;
+  }
+
   async listForUser(userId: string, limit: number): Promise<StoredRequest[]> {
     return [...this.requests.values()].filter((x) => x.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit).map((x) => ({ ...x }));
   }
@@ -204,7 +225,9 @@ export class MemoryManualPaymentStore implements ManualPaymentStore {
     let end: string | null = null;
     if (!(p.status === 'pro' && p.subscriptionEnd == null)) {
       const base = new Date(p.status === 'pro' && live(p.subscriptionEnd) ? p.subscriptionEnd! : now.toISOString());
-      if (r.interval === 'year') base.setUTCFullYear(base.getUTCFullYear() + 1); else base.setUTCMonth(base.getUTCMonth() + 1);
+      if (r.interval === 'year') base.setUTCFullYear(base.getUTCFullYear() + 1);
+      else if (r.interval === 'week') base.setUTCDate(base.getUTCDate() + 7);
+      else base.setUTCMonth(base.getUTCMonth() + 1);
       end = base.toISOString();
       this.profiles.set(r.userId, { ...p, status: 'pro', subscriptionEnd: end });
     }
@@ -242,7 +265,36 @@ const unavailable = (res: Response) => res.status(503).json({
   error: 'A kézi PRO-igénylés ezen a példányon nem érhető el (nincs bejelentkezési rendszer / adatbázis).', code: 'PAYMENTS_UNAVAILABLE',
 });
 
-export function proPaymentsRouter(store: ManualPaymentStore | null, price: () => Promise<ProPrice>): Router {
+/**
+ * Szerveroldali kapcsoló a heti csomag ÚJ rendeléseihez (PRO_WEEKLY_ENABLED). BIZTONSÁGOS alapértelmezés:
+ * hiányzó vagy ismeretlen érték → TILTVA. Engedélyezve csak 'true' / '1' / 'on' / 'yes' (kis-nagybetű és
+ * szóköz mindegy). Csak környezeti változóból jön – a kérés (törzs, query, fejléc) nem írhatja felül.
+ */
+export function proWeeklyEnabled(env: { PRO_WEEKLY_ENABLED?: string }): boolean {
+  return ['true', '1', 'on', 'yes'].includes(String(env.PRO_WEEKLY_ENABLED ?? '').trim().toLowerCase());
+}
+
+/**
+ * A választható csomagok – KIZÁRÓLAG szerveroldali konfigurációból: havi = a meglévő érvényes ár
+ * (currentProPrice; élesben az alkalmazás 2 990 Ft/hó ára), heti = APP_WEEKLY_PRO_PRICE (1 490 Ft / 7 nap),
+ * de csak ha a heti csomag engedélyezett. A havi az ajánlott és alapértelmezett csomag.
+ */
+export async function proPlans(price: () => Promise<ProPrice>, weeklyEnabled: boolean): Promise<ProPlanOption[]> {
+  const month: ProPlanOption = { id: 'month', price: await price(), recommended: true };
+  return weeklyEnabled ? [month, { id: 'week', price: APP_WEEKLY_PRO_PRICE, recommended: false }] : [month];
+}
+
+export interface ProPaymentsRouterOptions {
+  /** a heti csomag kapcsolójának állapota kérésenként (alapból a PRO_WEEKLY_ENABLED környezeti változó) */
+  weeklyEnabled?: () => boolean;
+}
+
+const planUnavailable = (res: Response) => res.status(503).json({
+  error: 'A heti csomag igénylése jelenleg nem érhető el. Válaszd a havi csomagot, vagy próbáld később.', code: 'PLAN_UNAVAILABLE',
+});
+
+export function proPaymentsRouter(store: ManualPaymentStore | null, price: () => Promise<ProPrice>, opts: ProPaymentsRouterOptions = {}): Router {
+  const weeklyEnabled = opts.weeklyEnabled ?? (() => proWeeklyEnabled(process.env));
   const r = Router();
 
   /** Fizetési adatok + (bejelentkezve) a saját kérelmek. Nyilvános: az ár és a kedvezményezett nem titok. */
@@ -254,7 +306,8 @@ export function proPaymentsRouter(store: ManualPaymentStore | null, price: () =>
       const requests = user && store
         ? await store.listForUser(user.id, 20).then((rs) => rs.map(toView), (e) => { console.error('[pro-payments] saját kérelmek:', (e as Error).message); return []; })
         : [];
-      const info: ProPaymentInfo = { price: await price(), payee: PAYEE, requests, reference: user?.email ?? null };
+      const plans = await proPlans(price, weeklyEnabled());
+      const info: ProPaymentInfo = { price: plans.find((p) => p.id === 'month')!.price, plans, payee: PAYEE, requests, reference: user?.email ?? null };
       res.json(info);
     } catch (e) {
       console.error('[pro-payments] info:', (e as Error).message);
@@ -273,6 +326,16 @@ export function proPaymentsRouter(store: ManualPaymentStore | null, price: () =>
     if (!PAYMENT_METHODS.includes(method)) {
       return res.status(400).json({ error: 'Válassz fizetési módot (banki átutalás vagy Revolut).', code: 'INVALID_METHOD' });
     }
+    // csomag: csak azonosító; hiányzó érték = a régi (csak havit ismerő) kliens → havi. Érvénytelen → 400.
+    const rawPlan = req.body?.plan;
+    if (rawPlan !== undefined && !PRO_PLAN_IDS.includes(rawPlan)) {
+      return res.status(400).json({ error: 'Válassz csomagot (havi vagy heti).', code: 'INVALID_PLAN' });
+    }
+    const planId: ProPlanId = rawPlan ?? 'month';
+    // a kapcsoló kérésenként egyszer olvasódik ki: ugyanez dönt az elutasításról és az ajánlatról
+    const weekly = weeklyEnabled();
+    // tiltott heti csomag: azonnal 503, még a tároló előtt – nincs kérelem, és nincs áttérés a havira
+    if (planId === 'week' && !weekly) return planUnavailable(res);
     const email = plan.user.email?.trim();
     if (!email) return res.status(400).json({ error: 'A fiókodhoz nem tartozik e-mail-cím, ezért a közlemény nem azonosítható.', code: 'EMAIL_REQUIRED' });
     try {
@@ -280,10 +343,21 @@ export function proPaymentsRouter(store: ManualPaymentStore | null, price: () =>
       if (stripeManaged(profile)) {
         return res.status(409).json({ error: 'Aktív Stripe-előfizetésed van – a kézi befizetés kettős fizetést jelentene. Kezeld a meglévő előfizetésedet, vagy írj nekünk.', code: 'ACTIVE_STRIPE_SUBSCRIPTION' });
       }
-      const out = await store.createPending({ userId: plan.user.id, email, method, price: await price(), reference: email });
+      // csak a ténylegesen kínált csomag rendelhető (kettős védelem a fenti ellenőrzés mellett)
+      const offered = (await proPlans(price, weekly)).find((p) => p.id === planId);
+      if (!offered) return planUnavailable(res);
+      const chosen = offered.price;
+      const out = await store.createPending({ userId: plan.user.id, email, method, price: chosen, reference: email });
+      // már van függő kérelme MÁS csomagra: nem csúszunk át csendben a másik csomagra
+      if (!out.created && out.request.interval !== chosen.interval) {
+        return res.status(409).json({ error: 'Már van ellenőrzésre váró befizetésed egy másik csomagra – amíg azt nem dolgozzuk fel, új nem küldhető.', code: 'PENDING_OTHER_PLAN', request: toView(out.request) });
+      }
       res.status(out.created ? 201 : 200).json({ request: toView(out.request), created: out.created });
     } catch (e) {
-      console.error('[pro-payments] kérelem:', (e as Error).message);
+      const msg = (e as Error).message;
+      console.error('[pro-payments] kérelem:', msg);
+      // a heti csomag a 0022 migráció nélkül nem rögzíthető (billing_interval megszorítás) – egyértelmű állapot
+      if (planId === 'week' && /billing_interval/.test(msg)) return planUnavailable(res);
       res.status(500).json({ error: 'A kérelem nem rögzült. Próbáld újra később.', code: 'REQUEST_FAILED' });
     }
   });
@@ -318,8 +392,19 @@ export function adminProPaymentsRouter(store: ManualPaymentStore | null): Router
   r.post('/:id/approve', async (req, res) => {
     if (!store) return unavailable(res);
     if (!UUID.test(req.params.id)) return res.status(400).json({ error: 'Érvénytelen azonosító.' });
+    // az admin által ELLENŐRZÖTT összeg és mód: kötelező, és egyeznie kell a kérelemmel
+    const vAmount = req.body?.amount, vCurrency = req.body?.currency, vMethod = req.body?.method;
+    if (typeof vAmount !== 'number' || !Number.isFinite(vAmount) || typeof vCurrency !== 'string' || !PAYMENT_METHODS.includes(vMethod)) {
+      return res.status(400).json({ error: 'A jóváhagyáshoz add meg az ellenőrzött összeget, pénznemet és fizetési módot.', code: 'VERIFICATION_REQUIRED' });
+    }
     const admin = planOf(res).user?.id ?? 'local-admin';
     try {
+      const cur = await store.get(req.params.id);
+      if (!cur) return res.status(404).json({ error: 'A kérelem nem található.', code: 'NOT_FOUND' });
+      if (cur.status !== 'pending') return res.status(409).json({ error: 'Ezt a kérelmet már feldolgozták.', code: 'ALREADY_PROCESSED', request: cur });
+      if (cur.amount !== vAmount || cur.currency !== vCurrency.toUpperCase() || cur.method !== vMethod) {
+        return res.status(409).json({ error: 'Az ellenőrzött összeg vagy fizetési mód nem egyezik a kérelemmel – a PRO nem aktiválódott.', code: 'VERIFICATION_MISMATCH', request: cur });
+      }
       const out = await store.approve(req.params.id, admin);
       switch (out.outcome) {
         case 'approved':

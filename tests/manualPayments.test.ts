@@ -76,6 +76,11 @@ beforeEach(async () => {
 afterEach(async () => { vi.restoreAllMocks(); await h.close(); });
 
 const request = (who: Who, body: unknown = { method: 'bank_transfer' }) => call(h, 'POST', '/api/pro-payments', who, body);
+/** Jóváhagyás úgy, ahogy az admin felület küldi: a megerősített (a kérelemben szereplő) összeg, pénznem és mód. */
+const approveAs = (who: Who, id: string) => {
+  const r = h.store.requests.get(id);
+  return call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, who, r ? { amount: r.amount, currency: r.currency, method: r.method } : { amount: 1, currency: 'HUF', method: 'bank_transfer' });
+};
 
 describe('Kézi PRO-igénylés – felhasználó', () => {
   it('a fizetési adatok és az érvényes ár a szervertől jönnek; a közlemény a token e-mail-címe', async () => {
@@ -162,7 +167,7 @@ describe('Kézi PRO-igénylés – admin', () => {
   it('elfogadás: a PRO aktiválódik 1 hónapra; ugyanazt a kérelmet másodszor nem lehet feldolgozni', async () => {
     const id = await pendingOf(A);
     const before = Date.now();
-    const ok = await call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, ADMIN);
+    const ok = await approveAs(ADMIN, id);
     expect(ok.status).toBe(200);
     expect(ok.body.request).toMatchObject({ status: 'approved', decidedBy: ADMIN.user });
     const p = h.profiles.get(A.user)!;
@@ -172,7 +177,7 @@ describe('Kézi PRO-igénylés – admin', () => {
     expect(end - before).toBeLessThan(32 * DAY);
     expect(p.stripeSubscriptionId).toBeNull(); // Stripe-mezőhöz nem nyúl
 
-    const again = await call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, ADMIN);
+    const again = await approveAs(ADMIN, id);
     expect(again.status).toBe(409);
     expect(again.body.code).toBe('ALREADY_PROCESSED');
     expect(h.profiles.get(A.user)!.subscriptionEnd).toBe(p.subscriptionEnd); // nem hosszabbodott kétszer
@@ -182,7 +187,7 @@ describe('Kézi PRO-igénylés – admin', () => {
 
   it('párhuzamos jóváhagyás: pontosan egy sikerül', async () => {
     const id = await pendingOf(A);
-    const rs = await Promise.all([1, 2, 3].map(() => call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, ADMIN)));
+    const rs = await Promise.all([1, 2, 3].map(() => approveAs(ADMIN, id)));
     expect(rs.map((r) => r.status).sort()).toEqual([200, 409, 409]);
   });
 
@@ -192,11 +197,11 @@ describe('Kézi PRO-igénylés – admin', () => {
     expect(r.status).toBe(200);
     expect(r.body.request).toMatchObject({ status: 'rejected', decisionNote: 'Nem érkezett meg az utalás.' });
     expect(h.profiles.get(A.user)!.status).toBe('free');
-    expect((await call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, ADMIN)).body.code).toBe('ALREADY_PROCESSED');
+    expect((await approveAs(ADMIN, id)).body.code).toBe('ALREADY_PROCESSED');
     expect(h.profiles.get(A.user)!.status).toBe('free');
     expect((await call(h, 'POST', `/api/admin/pro-payments/${id}/reject`, ADMIN, { note: 'x'.repeat(301) })).status).toBe(400);
     expect((await request(A)).status).toBe(201);
-    expect((await call(h, 'POST', '/api/admin/pro-payments/99999999-9999-9999-9999-999999999999/approve', ADMIN)).status).toBe(404);
+    expect((await approveAs(ADMIN, '99999999-9999-9999-9999-999999999999')).status).toBe(404);
   });
 
   it('meglévő jogosultságok megőrzése: érvényes PRO meghosszabbodik, korlátlan PRO nem rövidül, élő Stripe-előfizetés érintetlen', async () => {
@@ -204,13 +209,13 @@ describe('Kézi PRO-igénylés – admin', () => {
     const tenDays = new Date(Date.now() + 10 * DAY).toISOString();
     h.profiles.set(A.user, { status: 'pro', subscriptionEnd: tenDays, stripeSubscriptionId: null });
     const a = await pendingOf(A);
-    await call(h, 'POST', `/api/admin/pro-payments/${a}/approve`, ADMIN);
+    await approveAs(ADMIN, a);
     expect(Date.parse(h.profiles.get(A.user)!.subscriptionEnd!) - Date.parse(tenDays)).toBeGreaterThan(27 * DAY);
 
     // korlátlan PRO (lejárat nélkül) → a jóváhagyás nem állít be lejáratot
     h.profiles.set(B.user, { status: 'pro', subscriptionEnd: null, stripeSubscriptionId: null });
     const b = await pendingOf(B);
-    const rb = await call(h, 'POST', `/api/admin/pro-payments/${b}/approve`, ADMIN);
+    const rb = await approveAs(ADMIN, b);
     expect(rb.body.request.activatedUntil).toBeNull();
     expect(h.profiles.get(B.user)).toEqual({ status: 'pro', subscriptionEnd: null, stripeSubscriptionId: null });
 
@@ -218,7 +223,7 @@ describe('Kézi PRO-igénylés – admin', () => {
     const c = await pendingOf({ user: '33333333-3333-3333-3333-333333333333', email: 'cili@example.com' });
     const stripeSub = { status: 'pro', subscriptionEnd: new Date(Date.now() + 20 * DAY).toISOString(), stripeSubscriptionId: 'sub_live' };
     h.profiles.set('33333333-3333-3333-3333-333333333333', { ...stripeSub });
-    const rc = await call(h, 'POST', `/api/admin/pro-payments/${c}/approve`, ADMIN);
+    const rc = await approveAs(ADMIN, c);
     expect(rc.status).toBe(409);
     expect(rc.body.code).toBe('ACTIVE_STRIPE_SUBSCRIPTION');
     expect(h.profiles.get('33333333-3333-3333-3333-333333333333')).toEqual(stripeSub);
@@ -227,7 +232,7 @@ describe('Kézi PRO-igénylés – admin', () => {
     // lejárt PRO → mától számol
     h.profiles.set(A.user, { status: 'pro', subscriptionEnd: new Date(Date.now() - 5 * DAY).toISOString(), stripeSubscriptionId: null });
     const a2 = await pendingOf(A);
-    await call(h, 'POST', `/api/admin/pro-payments/${a2}/approve`, ADMIN);
+    await approveAs(ADMIN, a2);
     expect(Date.parse(h.profiles.get(A.user)!.subscriptionEnd!) - Date.now()).toBeGreaterThan(27 * DAY);
   });
 
@@ -237,7 +242,7 @@ describe('Kézi PRO-igénylés – admin', () => {
     const r = await request(A, { method: 'bank_transfer', amount: 100, interval: 'month' });
     expect(r.body.request).toMatchObject({ amount: 29900, interval: 'year' });
     const id = r.body.request.id;
-    await call(h, 'POST', `/api/admin/pro-payments/${id}/approve`, ADMIN);
+    await approveAs(ADMIN, id);
     expect(Date.parse(h.profiles.get(A.user)!.subscriptionEnd!) - Date.now()).toBeGreaterThan(360 * DAY);
   });
 });
@@ -321,13 +326,13 @@ describe('Kézi PRO-igénylés – felület', () => {
     expect(done).not.toContain('Elfogadás');
   });
 
-  it('a kliens a jelzéskor csak a fizetési módot küldi', async () => {
+  it('a kliens a jelzéskor csak a fizetési módot és a csomag azonosítóját küldi (összeget nem)', async () => {
     const seen: { url: string; body: string }[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       seen.push({ url: String(url), body: String(init?.body) });
       return new Response(JSON.stringify({ request: {}, created: true }), { status: 201 });
     }));
-    try { await api.requestProPayment('revolut'); } finally { vi.unstubAllGlobals(); }
-    expect(seen).toEqual([{ url: '/api/pro-payments', body: JSON.stringify({ method: 'revolut' }) }]);
+    try { await api.requestProPayment('revolut', 'week'); } finally { vi.unstubAllGlobals(); }
+    expect(seen).toEqual([{ url: '/api/pro-payments', body: JSON.stringify({ method: 'revolut', plan: 'week' }) }]);
   });
 });

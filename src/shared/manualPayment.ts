@@ -38,7 +38,14 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentRequestStatus, string> = {
   rejected: 'Elutasítva',
 };
 
-export type BillingInterval = 'month' | 'year';
+export type BillingInterval = 'week' | 'month' | 'year';
+
+/**
+ * A választható kézi PRO-csomagok azonosítója. Az árat, a pénznemet és az időtartamot
+ * KIZÁRÓLAG a szerver adja (`ProPaymentInfo.plans`); a kliens csak az azonosítót küldi.
+ */
+export type ProPlanId = 'week' | 'month';
+export const PRO_PLAN_IDS: ProPlanId[] = ['month', 'week'];
 
 /** Az érvényes PRO-ár (a szerver adja; a kérelembe is a szerver írja be, nem a kliens). */
 export interface ProPrice {
@@ -59,7 +66,26 @@ export interface ProPrice {
  */
 export const APP_PRO_PRICE: ProPrice = { amount: 2990, currency: 'HUF', interval: 'month', label: '2 990 Ft/hó', source: 'app' };
 
-export const INTERVAL_LABEL: Record<BillingInterval, string> = { month: '1 hónap', year: '1 év' };
+/**
+ * Heti PRO – csak kézi fizetéssel (banki átutalás / Revolut), 7 napra. Szerveroldali
+ * konfiguráció: a kérelembe ez az összeg kerül, a kliens által küldött érték soha.
+ */
+export const APP_WEEKLY_PRO_PRICE: ProPrice = { amount: 1490, currency: 'HUF', interval: 'week', label: '1 490 Ft/hét', source: 'app' };
+
+/** A csomagok a válaszból; hiányzó `plans` (régi szerver) esetén csak a havi – heti csomagot nem találunk ki. */
+export function plansOf(info: { price: ProPrice; plans?: ProPlanOption[] }): ProPlanOption[] {
+  return info.plans?.length ? info.plans : [{ id: 'month', price: info.price, recommended: true }];
+}
+
+export const INTERVAL_LABEL: Record<BillingInterval, string> = { week: '7 nap', month: '1 hónap', year: '1 év' };
+
+/** Egy választható csomag (a szerver állítja össze). */
+export interface ProPlanOption {
+  id: ProPlanId;
+  price: ProPrice;
+  /** a felületen „Ajánlott” jelölést kap és alapból ki van választva */
+  recommended: boolean;
+}
 
 /** Egy kérelem a felhasználó saját nézetében. */
 export interface PaymentRequestView {
@@ -88,7 +114,13 @@ export interface AdminPaymentRequestView extends PaymentRequestView {
 }
 
 export interface ProPaymentInfo {
+  /** a havi csomag ára (visszafelé kompatibilis mező – megegyezik a plans 'month' elemével) */
   price: ProPrice;
+  /**
+   * a választható csomagok: havi (ajánlott, alapértelmezett) és heti. Régi (a heti csomagot még nem
+   * ismerő) szerverválaszban hiányozhat – a felület ilyenkor csak a havi csomagot kínálja.
+   */
+  plans?: ProPlanOption[];
   payee: typeof PAYEE;
   /** bejelentkezve: a saját kérelmek (legújabb elöl); különben üres */
   requests: PaymentRequestView[];

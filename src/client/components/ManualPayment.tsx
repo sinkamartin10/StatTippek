@@ -9,8 +9,8 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Copy, ExternalLink, Landmark, Send, Smartphone } from 'lucide-react';
 import {
-  INTERVAL_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_STATUS_LABEL, accountNumberDigits, formatAmount,
-  type PaymentMethod, type PaymentRequestView, type ProPaymentInfo,
+  INTERVAL_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_STATUS_LABEL, accountNumberDigits, formatAmount, plansOf,
+  type PaymentMethod, type PaymentRequestView, type ProPaymentInfo, type ProPlanId, type ProPlanOption,
 } from '@shared/manualPayment';
 import { Note } from './ui';
 import { copyText } from '../lib/clipboard';
@@ -41,6 +41,59 @@ export function CopyField({ label, value, copyValue, mono = true }: { label: str
 
 const STATUS_BADGE: Record<PaymentRequestView['status'], string> = { pending: 'badge-yellow', approved: 'badge-green', rejected: 'badge-red' };
 
+const PLAN_TITLE: Record<ProPlanId, string> = { month: 'Havi PRO', week: 'Heti PRO' };
+
+/**
+ * Szemléltető napi költség a szerver által adott teljes árból (csak összehasonlításra – a fizetendő
+ * összeg mindig a teljes ár). Heti: ár / 7; havi (naptári hónap): ár / 31 … ár / 28; éves: nincs.
+ */
+export function dailyCostLabel(price: ProPlanOption['price']): string | null {
+  const per = (days: number) => Math.round(price.amount / days);
+  if (price.interval === 'week') return `Kb. ${formatAmount(per(7), price.currency)}/nap`;
+  if (price.interval === 'month') {
+    const low = per(31), high = per(28);
+    return `Kb. ${low === high ? '' : `${formatAmount(low, price.currency).replace(/\s*Ft$/, '')}–`}${formatAmount(high, price.currency)}/nap, a hónap hosszától függően`;
+  }
+  return null;
+}
+
+/**
+ * Csomagválasztó: mindkét csomag látható és választható. Az ajánlott (havi) csomag a kijelöléstől
+ * FÜGGETLENÜL kiemelt (zöld keret + felül „Ajánlott” jelvény); a kijelölést külön a kék keret/háttér és a
+ * „Kiválasztva” jelzés mutatja.
+ */
+export function PlanPicker({ plans, selected, onSelect, disabled = false }: { plans: ProPlanOption[]; selected: ProPlanId; onSelect: (id: ProPlanId) => void; disabled?: boolean }) {
+  return (
+    <div className="grid gap-4 pt-3 sm:grid-cols-2" role="radiogroup" aria-label="Csomag">
+      {plans.map((p) => {
+        const on = p.id === selected;
+        const daily = dailyCostLabel(p.price);
+        const frame = on ? 'border-primary bg-primary-soft shadow-lift' : p.recommended ? 'border-success/60 bg-card hover:border-primary/40' : 'border-border bg-card hover:border-primary/40';
+        return (
+          <button key={p.id} type="button" role="radio" aria-checked={on} data-plan={p.id} data-plan-highlighted={p.recommended ? '' : undefined} disabled={disabled} onClick={() => onSelect(p.id)}
+            className={`relative flex min-w-0 flex-col rounded-2xl border-2 p-4 pt-5 text-left transition ${frame} ${p.recommended ? 'ring-2 ring-success/30' : ''}`}>
+            {p.recommended && (
+              <span className="badge absolute -top-3 left-4 border-success bg-success text-white shadow-sm" data-plan-recommended>Ajánlott</span>
+            )}
+            <span className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-base font-extrabold">{PLAN_TITLE[p.id]}</span>
+              {on && <span className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" data-plan-selected><Check className="h-3.5 w-3.5" /> Kiválasztva</span>}
+            </span>
+            <span className="mt-1 block text-2xl font-black tracking-tight text-primary">{formatAmount(p.price.amount, p.price.currency)}</span>
+            <span className="block text-sm font-bold text-text-muted">{INTERVAL_LABEL[p.price.interval]} PRO hozzáférés · egyszeri befizetés, nem újul meg automatikusan</span>
+            {daily && (
+              <span className="mt-2 block" data-plan-daily>
+                <span className="block text-sm font-extrabold">{daily}</span>
+                <span className="block text-xs font-semibold text-text-muted">Összehasonlításként; a fizetendő összeg a teljes ár.</span>
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** A felhasználó saját kérelmei (legújabb elöl). */
 export function PaymentRequestList({ requests }: { requests: PaymentRequestView[] }) {
   if (!requests.length) return <p className="text-sm font-semibold text-text-muted">Még nem jeleztél befizetést.</p>;
@@ -70,7 +123,15 @@ export function PaymentRequestList({ requests }: { requests: PaymentRequestView[
 export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManaged = false }: {
   info: ProPaymentInfo; loggedIn: boolean; onRequested: () => void; stripeManaged?: boolean;
 }) {
-  const { price, payee, requests, reference } = info;
+  const { payee, requests, reference } = info;
+  const plans = plansOf(info);
+  // alapértelmezés: az ajánlott (havi) csomag; a választás a kérelemig változatlanul megmarad
+  const [chosenId, setPlanId] = useState<ProPlanId>(() => (plans.find((p) => p.recommended) ?? plans[0]).id);
+  // ha a választott csomag kikerül a szerver listájából (pl. letiltott heti), az ajánlottra esünk vissza –
+  // a megjelenített ár és a küldött csomag így mindig ugyanaz
+  const selected = plans.find((p) => p.id === chosenId) ?? plans.find((p) => p.recommended) ?? plans[0];
+  const planId = selected.id;
+  const price = selected.price;
   const amount = formatAmount(price.amount, price.currency);
   const pending = requests.find((r) => r.status === 'pending') ?? null;
   const [method, setMethod] = useState<PaymentMethod>('bank_transfer');
@@ -81,7 +142,7 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
   sendRef.current = async () => {
     setBusy(true); setMsg(null);
     try {
-      const { created } = await api.requestProPayment(method);
+      const { created } = await api.requestProPayment(method, planId);
       setMsg({ tone: 'info', text: created
         ? 'Köszönjük! A befizetésedet ellenőrzésre jelöltük. A PRO hozzáférést a befizetés beérkezésének ellenőrzése után aktiváljuk – ez nem automatikus.'
         : 'Már van ellenőrzésre váró befizetésed – nem hoztunk létre újat.' });
@@ -98,7 +159,10 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
         A PRO hozzáférést banki átutalással vagy Revoluton keresztül tudod igényelni. A befizetést manuálisan ellenőrizzük, és jóváhagyás után aktiváljuk a hozzáférésedet.
       </p>
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <PlanPicker plans={plans} selected={planId} onSelect={setPlanId} disabled={busy} />
+
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-selected-plan={planId}>
+        <span className="text-sm font-bold text-text-muted">Fizetendő:</span>
         <span className="text-2xl font-black tracking-tight text-primary">{amount}</span>
         <span className="text-sm font-bold text-text-muted">PRO · {INTERVAL_LABEL[price.interval]} ({price.label})</span>
       </div>
@@ -136,7 +200,7 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
         ) : stripeManaged ? (
           <Note>Aktív Stripe-előfizetésed van – kézi befizetésre nincs szükség.</Note>
         ) : pending ? (
-          <Note>Van ellenőrzésre váró befizetésed ({PAYMENT_METHOD_LABEL[pending.method]}, {formatAmount(pending.amount, pending.currency)}, {fmtDateTime(pending.createdAt)}). Amint ellenőriztük, aktiváljuk a PRO-t.</Note>
+          <Note>Van ellenőrzésre váró befizetésed ({PAYMENT_METHOD_LABEL[pending.method]}, {formatAmount(pending.amount, pending.currency)} · {INTERVAL_LABEL[pending.interval]}, {fmtDateTime(pending.createdAt)}). Amint ellenőriztük, aktiváljuk a PRO-t.</Note>
         ) : (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Fizetési mód">
@@ -146,8 +210,8 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
                 </button>
               ))}
             </div>
-            <button type="button" className="btn btn-primary w-full sm:w-auto" onClick={() => { if (!busy) void gate.current(); }} disabled={busy}>
-              <Send className="h-4 w-4" /> {busy ? 'Küldés…' : 'Befizetés elküldve ellenőrzésre'}
+            <button type="button" className="btn btn-primary w-full sm:w-auto" onClick={() => { if (!busy) void gate.current(); }} disabled={busy} data-send-plan={planId}>
+              <Send className="h-4 w-4" /> {busy ? 'Küldés…' : `Befizetés elküldve ellenőrzésre (${amount} · ${INTERVAL_LABEL[price.interval]})`}
             </button>
             <p className="text-xs font-semibold text-text-muted">Csak a befizetés után kattints. A jelzés nem aktiválja a PRO-t – azt az ellenőrzés után mi kapcsoljuk be.</p>
           </div>
