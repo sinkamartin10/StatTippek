@@ -10,6 +10,7 @@ import { localDateKey } from '../data/demoProvider';
 import type { MatchOdds, SlipStrategy } from '../../shared/types';
 import { freeMatchIds, redactAnalysisForFree, redactTipsForFree } from '../../shared/engine/plan';
 import { planOf, requirePro } from '../billing/entitlement';
+import { buildSimulation, previewSimulation } from '../../shared/engine/simulator';
 import type { CornerService } from '../corners/service';
 
 const VALID_MARKET = /^([12X]|1X|X2|12|DNB_[12]|[OU]\d\.5|BTTS_[YN]|(HOME|AWAY)_O\d\.5|AH_HOME_-1|CS_\d+-\d+)$/;
@@ -99,6 +100,29 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'A szögletelemzés nem futtatható.' });
+    }
+  });
+
+  // AI-meccsszimulátor (mc-poisson-lognormal-1). Mindenki kap ELŐNÉZETET (1X2, frissesség, bizonytalanság);
+  // a teljes eredmény (várható gólok, gólpiacok, pontos eredmények, magyarázat) csak PRO – a szerver dönt.
+  // FREE-nél ugyanaz a napi kvóta érvényes, mint az elemzésnél (az elemzés külső kutatást indíthat).
+  r.get('/matches/:id/simulation', async (req, res) => {
+    if (!ID.test(req.params.id)) return badId(res);
+    const plan = planOf(res);
+    try {
+      if (!plan.pro) {
+        const m = await c.data.getMatch(req.params.id);
+        if (!m) return res.status(404).json({ error: 'A mérkőzés nem található.' });
+        const day = await c.data.getMatches({ date: localDateKey(m.kickoff) });
+        if (!freeMatchIds(day).has(m.id)) return res.status(403).json({ error: 'Ennek a mérkőzésnek a szimulációja PRO előfizetéssel érhető el.', code: 'PRO_REQUIRED' });
+      }
+      const a = await svc.analyze(req.params.id, { variant: plan.pro ? 'pro' : 'base' });
+      if (!a) return res.status(404).json({ error: 'A mérkőzés nem található.' });
+      const report = buildSimulation(a);
+      res.json(plan.pro ? report : previewSimulation(report));
+    } catch (e) {
+      console.error('[simulation]', (e as Error).message);
+      res.status(500).json({ error: 'A szimuláció nem futtatható.' });
     }
   });
 

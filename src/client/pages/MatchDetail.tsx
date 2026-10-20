@@ -12,9 +12,10 @@ import { CorrectScoreChart, FormGoalsChart, FormTrendChart, GoalDistChart, OneXT
 import { LockedBlock, ProLock, useFreeDay, usePlan } from '../auth/PlanContext';
 import { localDateKey } from '../lib/dates';
 import { CornersCard } from '../components/CornersCard';
+import { SimulatorCard } from '../components/SimulatorCard';
 
 const SECTIONS = [
-  ['attekintes', 'Áttekintés'], ['statisztika', 'Statisztika'], ['szogletek', 'Szögletek'], ['osszehasonlitas', 'Összehasonlítás'], ['hirek', 'Hírek'],
+  ['attekintes', 'Áttekintés'], ['szimulator', 'Szimulátor'], ['statisztika', 'Statisztika'], ['szogletek', 'Szögletek'], ['osszehasonlitas', 'Összehasonlítás'], ['hirek', 'Hírek'],
   ['kulso', 'Külső előrejelzések'], ['modell', 'Modell'], ['ertek', 'Odds és érték'], ['tippek', 'Lehetséges piacok'], ['kockazatok', 'Kockázatok'], ['forrasok', 'Források'], ['modszer', 'Elemzési módszer'],
 ];
 
@@ -81,6 +82,7 @@ function MatchDetailInner({ id, pro }: { id: string; pro: boolean }) {
       )}
 
       <Overview an={an} />
+      <SimulatorCard matchId={an.match.id} homeName={an.homeTeam.shortName} awayName={an.awayTeam.shortName} pro={pro} />
       <Statistics an={an} pro={pro} />
       <CornersCard matchId={an.match.id} homeName={an.homeTeam.shortName} awayName={an.awayTeam.shortName} pro={pro} />
       <Comparison an={an} pro={pro} />

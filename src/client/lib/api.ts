@@ -8,6 +8,7 @@ import type {
 } from '@shared/manualPayment';
 import type { AdminProStats, PublicProCount } from '@shared/proStats';
 import type { EdgeRadarResponse } from '@shared/types';
+import type { SimulationReport } from '@shared/engine/simulator';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
 import type {
   BattleListResponse, BattleView, EligibleMatch, EligibleOpponent,
@@ -160,6 +161,8 @@ export const api = {
   analysis: (id: string, refresh = false) => request<MatchAnalysis>(`/matches/${encodeURIComponent(id)}/analysis${refresh ? '?refresh=1' : ''}`),
   /** Szögletelemzés – PRO (a szerver FREE-nek 403-at ad) */
   matchCorners: (id: string) => request<CornerAnalysis>(`/matches/${encodeURIComponent(id)}/corners`),
+  /** AI-meccsszimulátor: FREE-nek előnézet (a `full` mező nélkül), PRO-nak a teljes eredmény – a szerver dönt */
+  matchSimulation: (id: string) => request<SimulationReport>(`/matches/${encodeURIComponent(id)}/simulation`),
   saveOdds: (id: string, markets: Record<string, string>, bookmaker?: string) =>
     request<MatchOdds>(`/matches/${encodeURIComponent(id)}/odds`, { method: 'POST', body: JSON.stringify({ markets, bookmaker }) }),
   deleteOdds: (id: string) => request<{ ok: true }>(`/matches/${encodeURIComponent(id)}/odds`, { method: 'DELETE' }),
