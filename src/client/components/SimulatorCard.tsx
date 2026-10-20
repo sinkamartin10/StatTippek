@@ -3,11 +3,15 @@
  * (1X2, frissesség, bizonytalanság); a teljes eredményt a szerver csak PRO-nak küldi el (`full`).
  * A felület semmit nem számol újra: minden szám a szerver válaszából jön.
  */
+import { useState } from 'react';
+import { Clapperboard } from 'lucide-react';
 import type { SimulationReport, UncertaintyLevel } from '@shared/engine/simulator';
 import { api } from '../lib/api';
 import { fmtDateTime, num, pct, useAsync } from '../lib/format';
 import { Card, EmptyState, ErrorBox, Loading, Note, ProbBar } from './ui';
 import { LockedBlock, ProLock } from '../auth/PlanContext';
+import { parseScore } from '../lib/matchAnimation';
+import { MatchAnimation } from './MatchAnimation';
 
 const LEVEL_BADGE: Record<UncertaintyLevel, string> = { alacsony: 'badge-green', közepes: 'badge-yellow', magas: 'badge-red' };
 const TITLE = 'AI-meccsszimulátor';
@@ -28,6 +32,31 @@ export function SimulatorView({ s, homeName, awayName, pro }: { s: SimulationRep
     );
   }
   const f = s.full;
+  return (
+    <SimulatorBody s={s} homeName={homeName} awayName={awayName} pro={pro} f={f} />
+  );
+}
+
+/**
+ * A meccsanimáció CSAK a teljes (PRO) szerverválaszból indítható: a végeredmény a legvalószínűbb pontos
+ * eredmény (`full.topScores[0]`), amelyet a szerver FREE-nek nem küld el – a kliens nem találja ki.
+ */
+function AnimationLauncher({ f, seedKey, homeName, awayName }: { f: NonNullable<SimulationReport['full']>; seedKey: string; homeName: string; awayName: string }) {
+  const [open, setOpen] = useState(false);
+  const score = parseScore(f.topScores[0]?.score);
+  if (!score) return <Note tone="warn">A meccsanimáció nem indítható: nincs érvényes legvalószínűbb pontos eredmény.</Note>;
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-primary" onClick={() => setOpen(true)} data-anim-launch>
+        <Clapperboard className="h-4 w-4" /> Meccs-animáció ({score[0]}–{score[1]})
+      </button>
+    );
+  }
+  return <MatchAnimation score={score} expectedGoals={f.expectedGoals} seedKey={seedKey} homeName={homeName} awayName={awayName} />;
+}
+
+function SimulatorBody({ s, homeName, awayName, pro, f }: { s: SimulationReport; homeName: string; awayName: string; pro: boolean; f: SimulationReport['full'] }) {
+  if (!s.oneXTwo) return null;
   return (
     <Card id="szimulator" title={TITLE} right={f ? undefined : <ProLock />}>
       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-text-muted" data-sim-meta>
@@ -65,6 +94,10 @@ export function SimulatorView({ s, homeName, awayName, pro }: { s: SimulationRep
             </div>
           </div>
           <div>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Meccs-animáció</div>
+            <AnimationLauncher f={f} seedKey={s.matchId} homeName={homeName} awayName={awayName} />
+          </div>
+          <div>
             <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">Magyarázat</div>
             <ul className="list-disc space-y-1 pl-5 text-sm">{f.explanation.map((x) => <li key={x}>{x}</li>)}</ul>
           </div>
@@ -77,7 +110,7 @@ export function SimulatorView({ s, homeName, awayName, pro }: { s: SimulationRep
           {pro ? (
             <Note tone="warn">A teljes szimuláció betöltése nem sikerült – frissítsd az oldalt.</Note>
           ) : (
-            <LockedBlock compact title="Teljes szimuláció – PRO" text="Várható gólok, gólpiacok (O/U, mindkét csapat gól), legvalószínűbb pontos eredmények és adatvezérelt magyarázat 10 000 szimulációból." />
+            <LockedBlock compact title="Teljes szimuláció – PRO" text="Várható gólok, gólpiacok (O/U, mindkét csapat gól), legvalószínűbb pontos eredmények, adatvezérelt magyarázat és 2D meccs-animáció 10 000 szimulációból." />
           )}
         </div>
       )}
