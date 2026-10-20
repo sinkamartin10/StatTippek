@@ -184,6 +184,9 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
           <a className="btn w-full" href={payee.revolut.profileUrl} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" /> Revolut-profil megnyitása
           </a>
+          {payee.revolut.accountNumber && (
+            <CopyField label="Számlaszám (Revolut)" value={payee.revolut.accountNumber} copyValue={accountNumberDigits(payee.revolut.accountNumber)} />
+          )}
           <CopyField label="Összeg" value={amount} copyValue={String(price.amount)} />
           <p className="text-xs font-semibold text-text-muted">A Revolut-utalás megjegyzésébe is a fiókod e-mail-címét írd{reference ? ` (${reference})` : ''}.</p>
         </section>

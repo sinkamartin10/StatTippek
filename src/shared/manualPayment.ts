@@ -11,11 +11,13 @@
 export const PAYEE = {
   bank: {
     beneficiary: 'Sinka Martin',
-    /** megjelenítés (8-8-8 jegyű tagolás) */
-    accountNumber: '30200014 19913410 31395146',
+    /** megjelenítés (8-8 jegyű tagolás) */
+    accountNumber: '11773384-03115543',
   },
   revolut: {
     username: '@martin2pal',
+    /** a Revolut-számla száma (8-8-8 jegyű tagolás) – a felhasználónév és a profil-link mellett */
+    accountNumber: '30200014 19913410 31395146',
     /**
      * A Revolut nyilvános profil-linkje (revolut.me/<felhasználónév>, a Revolut
      * hivatalos formátuma; a profil létezése ellenőrizve). Összeget NEM töltünk elő.

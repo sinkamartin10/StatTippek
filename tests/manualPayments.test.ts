@@ -88,8 +88,8 @@ describe('Kézi PRO-igénylés – felhasználó', () => {
     expect(anon.status).toBe(200);
     expect(anon.body).toMatchObject({ price: APP_PRO_PRICE, requests: [], reference: null });
     expect(anon.body.payee).toEqual({
-      bank: { beneficiary: 'Sinka Martin', accountNumber: '30200014 19913410 31395146' },
-      revolut: { username: '@martin2pal', profileUrl: 'https://revolut.me/martin2pal' },
+      bank: { beneficiary: 'Sinka Martin', accountNumber: '11773384-03115543' },
+      revolut: { username: '@martin2pal', accountNumber: '30200014 19913410 31395146', profileUrl: 'https://revolut.me/martin2pal' },
     });
     expect((await call(h, 'GET', '/api/pro-payments', A)).body.reference).toBe('anna@example.com');
   });
@@ -265,7 +265,7 @@ const render = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(cr
 describe('Kézi PRO-igénylés – felület', () => {
   it('megjeleníti a banki és a Revolut-adatokat, az összeget, az időtartamot és a kézi ellenőrzés tényét', () => {
     const html = render(createElement(ManualPaymentSection, { info: info(), loggedIn: true, onRequested: () => {} }));
-    for (const t of ['Banki átutalás', 'Sinka Martin', '30200014 19913410 31395146', 'anna@example.com', 'Revolut', '@martin2pal', 'Fizetési kérelem állapota',
+    for (const t of ['Banki átutalás', 'Sinka Martin', '11773384-03115543', '30200014 19913410 31395146', 'Számlaszám (Revolut)', 'anna@example.com', 'Revolut', '@martin2pal', 'Fizetési kérelem állapota',
       'A fizetés manuális ellenőrzést igényel.', 'nem aktiválódik automatikusan', 'Befizetés elküldve ellenőrzésre', '1 hónap']) {
       expect(html, t).toContain(t);
     }
@@ -274,6 +274,12 @@ describe('Kézi PRO-igénylés – felület', () => {
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).not.toMatch(/revolut\.me\/martin2pal\/\d|amount=/); // nincs előtöltött összegű fizetési link
     expect(html.match(/másolása"/g)?.length).toBeGreaterThanOrEqual(5); // kedvezményezett, számlaszám, közlemény, összegek, Revolut
+    // a számlaszámok a megfelelő fizetési mód alatt: a banki a Revolut-blokk előtt, a Revolut-számla a Revolut-blokkban
+    const rev = html.indexOf('id="fizetes-revolut"');
+    expect(html.indexOf('11773384-03115543')).toBeGreaterThan(html.indexOf('id="fizetes-bank"'));
+    expect(html.indexOf('11773384-03115543')).toBeLessThan(rev);
+    expect(html.indexOf('30200014 19913410 31395146')).toBeGreaterThan(rev);
+    expect(html).toContain('aria-label="Számlaszám (Revolut) másolása"');
   });
 
   it('az összeg nincs beégetve: a szerver ára jelenik meg', () => {
@@ -301,7 +307,8 @@ describe('Kézi PRO-igénylés – felület', () => {
   });
 
   it('másolás: a számlaszám számjegyekként, a Clipboard API-val; tartalék execCommand-dal', async () => {
-    expect(accountNumberDigits()).toBe('302000141991341031395146');
+    expect(accountNumberDigits()).toBe('1177338403115543'); // alapértelmezés: a banki számla
+    expect(accountNumberDigits(PAYEE.revolut.accountNumber)).toBe('302000141991341031395146');
     const written: string[] = [];
     expect(await copyText('302000141991341031395146', { writeText: async (t) => { written.push(t); } })).toBe(true);
     expect(written).toEqual(['302000141991341031395146']);
