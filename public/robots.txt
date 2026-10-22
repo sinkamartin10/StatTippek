@@ -1,0 +1,8 @@
+# TippStats – https://tippstats.hu
+# A privát oldalakat (belépés, profil, beállítások, …) NEM tiltjuk itt: a szerver noindex fejlécet és
+# meta robots-ot ad rájuk, amit a keresőnek látnia kell. Csak az adminfelület van kizárva.
+User-agent: *
+Allow: /
+Disallow: /admin/
+
+Sitemap: https://tippstats.hu/sitemap.xml

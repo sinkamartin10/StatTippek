@@ -1,0 +1,17 @@
+// Cloudflare Workers – a TippStats frontend (dist/) kiszolgálása.
+// A Worker (src/worker/index.ts) CSAK SEO-célú szabályokat ad a statikus fájlok elé: útvonalankénti
+// metaadatok, valódi 404 ismeretlen útvonalra, noindex a privát oldalakra és a nem elsődleges hosztra.
+// FIGYELEM: a "name" egyezzen a Cloudflare-en futó Worker nevével, a "routes" a jelenlegi egyéni domainnel
+// (a Cloudflare-dashboardon ellenőrizendő: Worker neve, build: `npm run build`, deploy: `npx wrangler deploy`).
+{
+  "name": "stattippek",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "routes": [{ "pattern": "tippstats.hu", "custom_domain": true }]
+}

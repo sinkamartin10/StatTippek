@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import { useRouteMeta } from './lib/useRouteMeta';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Matches from './pages/Matches';
@@ -44,6 +45,7 @@ function HomeGate() {
 }
 
 export default function App() {
+  useRouteMeta();
   return (
     <Routes>
       <Route path="/" element={<HomeGate />} />

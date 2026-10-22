@@ -13,6 +13,7 @@ import { LockedBlock, ProLock, useFreeDay, usePlan } from '../auth/PlanContext';
 import { localDateKey } from '../lib/dates';
 import { CornersCard } from '../components/CornersCard';
 import { SimulatorCard } from '../components/SimulatorCard';
+import { useDocumentTitle } from '../lib/useRouteMeta';
 
 const SECTIONS = [
   ['attekintes', 'Áttekintés'], ['szimulator', 'Szimulátor'], ['statisztika', 'Statisztika'], ['szogletek', 'Szögletek'], ['osszehasonlitas', 'Összehasonlítás'], ['hirek', 'Hírek'],
@@ -50,6 +51,7 @@ function MatchDetailInner({ id, pro }: { id: string; pro: boolean }) {
   const loc = useLocation();
   const [refreshing, setRefreshing] = useState(false);
   const a = useAsync(() => api.analysis(id), [id]);
+  useDocumentTitle(a.data ? `${a.data.homeTeam.name} – ${a.data.awayTeam.name}: statisztikák és elemzés | TippStats` : null);
 
   useEffect(() => {
     if (a.data && loc.hash) document.getElementById(loc.hash.slice(1))?.scrollIntoView({ behavior: 'smooth' });

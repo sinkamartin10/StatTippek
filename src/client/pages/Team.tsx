@@ -6,10 +6,12 @@ import { MatchGrid } from '../components/MatchList';
 import { Card, Disclaimer, ErrorBox, FormPills, Loading, OriginBadge, Stat } from '../components/ui';
 import { FormGoalsChart } from '../components/charts';
 import { Matchup, TeamCrest } from '../components/TeamCrest';
+import { useDocumentTitle } from '../lib/useRouteMeta';
 
 export default function Team() {
   const { id = '' } = useParams();
   const t = useAsync(() => api.team(id), [id]);
+  useDocumentTitle(t.data ? `${t.data.team.name} – csapatstatisztikák | TippStats` : null);
   if (t.loading) return <Loading />;
   if (t.error || !t.data) return <ErrorBox message={t.error ?? 'Hiba'} onRetry={t.reload} />;
   const d = t.data;

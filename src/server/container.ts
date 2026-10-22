@@ -81,7 +81,9 @@ export function buildContainer(): Container {
     warnings.push('DEMO ADAT mód: minden mérkőzés és hír beépített, szemléltető adat.');
   } else {
     data = footballKey ? new ApiFootballProvider(footballKey) : new EspnProvider(db.httpCache());
-    if (!footballKey) warnings.push('Magyar NB I / NB II élő adatához API_FOOTBALL_KEY szükséges – jelenleg a nemzetközi topligák és kupák érhetők el.');
+    // Belső konfigurációs részlet: CSAK a szervernaplóba (a nyilvános /api/status figyelmeztetései minden
+    // látogatónak szalagként jelennek meg). A diagnosztika a Beállítások oldal `liveFootballApiConfigured` sorában marad.
+    if (!footballKey) console.warn('[config] API_FOOTBALL_KEY nincs beállítva – a magyar NB I / NB II élő adata nem érhető el; az ESPN szolgáltató adja a nemzetközi topligákat és kupákat.');
     research = new WebSearchResearchProvider(
       tavilyKey ? new TavilyBackend(tavilyKey) : braveKey ? new BraveBackend(braveKey) : new CombinedRssBackend(),
     );
