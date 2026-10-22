@@ -13,5 +13,8 @@
     "not_found_handling": "none",
     "run_worker_first": true
   },
-  "routes": [{ "pattern": "tippstats.hu", "custom_domain": true }]
+  "routes": [{ "pattern": "tippstats.hu", "custom_domain": true }],
+  // a workers.dev cím maradjon elérhető (routes mellett a wrangler alapból letiltaná): a Worker ott minden
+  // válaszra noindex-et és a tippstats.hu-ra mutató canonicalt ad – a duplikációt ez kezeli, nem a letiltás
+  "workers_dev": true
 }

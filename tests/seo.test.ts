@@ -175,6 +175,19 @@ describe('Worker', () => {
     expect(r.headers.get('X-Robots-Tag')).toBe('noindex, follow');
     expect(await head(r)).toMatchObject({ canonical: 'https://tippstats.hu/pro', robots: 'noindex, follow' });
     expect((await get('https://stattippek.sinkamartin10.workers.dev/robots.txt')).headers.get('X-Robots-Tag')).toBe('noindex');
+    const home = await get('https://stattippek.sinkamartin10.workers.dev/');
+    expect(home.status).toBe(200);
+    expect(home.headers.get('X-Robots-Tag')).toBe('noindex, follow');
+    expect(await head(home)).toMatchObject({ canonical: 'https://tippstats.hu/', robots: 'noindex, follow' });
+    const missing = await get('https://stattippek.sinkamartin10.workers.dev/ez-nem-letezik-12345');
+    expect(missing.status).toBe(404);
+    expect(await head(missing)).toMatchObject({ canonical: null, robots: 'noindex' });
+  });
+
+  it('wrangler.jsonc: a workers.dev engedélyezve marad a tippstats.hu egyéni domain mellett (routes mellett a wrangler alapból letiltaná)', () => {
+    const cfg = JSON.parse(read('wrangler.jsonc').replace(/^\s*\/\/.*$/gm, ''));
+    expect(cfg).toMatchObject({ name: 'stattippek', workers_dev: true, main: 'src/worker/index.ts', assets: { directory: './dist', binding: 'ASSETS' } });
+    expect(cfg.routes).toEqual([{ pattern: 'tippstats.hu', custom_domain: true }]);
   });
 
   it('HEAD-kérés: fejlécek törzs nélkül; feltételes böngészőkérésre is teljes HTML (a váz feltétel nélkül kérődik)', async () => {
