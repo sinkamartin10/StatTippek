@@ -7,12 +7,12 @@
    =========================================================================== */
 @theme {
   /* --- Alap felületek --- */
-  --color-background: #f4f6fc;
-  --color-surface: #eef1fa;
-  --color-card: #ffffff;
-  --color-card-2: #f7f9fe;
-  --color-border: #e2e7f3;
-  --color-border-strong: #cdd5ea;
+  --color-background: #f1f3f6;
+  --color-surface: #e9edf2;
+  --color-card: #f8f9fb;
+  --color-card-2: #eff2f6;
+  --color-border: #dce1e9;
+  --color-border-strong: #c5cdd9;
 
   /* --- Szöveg --- */
   --color-text: #1d2539;
@@ -102,17 +102,17 @@ body {
   color-scheme: dark;
 }
 /* szöveges kék kiemelés sötét háttéren világosabb árnyalattal (a gombok háttere változatlan) */
-.theme-navy .text-primary { color: #7891ff; }
+.theme-navy .text-primary, .theme-navy .text-primary:not(svg) { color: #7891ff; }
 .theme-navy .btn-primary { border-color: var(--color-primary); }
 .theme-navy .btn-primary:hover { background: #6280ff; border-color: #6280ff; }
 .theme-navy ::selection { background: rgba(79, 110, 247, 0.45); }
 .theme-base {
-  --color-background: #f4f6fc;
-  --color-surface: #eef1fa;
-  --color-card: #ffffff;
-  --color-card-2: #f7f9fe;
-  --color-border: #e2e7f3;
-  --color-border-strong: #cdd5ea;
+  --color-background: #f1f3f6;
+  --color-surface: #e9edf2;
+  --color-card: #f8f9fb;
+  --color-card-2: #eff2f6;
+  --color-border: #dce1e9;
+  --color-border-strong: #c5cdd9;
   --color-text: #1d2539;
   --color-text-muted: #606b84;
   --color-primary-soft: #e8edfe;
@@ -224,8 +224,8 @@ body {
 
 /* Recharts – világos téma */
 .recharts-default-tooltip {
-  background: #ffffff !important;
-  border: 1px solid #e2e7f3 !important;
+  background: #f8f9fb !important;
+  border: 1px solid #dce1e9 !important;
   border-radius: 14px !important;
   box-shadow: 0 10px 24px -12px rgba(29, 37, 57, 0.25);
   color: #1d2539 !important;
@@ -235,7 +235,9 @@ body {
 /* jelmagyarázat: semleges, olvasható szöveg – a színes jelölő mutatja a sorozatot */
 .recharts-legend-item-text { color: var(--color-text-muted) !important; }
 
-/* Állapotszínű SZÖVEG (pl. +/- pp, eredmények) legalább 4,5:1 kontraszttal; az ikonok (svg) élénk színe marad */
+/* Kék és állapotszínű SZÖVEG (linkek, +/- pp, eredmények) legalább 4,5:1 kontraszttal a halvány felületeken;
+   a gombok, kiemelések és ikonok (svg) élénk színe marad */
+.text-primary:not(svg) { color: var(--color-primary-strong); }
 .text-success:not(svg) { color: var(--color-success-text); }
 .text-danger:not(svg) { color: var(--color-danger-text); }
 .text-warning:not(svg) { color: var(--color-warning-text); }

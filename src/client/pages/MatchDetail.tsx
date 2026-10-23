@@ -512,9 +512,9 @@ function TipCard({ t, matchId }: { t: TipSuggestion; matchId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">{t.label}</div>
         <div className="flex items-center gap-2 text-xs">
-          <span className="mono rounded-md bg-accent/15 px-2 py-0.5 font-bold text-primary-strong">{pct(t.modelProb, 1)}</span>
+          <span className="mono rounded-md bg-accent/10 px-2 py-0.5 font-bold text-primary-strong">{pct(t.modelProb, 1)}</span>
           {t.odds != null && <span className="mono rounded-md bg-card px-2 py-0.5">odds {fo(t.odds)}</span>}
-          {t.diffPoints != null && <span className={`mono rounded-md px-2 py-0.5 ${t.diffPoints >= 3 ? 'bg-accent/15 text-primary-strong' : t.diffPoints <= -3 ? 'bg-danger/15 text-danger' : 'bg-card'}`}>{signed(t.diffPoints)} pp</span>}
+          {t.diffPoints != null && <span className={`mono rounded-md px-2 py-0.5 ${t.diffPoints >= 3 ? 'bg-accent/10 text-primary-strong' : t.diffPoints <= -3 ? 'bg-danger/10 text-danger' : 'bg-card'}`}>{signed(t.diffPoints)} pp</span>}
           <span className="badge badge-muted">{t.supportingIndicators}/{t.supportingStats.length} mutató</span>
         </div>
       </div>
