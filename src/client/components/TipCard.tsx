@@ -82,7 +82,7 @@ export function TipCard({ entry, pro }: { entry: TipListEntry; pro: boolean }) {
           </Accordion>
         ) : (
           <div className="rounded-xl border border-dashed border-warning/40 bg-warning-soft p-3.5">
-            <div className="flex items-center gap-2 text-sm font-extrabold text-[#a96b00]">
+            <div className="flex items-center gap-2 text-sm font-extrabold text-warning-text">
               <Lock className="h-4 w-4" /> 🔒 PRO elemzés
             </div>
             <p className="mt-1 text-xs font-semibold text-text-muted">Oldd fel a teljes elemzést: mellette és ellene szóló mutatók, kockázatok, odds-összevetés.</p>

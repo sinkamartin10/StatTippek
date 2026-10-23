@@ -183,7 +183,7 @@ export default function PublicProfile() {
                   const Icon = HIGHLIGHT_ICON[h.kind];
                   return (
                     <li key={`${h.kind}-${h.label}`} className="flex items-center gap-2.5">
-                      <span aria-hidden className="icon-bubble h-8 w-8 shrink-0 bg-warning-soft text-[#a96b00]"><Icon className="h-4 w-4" /></span>
+                      <span aria-hidden className="icon-bubble h-8 w-8 shrink-0 bg-warning-soft text-warning-text"><Icon className="h-4 w-4" /></span>
                       <span className="min-w-0 flex-1 truncate text-sm font-bold text-text-muted">{h.label}</span>
                       <span className="mono shrink-0 text-sm font-extrabold">{h.value}</span>
                     </li>

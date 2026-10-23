@@ -213,7 +213,7 @@ export function Stat({ label, value, sub, mono = true }: { label: string; value:
 const STAT_TONES = {
   primary: { bubble: 'bg-primary-soft text-primary-strong', value: 'text-text' },
   success: { bubble: 'bg-success-soft text-success', value: 'text-text' },
-  warning: { bubble: 'bg-warning-soft text-[#a96b00]', value: 'text-text' },
+  warning: { bubble: 'bg-warning-soft text-warning-text', value: 'text-text' },
   danger: { bubble: 'bg-danger-soft text-danger', value: 'text-text' },
   neutral: { bubble: 'bg-surface text-text-muted', value: 'text-text' },
 } as const;

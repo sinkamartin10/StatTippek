@@ -2,7 +2,7 @@
 
 /* ===========================================================================
    TippStats – design tokenek
-   Világos, friss, barátságos („modern cartoon SaaS”) megjelenés.
+   Világos, letisztult tartalom sötétkék kerettel (fejléc, navigáció, lábléc, főoldali hero).
    Minden szín és árnyék innen jön – a komponensek nem használnak nyers hexát.
    =========================================================================== */
 @theme {
@@ -16,10 +16,10 @@
 
   /* --- Szöveg --- */
   --color-text: #1d2539;
-  --color-text-muted: #6d7894;
+  --color-text-muted: #606b84;
 
-  /* --- Márka --- */
-  --color-primary: #4f6ef7;
+  /* --- Márka (a fehér felirat a gombokon legalább 4,5:1 kontrasztú) --- */
+  --color-primary: #4a69f4;
   --color-primary-strong: #3b57df;
   --color-primary-soft: #e8edfe;
   --color-secondary: #ffb648;
@@ -32,6 +32,15 @@
   --color-danger-soft: #fee8ec;
   --color-warning: #f5a524;
   --color-warning-soft: #fff4e2;
+  /* jelvény- és formapötty-szöveg a halvány (soft) háttéren – legalább 4,5:1 */
+  --color-success-text: #0f7a52;
+  --color-danger-text: #c42a42;
+  --color-warning-text: #8f5a00;
+
+  /* --- Sötétkék keret (fejléc, navigáció, lábléc, hero) – a .theme-navy hatókör használja --- */
+  --color-navy: #111a33;
+  --color-navy-2: #18233f;
+  --color-navy-3: #22305a;
 
   /* --- Visszafelé kompatibilis aliasok (a meglévő osztályok ne törjenek el) --- */
   --color-bg: var(--color-background);
@@ -46,10 +55,10 @@
   --font-sans: "Nunito", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "Nunito", ui-sans-serif, system-ui, sans-serif;
 
-  /* --- Lekerekítés és árnyékok (játékos, de visszafogott) --- */
-  --radius-card: 1.25rem;
-  --shadow-soft: 0 1px 2px rgba(29, 37, 57, 0.04), 0 6px 18px -8px rgba(29, 37, 57, 0.12);
-  --shadow-lift: 0 2px 4px rgba(29, 37, 57, 0.05), 0 14px 28px -12px rgba(29, 37, 57, 0.18);
+  /* --- Lekerekítés és árnyékok (visszafogott: a kártyákat elsősorban a keret választja el) --- */
+  --radius-card: 1rem;
+  --shadow-soft: 0 1px 2px rgba(17, 26, 51, 0.04), 0 2px 8px -4px rgba(17, 26, 51, 0.06);
+  --shadow-lift: 0 1px 2px rgba(17, 26, 51, 0.05), 0 10px 24px -12px rgba(17, 26, 51, 0.16);
   --shadow-pop: 0 2px 0 var(--color-primary-strong);
 }
 
@@ -64,6 +73,63 @@ body {
 ::selection { background: rgba(79, 110, 247, 0.22); }
 * { scrollbar-width: thin; scrollbar-color: #c6cfe4 transparent; }
 
+/* ---------------------------------------------------------------------------
+   Sötétkék hatókör: a benne lévő MEGLÉVŐ osztályok (bg-card, text-text-muted, nav-link, btn, input,
+   badge, …) a tokeneken keresztül automatikusan a sötét változatot kapják – komponens-átírás nélkül.
+   A .theme-base a hatókörön belül visszaállítja a világos tokeneket (pl. a hero világos kártyája).
+   --------------------------------------------------------------------------- */
+.theme-navy {
+  --color-background: var(--color-navy);
+  --color-surface: var(--color-navy-3);
+  --color-card: var(--color-navy);
+  --color-card-2: var(--color-navy-2);
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --color-text: #eef2fb;
+  --color-text-muted: #a3aec8;
+  --color-primary-soft: rgba(79, 110, 247, 0.2);
+  --color-primary-strong: #b9c6ff;
+  --color-secondary-soft: rgba(255, 182, 72, 0.16);
+  --color-success-soft: rgba(23, 184, 119, 0.16);
+  --color-danger-soft: rgba(242, 84, 106, 0.16);
+  --color-warning-soft: rgba(245, 165, 36, 0.16);
+  --color-success-text: #5fe0a8;
+  --color-danger-text: #ff8fa0;
+  --color-warning-text: #f8cf7a;
+  --shadow-soft: none;
+  --shadow-lift: 0 18px 36px -16px rgba(0, 0, 0, 0.55);
+  color: var(--color-text);
+  color-scheme: dark;
+}
+/* szöveges kék kiemelés sötét háttéren világosabb árnyalattal (a gombok háttere változatlan) */
+.theme-navy .text-primary { color: #7891ff; }
+.theme-navy .btn-primary { border-color: var(--color-primary); }
+.theme-navy .btn-primary:hover { background: #6280ff; border-color: #6280ff; }
+.theme-navy ::selection { background: rgba(79, 110, 247, 0.45); }
+.theme-base {
+  --color-background: #f4f6fc;
+  --color-surface: #eef1fa;
+  --color-card: #ffffff;
+  --color-card-2: #f7f9fe;
+  --color-border: #e2e7f3;
+  --color-border-strong: #cdd5ea;
+  --color-text: #1d2539;
+  --color-text-muted: #606b84;
+  --color-primary-soft: #e8edfe;
+  --color-primary-strong: #3b57df;
+  --color-secondary-soft: #fff3e0;
+  --color-success-soft: #e3f8ef;
+  --color-danger-soft: #fee8ec;
+  --color-warning-soft: #fff4e2;
+  --color-success-text: #0f7a52;
+  --color-danger-text: #c42a42;
+  --color-warning-text: #8f5a00;
+  --shadow-soft: 0 1px 2px rgba(17, 26, 51, 0.04), 0 2px 8px -4px rgba(17, 26, 51, 0.06);
+  --shadow-lift: 0 1px 2px rgba(17, 26, 51, 0.05), 0 10px 24px -12px rgba(17, 26, 51, 0.16);
+  color: var(--color-text);
+  color-scheme: light;
+}
+
 /* Csak visszafogott animációk; akit zavar, annak kikapcsol */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -75,13 +141,13 @@ body {
 .card-head { @apply flex items-center justify-between gap-3 border-b border-border px-5 py-4; }
 .card-title { @apply text-base font-extrabold tracking-tight text-text; }
 .card-body { @apply p-5; }
-/* Kártya, ami kattintható / kiemelt – finom megemelkedés hoverre */
-.card-lift { @apply transition duration-200 hover:-translate-y-0.5 hover:shadow-lift; }
+/* Kattintható / kiemelt kártya – hoverre csak a keret és az árnyék erősödik (nincs ugrálás) */
+.card-lift { @apply transition-[border-color,box-shadow] duration-200 hover:border-border-strong hover:shadow-lift; }
 
 /* ----------------------------- Gombok ----------------------------- */
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5
-         text-sm font-bold text-text shadow-soft transition duration-150
+         text-sm font-bold text-text transition duration-150
          hover:border-border-strong hover:bg-card-2 active:translate-y-px
          focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/25
          disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0;
@@ -104,13 +170,13 @@ body {
 .field-label { @apply block text-xs font-bold uppercase tracking-wide text-text-muted; }
 
 /* ----------------------------- Jelvények ----------------------------- */
-.badge { @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-extrabold tracking-wide; }
-.badge-green { @apply border-success/25 bg-success-soft text-success; }
-.badge-yellow { @apply border-warning/30 bg-warning-soft text-[#a96b00]; }
-.badge-red { @apply border-danger/25 bg-danger-soft text-danger; }
+.badge { @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold tracking-wide; }
+.badge-green { @apply border-success/25 bg-success-soft text-success-text; }
+.badge-yellow { @apply border-warning/30 bg-warning-soft text-warning-text; }
+.badge-red { @apply border-danger/25 bg-danger-soft text-danger-text; }
 .badge-blue { @apply border-primary/25 bg-primary-soft text-primary-strong; }
 .badge-muted { @apply border-border bg-surface text-text-muted; }
-.badge-demo { @apply border-warning/30 bg-warning-soft text-[#a96b00]; }
+.badge-demo { @apply border-warning/30 bg-warning-soft text-warning-text; }
 .badge-live { @apply border-primary/25 bg-primary-soft text-primary-strong; }
 
 /* ----------------------------- Szűrő-csipeszek ----------------------------- */
@@ -129,11 +195,14 @@ body {
 .nav-link.active { @apply bg-primary-soft text-primary-strong; }
 .nav-link-mobile { @apply flex items-center gap-3 rounded-xl px-3 py-3 text-base font-bold text-text-muted transition hover:bg-surface hover:text-text; }
 .nav-link-mobile.active { @apply bg-primary-soft text-primary-strong; }
+/* billentyűzetfókusz: jól látható keret a világos és a sötétkék fejlécben is */
+.nav-link:focus-visible, .nav-link-mobile:focus-visible { outline: 2px solid var(--color-primary-strong); outline-offset: 2px; }
 
 /* ----------------------------- Táblázat ----------------------------- */
 .table { @apply w-full text-sm; }
-.table th { @apply px-3 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wide text-text-muted; }
+.table th { @apply border-b border-border bg-card-2 px-3 py-2.5 text-left text-[11px] font-extrabold uppercase tracking-wide text-text-muted; }
 .table td { @apply border-t border-border px-3 py-3 align-middle; }
+.table tr:first-child td { @apply border-t-0; }
 .table tr:hover td { @apply bg-card-2; }
 
 /* ----------------------------- Apróságok ----------------------------- */
@@ -141,9 +210,9 @@ body {
 .kpi { @apply text-2xl font-extrabold tracking-tight; }
 .section-title { @apply mb-3 flex items-center gap-2 text-lg font-extrabold tracking-tight; }
 .pill { @apply inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-extrabold; }
-.pill-W { @apply bg-success-soft text-success; }
+.pill-W { @apply bg-success-soft text-success-text; }
 .pill-D { @apply bg-surface text-text-muted; }
-.pill-L { @apply bg-danger-soft text-danger; }
+.pill-L { @apply bg-danger-soft text-danger-text; }
 
 /* Ikonbuborék: egységes, felismerhető ikonkeret a statisztika-kártyákhoz */
 .icon-bubble { @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg; }
@@ -163,6 +232,13 @@ body {
   font-weight: 700;
 }
 .recharts-tooltip-label, .recharts-tooltip-item { color: #1d2539 !important; }
+/* jelmagyarázat: semleges, olvasható szöveg – a színes jelölő mutatja a sorozatot */
+.recharts-legend-item-text { color: var(--color-text-muted) !important; }
+
+/* Állapotszínű SZÖVEG (pl. +/- pp, eredmények) legalább 4,5:1 kontraszttal; az ikonok (svg) élénk színe marad */
+.text-success:not(svg) { color: var(--color-success-text); }
+.text-danger:not(svg) { color: var(--color-danger-text); }
+.text-warning:not(svg) { color: var(--color-warning-text); }
 
 /* ===========================================================================
    Avatar és keret (Tipster Progression)

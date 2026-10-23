@@ -16,7 +16,7 @@ import { PlayerRow } from '../components/PlayerRow';
 
 /** A fokozat kizárólag megjelenítés – nem vásárolható és előnyt nem ad. */
 const TIER_STYLE: Record<TopTier, string> = {
-  GOLD: 'bg-warning-soft text-[#a96b00]',
+  GOLD: 'bg-warning-soft text-warning-text',
   SILVER: 'bg-surface text-text-muted',
   BRONZE: 'bg-surface text-text-muted',
 };

@@ -116,7 +116,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-background text-text">
       {/* ----------------------------- Fejléc ----------------------------- */}
-      <header className="sticky top-0 z-20 border-b border-border bg-card">
+      <header className="theme-navy sticky top-0 z-20 border-b border-border bg-card">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 lg:px-8">
           <Link to="/" aria-label="TippStats – kezdőlap"><Logo /></Link>
 
@@ -167,10 +167,11 @@ export default function Landing() {
         )}
       </header>
 
-      {/* ----------------------------- Hero ----------------------------- */}
+      {/* ----------------------------- Hero (sötétkék sáv) ----------------------------- */}
+      <div className="theme-navy bg-background">
       <section className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:px-8 lg:py-20">
         <div>
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">TippStats</span>
+          <span className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary-strong">TippStats</span>
           <h1 className="mt-3 text-4xl font-black leading-[1.08] tracking-tight md:text-5xl lg:text-6xl">
             Ne csak tippelj.<br /><span className="text-primary">Versenyezz is.</span>
           </h1>
@@ -196,7 +197,7 @@ export default function Landing() {
 
         {/* Termék-előnézet: VALÓDI ranglista, valódi játékosokkal és kinézettel */}
         {preview.data && (
-          <div className="card p-5 shadow-lift">
+          <div className="theme-base card p-5 shadow-lift">
             <div className="flex items-center justify-between gap-3">
               <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-text-muted">
                 <Trophy className="h-3.5 w-3.5 text-secondary" /> Élő ranglista
@@ -213,9 +214,10 @@ export default function Landing() {
           </div>
         )}
       </section>
+      </div>
 
       {/* ----------------------------- Mi ez? ----------------------------- */}
-      <section className="mx-auto max-w-3xl px-4 pb-6 text-center lg:px-8">
+      <section className="mx-auto max-w-3xl px-4 pb-6 pt-14 text-center lg:px-8">
         <h2 className="text-2xl font-black tracking-tight md:text-3xl">Egy hely, ahol a tippjeid számítanak.</h2>
         <p className="mt-4 text-base font-semibold text-text-muted">
           A TippStats segítségével meccsekre tippelhetsz, követheted a teljesítményedet,
@@ -392,7 +394,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-border bg-card">
+      <footer className="theme-navy border-t border-border bg-card">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs font-semibold text-text-muted lg:px-8">
           <span>© {new Date().getFullYear()} TippStats – elemző és kutató eszköz. Nem fogadóiroda, nem ad fogadási tanácsot.</span>
           <div className="flex gap-4">

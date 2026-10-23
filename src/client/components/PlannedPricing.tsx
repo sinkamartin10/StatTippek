@@ -120,7 +120,7 @@ export function ReferralProgramCard() {
             ['03', 'Te kedvezményes áron maradsz', `${PLANNED_PRICE.referrer}, amíg legalább egy meghívottad aktív, fizető előfizető.`],
           ].map(([n, title, text]) => (
             <li key={n} className="flex gap-3">
-              <span className="mono shrink-0 text-2xl font-black text-primary/30">{n}</span>
+              <span className="mono shrink-0 text-2xl font-black text-primary/60">{n}</span>
               <span className="min-w-0">
                 <span className="block text-base font-extrabold">{title}</span>
                 <span className="block text-sm font-semibold text-text-muted">{text}</span>

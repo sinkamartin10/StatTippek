@@ -423,7 +423,7 @@ function HistoryChart({ runs, metric, title }: { runs: DiagnosticRun[]; metric: 
         <div className="font-bold">{fmtTime(new Date(p.t).toISOString())}</div>
         <div className="mono">{fmtNum(p.value, metric === 'advantage' ? 5 : 4)}{p.err ? ` (CI ${fmtNum(p.value - p.err[0], 5)} … ${fmtNum(p.value + p.err[1], 5)})` : ''}</div>
         <div>minta: {p.matches} meccs · {p.observations} tipp</div>
-        {!p.enough && <div className="font-bold text-[#a96b00]">kis minta – nem értelmezhető trendként</div>}
+        {!p.enough && <div className="font-bold text-warning-text">kis minta – nem értelmezhető trendként</div>}
       </div>
     );
   };

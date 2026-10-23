@@ -81,7 +81,7 @@ export default function Profile() {
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-border bg-card-2 p-3.5">
-              <span aria-hidden className={`icon-bubble ${pro ? 'bg-secondary-soft text-[#a96b00]' : 'bg-surface text-text-muted'}`}>{pro ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</span>
+              <span aria-hidden className={`icon-bubble ${pro ? 'bg-secondary-soft text-warning-text' : 'bg-surface text-text-muted'}`}>{pro ? <Crown className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Csomag</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2">

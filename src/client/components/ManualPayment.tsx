@@ -73,11 +73,11 @@ export function PlanPicker({ plans, selected, onSelect, disabled = false }: { pl
           <button key={p.id} type="button" role="radio" aria-checked={on} data-plan={p.id} data-plan-highlighted={p.recommended ? '' : undefined} disabled={disabled} onClick={() => onSelect(p.id)}
             className={`relative flex min-w-0 flex-col rounded-2xl border-2 p-4 pt-5 text-left transition ${frame} ${p.recommended ? 'ring-2 ring-success/30' : ''}`}>
             {p.recommended && (
-              <span className="badge absolute -top-3 left-4 border-success bg-success text-white shadow-sm" data-plan-recommended>Ajánlott</span>
+              <span className="badge absolute -top-3 left-4 border-success-text bg-success-text text-white shadow-sm" data-plan-recommended>Ajánlott</span>
             )}
             <span className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-base font-extrabold">{PLAN_TITLE[p.id]}</span>
-              {on && <span className="inline-flex items-center gap-1 text-xs font-extrabold text-primary" data-plan-selected><Check className="h-3.5 w-3.5" /> Kiválasztva</span>}
+              {on && <span className="inline-flex items-center gap-1 text-xs font-extrabold text-primary-strong" data-plan-selected><Check className="h-3.5 w-3.5" /> Kiválasztva</span>}
             </span>
             <span className="mt-1 block text-2xl font-black tracking-tight text-primary">{formatAmount(p.price.amount, p.price.currency)}</span>
             <span className="block text-sm font-bold text-text-muted">{INTERVAL_LABEL[p.price.interval]} PRO hozzáférés · egyszeri befizetés, nem újul meg automatikusan</span>
@@ -174,7 +174,7 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
           <CopyField label="Számlaszám" value={payee.bank.accountNumber} copyValue={accountNumberDigits(payee.bank.accountNumber)} />
           {reference
             ? <CopyField label="Közlemény (a fiókod e-mail-címe)" value={reference} mono={false} />
-            : <div className="rounded-xl border border-border bg-card-2 p-3 text-sm font-semibold"><span className="block text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Közlemény</span>A TippStats-fiókod e-mail-címe – <Link to="/bejelentkezes" state={{ from: '/pro' }} className="text-primary">jelentkezz be</Link>, hogy itt lásd és másolhasd.</div>}
+            : <div className="rounded-xl border border-border bg-card-2 p-3 text-sm font-semibold"><span className="block text-[11px] font-extrabold uppercase tracking-wide text-text-muted">Közlemény</span>A TippStats-fiókod e-mail-címe – <Link to="/bejelentkezes" state={{ from: '/pro' }} className="text-primary-strong">jelentkezz be</Link>, hogy itt lásd és másolhasd.</div>}
           <CopyField label="Összeg" value={amount} copyValue={String(price.amount)} />
         </section>
 
@@ -199,7 +199,7 @@ export function ManualPaymentSection({ info, loggedIn, onRequested, stripeManage
       <section className="space-y-2" aria-labelledby="fizetes-jelzes">
         <h3 id="fizetes-jelzes" className="text-base font-extrabold">Befizettél? Jelezd nekünk</h3>
         {!loggedIn ? (
-          <p className="text-sm font-semibold">A befizetés jelzéséhez <Link to="/bejelentkezes" state={{ from: '/pro' }} className="text-primary">jelentkezz be</Link>.</p>
+          <p className="text-sm font-semibold">A befizetés jelzéséhez <Link to="/bejelentkezes" state={{ from: '/pro' }} className="text-primary-strong">jelentkezz be</Link>.</p>
         ) : stripeManaged ? (
           <Note>Aktív Stripe-előfizetésed van – kézi befizetésre nincs szükség.</Note>
         ) : pending ? (
