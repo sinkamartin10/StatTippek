@@ -27,6 +27,7 @@ import Following from './pages/Following';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import TipArchive from './pages/TipArchive';
+import PredictionPerformance from './pages/PredictionPerformance';
 import Sources from './pages/Sources';
 import Settings from './pages/Settings';
 import MatchDetail from './pages/MatchDetail';
@@ -81,6 +82,7 @@ export default function App() {
         <Route path="/statisztikak" element={<Stats />} />
         <Route path="/elozmenyek" element={<History />} />
         <Route path="/modell-archivum" element={<TipArchive />} />
+        <Route path="/eloorejelzesek-teljesitmenye" element={<PredictionPerformance />} />
         <Route path="/forrasok" element={<Sources />} />
         <Route path="/beallitasok" element={<Settings />} />
         <Route path="/meccs/:id" element={<MatchDetail />} />

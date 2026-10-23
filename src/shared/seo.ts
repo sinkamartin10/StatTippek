@@ -62,6 +62,11 @@ const PUBLIC: Record<string, Entry> = {
     description: 'A statisztikai motor (xG + Poisson) minden rögzített tippje a valós végeredménnyel elszámolva – a vesztes tippek is, utólagos módosítás nélkül.',
     index: true,
   },
+  '/eloorejelzesek-teljesitmenye': {
+    title: 'AI futball-előrejelzések teljesítménye | TippStats',
+    description: 'Nézd meg a TippStats AI-futball-előrejelzéseinek korábbi eredményeit, találati arányát és teljesítményét.',
+    index: true,
+  },
   '/tippverseny': {
     title: 'Tippverseny – pontok és ranglista | TippStats',
     description: 'Tippeld meg a mérkőzések végeredményét, és gyűjts pontokat: pontos eredmény 5 pont, helyes kimenetel 3 pont.',

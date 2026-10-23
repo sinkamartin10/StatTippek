@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Archive, BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
-  Bell, Radar, Search, Settings, ShoppingBag, Sparkles, Swords, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
+  Bell, Radar, Search, Settings, ShoppingBag, Sparkles, Swords, Target, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
   type LucideIcon,
 } from 'lucide-react';
 import type { AppStatus } from '@shared/types';
@@ -45,6 +45,7 @@ export const EXPLORE = [
   { to: '/elemzes', label: 'Elemzés', icon: Sparkles },
   { to: '/edge-radar', label: 'Edge Radar', icon: Radar },
   { to: '/statisztikak', label: 'Statisztikák', icon: BarChart3 },
+  { to: '/eloorejelzesek-teljesitmenye', label: 'Előrejelzések teljesítménye', icon: Target },
   { to: '/modell-archivum', label: 'Modell-tipp archívum', icon: Archive },
   { to: '/forrasok', label: 'Források', icon: BookOpen },
   { to: '/beallitasok', label: 'Beállítások', icon: Settings },

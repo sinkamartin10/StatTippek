@@ -140,6 +140,8 @@ export interface TipArchiveQuery {
   search?: string;
   scope?: 'all' | 'counted';
   page?: number;
+  /** lapméret (a szerver ARCHIVE_PAGE_MAX-ra korlátozza) */
+  pageSize?: number;
 }
 
 /** Találati arány a lezárt (nyert/vesztett) tippekből. */
