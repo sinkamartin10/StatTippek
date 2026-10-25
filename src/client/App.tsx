@@ -7,6 +7,7 @@ import Matches from './pages/Matches';
 import Analysis from './pages/Analysis';
 import Tips from './pages/Tips';
 import Slips from './pages/Slips';
+import Doubler from './pages/Doubler';
 import EdgeRadarPage from './pages/EdgeRadar';
 import Pro from './pages/Pro';
 import Profile from './pages/Profile';
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/elemzes" element={<Analysis />} />
         <Route path="/tippek" element={<Tips />} />
         <Route path="/szelvenyek" element={<Slips />} />
+        <Route path="/duplazo" element={<Doubler />} />
         <Route path="/edge-radar" element={<EdgeRadarPage />} />
         <Route path="/pro" element={<Pro />} />
         <Route path="/profil" element={<Profile />} />

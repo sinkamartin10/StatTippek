@@ -72,6 +72,16 @@ const PUBLIC: Record<string, Entry> = {
     description: 'Tippeld meg a mérkőzések végeredményét, és gyűjts pontokat: pontos eredmény 5 pont, helyes kimenetel 3 pont.',
     index: true,
   },
+  '/kozosseg': {
+    title: 'Közösség – játékosok bejegyzései és tippjei | TippStats',
+    description: 'A TippStats közösségi oldala: a játékosok gondolatai és előrejelzései a mérkőzésekről. Olvasd a bejegyzéseket, lájkold őket, és oszd meg a sajátodat.',
+    index: true,
+  },
+  '/duplazo': {
+    title: 'Duplázó – lépésenkénti 2,00-s szelvényterv | TippStats',
+    description: 'Számold ki, hány duplázás kell a célösszegedhez, és nézd meg a lépésenkénti, kb. 2,00-s összoddsú szelvényeket valódi oddsokkal (PRO). Becslés, nem garantált nyeremény.',
+    index: true,
+  },
   '/forrasok': {
     title: 'Források – honnan jönnek az adatok? | TippStats',
     description: 'Minden külső információ forrással, URL-lel és lekérési idővel. URL nélküli tétel nem tekinthető ellenőrzöttnek.',
@@ -84,7 +94,7 @@ const NOINDEX_DESC = 'TippStats – futballstatisztika és mérkőzéselemzés.'
 const PRIVATE: Record<string, string> = {
   '/dashboard': 'Áttekintés', '/bejelentkezes': 'Bejelentkezés', '/regisztracio': 'Regisztráció',
   '/elfelejtett-jelszo': 'Elfelejtett jelszó', '/uj-jelszo': 'Új jelszó', '/profil': 'Profil',
-  '/kovetes': 'Követés', '/kozosseg': 'Közösség', '/statisztikaim': 'Statisztikáim', '/ertesitesek': 'Értesítések', '/shop': 'Shop',
+  '/kovetes': 'Követés', '/statisztikaim': 'Statisztikáim', '/ertesitesek': 'Értesítések', '/shop': 'Shop',
   '/battles': 'Párbajok', '/szelvenyek': 'Szelvények', '/edge-radar': 'Edge Radar', '/felfedezes': 'Felfedezés',
   '/elozmenyek': 'Előzmények', '/beallitasok': 'Beállítások', '/kereses': 'Keresés',
   '/admin/tippverseny': 'Admin', '/admin/modell-tanulas': 'Admin', '/admin/pro-befizetesek': 'Admin', '/admin/pro-statisztika': 'Admin',

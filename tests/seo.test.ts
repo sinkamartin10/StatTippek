@@ -55,6 +55,25 @@ describe('Útvonaltábla', () => {
     }
   });
 
+  it('Közösség és Duplázó: nyilvános, indexelhető, saját canonicallal és egyedi címmel', () => {
+    for (const p of ['/kozosseg', '/duplazo']) {
+      const m = metaForPath(p);
+      expect(m, p).toMatchObject({ status: 200, index: true, canonicalPath: p });
+      expect(renderSeoHead(m, true), p).toContain('<meta name="robots" content="index, follow" />');
+      expect(renderSeoHead(m, true), p).toContain(`<link rel="canonical" href="https://tippstats.hu${p}" />`);
+      expect(metaForPath(`${p}/`).canonicalPath, p).toBe(p);
+    }
+    expect(metaForPath('/kozosseg').title).toMatch(/Közösség/);
+    expect(metaForPath('/duplazo').title).toMatch(/Duplázó/);
+  });
+
+  it('a többi privát / személyes oldal továbbra is noindex (a két oldal megnyitása nem érinti őket)', () => {
+    for (const p of ['/kovetes', '/szelvenyek', '/statisztikaim', '/ertesitesek', '/shop', '/profil', '/beallitasok', '/elozmenyek', '/battles', '/dashboard', '/bejelentkezes', '/regisztracio', '/admin/tippverseny', '/admin/modell-tanulas', '/jatekos/Gabor07']) {
+      expect(metaForPath(p), p).toMatchObject({ status: 200, index: false, canonicalPath: null });
+      expect(renderSeoHead(metaForPath(p), true), p).toContain('noindex');
+    }
+  });
+
   it('záró perjel: ugyanaz az oldal, a canonical perjel nélküli', () => {
     expect(metaForPath('/pro/')).toMatchObject({ status: 200, canonicalPath: '/pro' });
   });
@@ -74,6 +93,17 @@ describe('Statikus fájlok', () => {
       expect(metaForPath(new URL(u).pathname), u).toMatchObject({ status: 200, index: true });
     }
     for (const priv of ['bejelentkezes', 'regisztracio', 'admin', 'profil', 'beallitasok']) expect(xml).not.toContain(priv);
+  });
+
+  it('sitemap.xml: a Közösség és a Duplázó kanonikus URL-je szerepel, pontosan egyszer', () => {
+    const locs = [...read('public/sitemap.xml').matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    for (const u of ['https://tippstats.hu/kozosseg', 'https://tippstats.hu/duplazo']) expect(locs.filter((l) => l === u), u).toHaveLength(1);
+    expect(locs.every((l) => l.startsWith('https://tippstats.hu/'))).toBe(true);
+  });
+
+  it('robots.txt: a Közösség és a Duplázó feltérképezése nincs tiltva', () => {
+    const rules = read('public/robots.txt').split('\n').filter((l) => /^Disallow:/i.test(l)).map((l) => l.replace(/^Disallow:\s*/i, '').trim()).filter(Boolean);
+    for (const p of ['/kozosseg', '/duplazo']) expect(rules.some((r) => p.startsWith(r)), p).toBe(false);
   });
 
   it('robots.txt: mindent enged (az admint kivéve), és a sitemapre hivatkozik', () => {
@@ -182,6 +212,24 @@ describe('Worker', () => {
     const missing = await get('https://stattippek.sinkamartin10.workers.dev/ez-nem-letezik-12345');
     expect(missing.status).toBe(404);
     expect(await head(missing)).toMatchObject({ canonical: null, robots: 'noindex' });
+  });
+
+  it('Közösség és Duplázó a tippstats.hu-n: 200, index, follow, saját canonical, nincs X-Robots-Tag', async () => {
+    for (const p of ['/kozosseg', '/duplazo']) {
+      const r = await get(`https://tippstats.hu${p}`);
+      expect(r.status, p).toBe(200);
+      expect(r.headers.get('X-Robots-Tag'), p).toBeNull();
+      expect(await head(r), p).toMatchObject({ robots: 'index, follow', canonical: `https://tippstats.hu${p}`, title: metaForPath(p).title });
+    }
+  });
+
+  it('Közösség és Duplázó a workers.dev-en: noindex, follow, a canonical a tippstats.hu megfelelő oldalára mutat', async () => {
+    for (const p of ['/kozosseg', '/duplazo']) {
+      const r = await get(`https://stattippek.sinkamartin10.workers.dev${p}`);
+      expect(r.status, p).toBe(200);
+      expect(r.headers.get('X-Robots-Tag'), p).toBe('noindex, follow');
+      expect(await head(r), p).toMatchObject({ robots: 'noindex, follow', canonical: `https://tippstats.hu${p}` });
+    }
   });
 
   it('wrangler.jsonc: a workers.dev engedélyezve marad a tippstats.hu egyéni domain mellett (routes mellett a wrangler alapból letiltaná)', () => {

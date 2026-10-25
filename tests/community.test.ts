@@ -368,10 +368,10 @@ describe('Közösség – megjelenítés', () => {
 });
 
 describe('Közösség – navigáció és SEO', () => {
-  it('K26. a „Játék” menüben elérhető; létező, de nem indexelt oldal (felhasználói tartalom)', () => {
+  it('K26. a „Játék” menüben elérhető; nyilvános, indexelhető oldal saját canonicallal', () => {
     expect(PLAY.map((i) => i.to)).toContain('/kozosseg');
     const m = metaForPath('/kozosseg');
-    expect(m).toMatchObject({ status: 200, index: false, canonicalPath: null });
-    expect(renderSeoHead(m, true)).toContain('noindex');
+    expect(m).toMatchObject({ status: 200, index: true, canonicalPath: '/kozosseg' });
+    expect(renderSeoHead(m, true)).toContain('<meta name="robots" content="index, follow" />');
   });
 });
