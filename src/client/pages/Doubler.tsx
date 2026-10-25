@@ -10,9 +10,9 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
-import { fmtDate, fmtDateTime, odds as fo, pct, todayKey } from '../lib/format';
+import { fmtDate, fmtDateTime, fmtTime, odds as fo, pct, todayKey } from '../lib/format';
 import {
-  DEFAULT_STAKE, MAX_STEPS, TARGET_PRESETS, buildChain, chainProbability, fmtFt, jointProbOf, legReason, parseAmount, planSteps,
+  DEFAULT_STAKE, MAX_STEPS, SEARCH_DAYS, TARGET_PRESETS, buildChain, chainProbability, firstKickoff, fmtFt, jointProbOf, legReason, parseAmount, planSteps,
   type ChainStep, type Plan,
 } from '../lib/doubler';
 import { LockedBlock, usePlan } from '../auth/PlanContext';
@@ -57,7 +57,9 @@ export function StepCard({ step, isLast }: { step: ChainStep; isLast: boolean })
   return (
     <Card
       title={<span>{row.step}. lépés · {fmtFt(row.stake)} → kb. {fmtFt(row.goal)}</span>}
-      right={<span className="text-xs font-semibold text-text-muted">{dayLabel(step.date)}</span>}
+      right={slip
+        ? <span className="text-xs font-bold text-text">Kezdés: {dayLabel(step.date)}, {fmtTime(firstKickoff(slip))}</span>
+        : step.searched && <span className="text-xs font-semibold text-text-muted">Vizsgált napok: {dayLabel(step.searched.from)} – {dayLabel(step.searched.to)}</span>}
     >
       {!slip ? (
         <EmptyState emoji="🧩" title="Nincs megfelelő szelvény" text={step.note ?? undefined} />
@@ -184,7 +186,7 @@ export default function Doubler() {
       {!pro ? (
         <LockedBlock title="Duplázó – PRO" text="A szelvényeket a PRO szelvényépítő állítja össze a teljes elemzésből és valódi oddsokból – PRO előfizetéssel." />
       ) : running && !chain ? (
-        <Card><Loading text={`${progress}. lépés: mérkőzések elemzése és szelvény keresése – első alkalommal ez eltarthat egy ideig…`} /></Card>
+        <Card><Loading text={`${progress}. lépés: szelvény keresése napról napra (legfeljebb ${SEARCH_DAYS} nap) – első alkalommal ez eltarthat egy ideig…`} /></Card>
       ) : error ? (
         <ErrorBox message={error} />
       ) : chain && (

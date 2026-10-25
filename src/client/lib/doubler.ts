@@ -92,12 +92,14 @@ export const grossPayout = (stake: number, totalOdds: number) => Math.round(stak
 /** A lábak modell-valószínűségeinek szorzata (függetlenséget feltételez – ahogy a szelvényépítő is). */
 export const jointProbOf = (legs: Pick<SlipLeg, 'modelProb'>[]) => legs.reduce((p, l) => p * l.modelProb, 1);
 
-export type Rejection = 'missing_odds' | 'duplicate_match' | 'weak_data' | 'odds_out_of_range' | 'too_early' | 'used_match';
+export type Rejection = 'missing_odds' | 'missing_kickoff' | 'duplicate_match' | 'weak_data' | 'odds_out_of_range' | 'too_early' | 'used_match';
 
 /** Miért nem használható egy jelölt szelvény a Duplázóban (null: használható). */
 export function rejectReason(slip: Slip, opts: { notBefore?: number; usedMatches?: Set<string> } = {}): Rejection | null {
   const total = totalOddsOf(slip.legs);
   if (total == null) return 'missing_odds';
+  // értelmezhetetlen kezdés nélkül az időrend nem ellenőrizhető (NaN-nal minden összehasonlítás hamis lenne)
+  if (slip.legs.some((l) => !Number.isFinite(Date.parse(l.kickoff)))) return 'missing_kickoff';
   const ids = slip.legs.map((l) => l.matchId);
   if (new Set(ids).size !== ids.length) return 'duplicate_match';
   if (ids.some((id) => opts.usedMatches?.has(id))) return 'used_match';
@@ -107,19 +109,45 @@ export function rejectReason(slip: Slip, opts: { notBefore?: number; usedMatches
   return null;
 }
 
+/** A szelvény utolsó mérkőzésének kezdése (ms). */
+const lastKickoff = (slip: Slip) => Math.max(...slip.legs.map((l) => Date.parse(l.kickoff)));
+
+/** A szelvény első mérkőzésének kezdése (ISO) – ekkor indul a lépés. */
+export const firstKickoff = (slip: Slip) => new Date(Math.min(...slip.legs.map((l) => Date.parse(l.kickoff)))).toISOString();
+
 /**
- * A legjobb használható szelvény: a modell szerinti legnagyobb együttes esély; holtversenyben a 2,00-hoz
- * közelebbi összodds. Ha egyik jelölt sem felel meg, null – gyenge szelvénnyel nem „töltjük ki” a lépést.
+ * A választott szelvény a használhatók közül: a LEGKORÁBBI (az utolsó mérkőzése a legkorábban kezdődik –
+ * így a sorozat a lehető leghamarabb haladhat); holtversenyben a modell szerinti nagyobb együttes esély,
+ * majd a 2,00-hoz közelebbi összodds, végül a lábak (mérkőzés + piac) szerinti sorrend – így a választás a
+ * jelöltek sorrendjétől függetlenül determinisztikus. Ha egyik jelölt sem felel meg, null – gyenge
+ * szelvénnyel nem „töltjük ki” a lépést.
  */
 export function pickSlip(slips: Slip[], opts: { notBefore?: number; usedMatches?: Set<string> } = {}): Slip | null {
   const ok = slips.filter((s) => rejectReason(s, opts) == null);
-  ok.sort((a, b) => (jointProbOf(b.legs) - jointProbOf(a.legs))
-    || (Math.abs(totalOddsOf(a.legs)! - 2) - Math.abs(totalOddsOf(b.legs)! - 2)));
+  ok.sort((a, b) => (lastKickoff(a) - lastKickoff(b))
+    || (jointProbOf(b.legs) - jointProbOf(a.legs))
+    || (Math.abs(totalOddsOf(a.legs)! - 2) - Math.abs(totalOddsOf(b.legs)! - 2))
+    || signature(a).localeCompare(signature(b)));
   return ok[0] ?? null;
 }
 
+/** A szelvény azonosító lenyomata (rendezett mérkőzés:piac lista) – a végső, determinisztikus döntéshez. */
+const signature = (slip: Slip) => slip.legs.map((l) => `${l.matchId}:${l.market}`).sort().join('|');
+
 /** A szelvény utolsó mérkőzésének BECSÜLT vége (kezdés + 2,5 óra) – a következő lépés legkorábbi kezdete. */
-export const slipEndsAt = (slip: Slip) => Math.max(...slip.legs.map((l) => Date.parse(l.kickoff))) + MATCH_SPAN_MS;
+export const slipEndsAt = (slip: Slip) => lastKickoff(slip) + MATCH_SPAN_MS;
+
+/** Egy pillanat helyi naptári napja (YYYY-MM-DD) – ugyanaz a naptár, mint a `todayKey()`-é. */
+export function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Két naptári nap (YYYY-MM-DD) távolsága napokban – időzóna- és óraátállítás-független. */
+export function daysBetween(from: string, to: string): number {
+  const utc = (k: string) => { const [y, m, d] = k.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
 
 /** Rövid, a meglévő elemzés adataiból összerakott indoklás egy lábhoz (nincs kitalált szöveg). */
 export function legReason(l: SlipLeg): string {
@@ -129,10 +157,15 @@ export function legReason(l: SlipLeg): string {
   return parts.join(' · ');
 }
 
+/** Lépésenként ennyi naptári napot vizsgálunk (a kezdőnap + a következő 4 nap). */
+export const SEARCH_DAYS = 5;
+
 export interface ChainStep {
   row: StepRow;
-  /** a lépés napja (YYYY-MM-DD) */
+  /** a szelvény napja (YYYY-MM-DD) – üres lépésnél a vizsgált időszak első napja */
   date: string;
+  /** a lépéshez átvizsgált időszak (YYYY-MM-DD, mindkét nap benne van); null, ha nem is kerestünk */
+  searched: { from: string; to: string } | null;
   slip: Slip | null;
   totalOdds: number | null;
   payout: number | null;
@@ -143,40 +176,65 @@ export interface ChainStep {
 export type SlipFetcher = (params: Record<string, string | undefined>) => Promise<{ slips: Slip[] }>;
 
 /**
- * A lépések szelvényei: az i. lépés az i. nap (ma, holnap, …) mérkőzéseiből, és csak az előző lépés
- * mérkőzéseinek vége után kezdődő lábakból áll. Az első hiányzó lépésnél megáll – a lánc ott megszakad,
- * a későbbi lépésekhez nem generálunk szelvényt.
+ * A lépések szelvényei. Minden lépés NAPRÓL NAPRA keres egy `SEARCH_DAYS` napos ablakban (az 1. lépés a
+ * mai naptól, a későbbiek az előző szelvény becsült végének napjától), és az első olyan napnál áll meg, ahol van használható
+ * szelvény – így mindig a legkorábbi megfelelő mérkőzések kerülnek sorra. Napon belül előbb 2, majd 3 lábas
+ * jelöltet kér a meglévő szelvényépítőtől (a szűrők változatlanok).
+ *
+ * Kizárva: a már elkezdődött (`now` előtti) és az előző lépés mérkőzéseinek becsült vége előtt kezdődő
+ * mérkőzés, valamint a sorozatban már szereplő mérkőzés. Ha a teljes ablakban sincs megfelelő szelvény, a
+ * lépés üres marad, és a lánc ott megszakad – a későbbi lépésekhez nem generálunk szelvényt.
+ * Egy (nap, lábszám) párt egy futás alatt csak egyszer kérünk le.
  */
 export async function buildChain(
   rows: StepRow[],
   dateOf: (offsetDays: number) => string,
   fetchSlips: SlipFetcher,
   onProgress?: (step: number) => void,
+  now: number = Date.now(),
 ): Promise<ChainStep[]> {
   const out: ChainStep[] = [];
   const used = new Set<string>();
-  let notBefore: number | undefined;
+  const cache = new Map<string, Promise<{ slips: Slip[] }>>();
+  const fetchDay = (date: string, legs: number) => {
+    const key = `${date}|${legs}`;
+    if (!cache.has(key)) {
+      cache.set(key, fetchSlips({ from: date, to: date, legs: String(legs), minOdds: String(ODDS_MIN), minLegProb: String(MIN_LEG_PROB) }));
+    }
+    return cache.get(key)!;
+  };
+  // a pontosan „most” kezdődő mérkőzés már elkezdettnek számít: csak a most UTÁN kezdődő választható
+  let notBefore = now + 1;
+  let startOffset = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const date = dateOf(i);
     onProgress?.(row.step);
+    const searched = { from: dateOf(startOffset), to: dateOf(startOffset + SEARCH_DAYS - 1) };
     let slip: Slip | null = null;
-    for (const legs of LEG_COUNTS) {
-      const r = await fetchSlips({ from: date, to: date, legs: String(legs), minOdds: String(ODDS_MIN), minLegProb: String(MIN_LEG_PROB) });
-      slip = pickSlip(r.slips, { notBefore, usedMatches: used });
-      if (slip) break;
+    let foundOffset = startOffset;
+    search: for (let d = startOffset; d < startOffset + SEARCH_DAYS; d++) {
+      for (const legs of LEG_COUNTS) {
+        slip = pickSlip((await fetchDay(dateOf(d), legs)).slips, { notBefore, usedMatches: used });
+        if (slip) { foundOffset = d; break search; }
+      }
     }
     if (!slip) {
-      out.push({ row, date, slip: null, totalOdds: null, payout: null, note: 'Erre a napra nincs megfelelő adatokkal rendelkező, kb. 2,00-s összoddsú szelvény.' });
+      out.push({
+        row, date: searched.from, searched, slip: null, totalOdds: null, payout: null,
+        note: 'A vizsgált időszakban nincs megfelelő adatokkal rendelkező, kb. 2,00-s összoddsú szelvény.',
+      });
       for (const rest of rows.slice(i + 1)) {
-        out.push({ row: rest, date: dateOf(rest.step - 1), slip: null, totalOdds: null, payout: null, note: 'Nem generálható: az előző lépéshez nincs szelvény.' });
+        out.push({ row: rest, date: searched.from, searched: null, slip: null, totalOdds: null, payout: null, note: 'Nem generálható: az előző lépéshez nincs szelvény.' });
       }
       break;
     }
     const totalOdds = totalOddsOf(slip.legs)!;
     for (const l of slip.legs) used.add(l.matchId);
     notBefore = slipEndsAt(slip);
-    out.push({ row, date, slip, totalOdds, payout: grossPayout(row.stake, totalOdds), note: null });
+    // A következő lépés ablaka a szelvény BECSÜLT végének napján kezdődik (ha az aznapi meccsek elég korán
+    // véget érnek, még aznap is): így éjfél utáni befejezésnél sem vész el egy nap a következő 5 napos ablakból.
+    startOffset = Math.max(foundOffset, daysBetween(dateOf(0), localDateKey(new Date(notBefore).toISOString())));
+    out.push({ row, date: localDateKey(firstKickoff(slip)), searched, slip, totalOdds, payout: grossPayout(row.stake, totalOdds), note: null });
   }
   return out;
 }
