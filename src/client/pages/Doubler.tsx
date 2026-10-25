@@ -1,25 +1,34 @@
 /**
- * Duplázó – kezdőösszegből célösszeg felé, lépésenként kb. 2,00-s összoddsú szelvényekkel.
+ * Duplázó – kezdőösszegből célösszeg felé, lépésenként kb. 2,00-s összoddsú szelvényekkel, KIZÁRÓLAG a
+ * felhasználó által kiválasztott nap mérkőzéseiből (alapértelmezés: ma). Másik napra soha nem keres.
  *
  * A szelvényeket a MEGLÉVŐ szelvényépítő adja (`GET /api/slips`, PRO – a szerver dönti el); a felület
  * csak kiválasztja a duplázáshoz illő, megfelelő adatú jelöltet, és lépésekbe rendezi (lásd
  * `lib/doubler`). Oddsot, mérkőzést vagy tippet nem pótol: ahol nincs megfelelő szelvény, azt jelzi.
  * A kifizetés becslés; fogadást nem ad fel, pénzt nem kezel.
  */
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { CalendarDays, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtDate, fmtDateTime, fmtTime, odds as fo, pct, todayKey } from '../lib/format';
 import {
-  DEFAULT_STAKE, MAX_STEPS, RETRY_DELAYS_MS, SEARCH_DAYS, TARGET_PRESETS, buildChain, chainProbability, firstKickoff, fmtFt, jointProbOf, legReason,
-  parseAmount, planSteps, type ChainProgress, type ChainStep, type Plan,
+  DEFAULT_STAKE, MAX_DAYS_AHEAD, MAX_STEPS, NO_DOUBLER_TEXT, RETRY_DELAYS_MS, TARGET_PRESETS, buildChain, chainForDate, chainProbability,
+  checkDoublerDate, firstKickoff, fmtFt, jointProbOf, legReason, parseAmount, planSteps,
+  type ChainProgress, type ChainResult, type ChainStep, type Plan,
 } from '../lib/doubler';
 import { LockedBlock, usePlan } from '../auth/PlanContext';
 import { Card, ChipGroup, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
 import { Matchup, splitMatchLabel } from '../components/TeamCrest';
 
-const dayLabel = (date: string) => (date === todayKey() ? 'ma' : date === todayKey(1) ? 'holnap' : fmtDate(`${date}T12:00:00`));
+/** A nap felirata: „ma”, „holnap”, különben a dátum. */
+export const dayLabel = (date: string) => (date === todayKey() ? 'ma' : date === todayKey(1) ? 'holnap' : fmtDate(`${date}T12:00:00`));
+/** A nap teljes felirata a dátummal (pl. „ma, 2026. 10. 25.”). */
+const dayFull = (date: string) => {
+  const d = fmtDate(`${date}T12:00:00`);
+  const l = dayLabel(date);
+  return l === d ? d : `${l}, ${d}`;
+};
 
 /** A tervezett lépések táblázata (a duplázás matematikája – tipp nélkül is látható). */
 export function PlanTable({ plan, target }: { plan: Plan; target: number | null }) {
@@ -57,21 +66,14 @@ export function StepCard({ step, isLast }: { step: ChainStep; isLast: boolean })
   return (
     <Card
       title={<span>{row.step}. lépés · {fmtFt(row.stake)} → kb. {fmtFt(row.goal)}</span>}
-      right={slip
-        ? <span className="text-xs font-bold text-text">Kezdés: {dayLabel(step.date)}, {fmtTime(firstKickoff(slip))}</span>
-        : step.searched && <span className="text-xs font-semibold text-text-muted">Vizsgált napok: {dayLabel(step.searched.from)} – {dayLabel(step.searched.to)}</span>}
+      right={slip && <span className="text-xs font-bold text-text">Kezdés: {dayLabel(step.date)}, {fmtTime(firstKickoff(slip))}</span>}
     >
       {!slip ? (
         step.incomplete
-          ? <EmptyState emoji="⚠️" title="A keresés nem fejeződött be" text={`${step.note ?? ''} Nem vizsgálható napok: ${step.failedDays.map(dayLabel).join(', ')}.`} />
-          : <EmptyState emoji="🧩" title="Nincs megfelelő szelvény" text={step.note ?? undefined} />
+          ? <EmptyState emoji="⚠️" title="A keresés nem fejeződött be" text={step.note ?? undefined} />
+          : <EmptyState emoji="🧩" title={step.note === NO_DOUBLER_TEXT ? NO_DOUBLER_TEXT : 'Nincs megfelelő szelvény'} text={step.note === NO_DOUBLER_TEXT ? undefined : step.note ?? undefined} />
       ) : (
         <div className="space-y-3">
-          {step.failedDays.length > 0 && (
-            <p className="text-xs font-bold text-warning-text">
-              Figyelem: {step.failedDays.map(dayLabel).join(', ')} lekérése nem sikerült, ezért ezeken a napokon nem kerestünk – korábbi megfelelő szelvény is lehetett.
-            </p>
-          )}
           <ul className="space-y-2">
             {slip.legs.map((l) => (
               <li key={l.matchId + l.market} className="rounded-xl border border-border bg-card-2 p-3 text-sm">
@@ -80,7 +82,7 @@ export function StepCard({ step, isLast }: { step: ChainStep; isLast: boolean })
                     <Link to={`/meccs/${encodeURIComponent(l.matchId)}#tippek`} className="flex min-w-0 font-extrabold transition hover:text-primary">
                       <Matchup home={splitMatchLabel(l.matchLabel)[0]} away={splitMatchLabel(l.matchLabel)[1]} homeLogo={l.homeLogo} awayLogo={l.awayLogo} />
                     </Link>
-                    <div className="text-xs font-semibold text-text-muted">{l.leagueName} · {fmtDateTime(l.kickoff)}</div>
+                    <div className="text-xs font-semibold text-text-muted">{l.leagueName} · kezdés: {fmtDateTime(l.kickoff)}</div>
                   </div>
                   <div className="mono shrink-0 text-right text-base font-extrabold" title="A tipp oddsa">{fo(l.odds)}</div>
                 </div>
@@ -112,30 +114,43 @@ export function StepCard({ step, isLast }: { step: ChainStep; isLast: boolean })
 
 export default function Doubler() {
   const { pro } = usePlan();
+  const [date, setDate] = useState(todayKey());
   const [stakeText, setStakeText] = useState(String(DEFAULT_STAKE));
   const [targetChoice, setTargetChoice] = useState<string>(String(TARGET_PRESETS[0]));
   const [customText, setCustomText] = useState('');
   const [progress, setProgress] = useState<ChainProgress | null>(null);
-  const [chain, setChain] = useState<ChainStep[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ChainResult | null>(null);
+  const [error, setError] = useState<{ date: string; message: string } | null>(null);
+  /** a legutóbb indított generálás – egy korábbi, később befejeződő futás nem írhatja felül az újabbat */
+  const runId = useRef(0);
 
+  const today = todayKey();
+  const lastDay = todayKey(MAX_DAYS_AHEAD);
+  const dateError = checkDoublerDate(date, today, lastDay);
   const stake = parseAmount(stakeText);
   const target = targetChoice === 'custom' ? parseAmount(customText) : Number(targetChoice);
   const plan = planSteps(stake, target);
   const running = progress != null;
+  const chain = chainForDate(result, date);
+  const shownError = error && error.date === date ? error.message : null;
+
+  /** Bármely beállítás változásakor a korábbi eredmény eltűnik (a régi szelvények nem maradhatnak félrevezetően). */
+  const reset = () => { setResult(null); setError(null); };
 
   const run = async () => {
-    if (!plan.ok || running) return;
-    setError(null);
-    setChain(null);
-    setProgress({ step: 1, date: todayKey(), attempt: 1 });
+    if (!plan.ok || running || dateError) return;
+    const id = ++runId.current;
+    const forDate = date;
+    reset();
+    setProgress({ step: 1, attempt: 1 });
     try {
-      // a napi lekérés időkorlátja a `signal`-on át érvényesül (lásd lib/doubler: fetchDayWithRetry)
-      setChain(await buildChain(plan.rows, todayKey, (params, signal) => api.slips(params, { signal }), setProgress));
+      // a lekérés időkorlátja a `signal`-on át érvényesül (lásd lib/doubler: fetchDayWithRetry)
+      const steps = await buildChain(plan.rows, forDate, (params, signal) => api.slips(params, { signal }), (p) => { if (id === runId.current) setProgress(p); });
+      if (id === runId.current) setResult({ date: forDate, chain: steps });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ismeretlen hiba.');
+      if (id === runId.current) setError({ date: forDate, message: e instanceof Error ? e.message : 'Ismeretlen hiba.' });
     } finally {
-      setProgress(null);
+      if (id === runId.current) setProgress(null);
     }
   };
 
@@ -144,14 +159,15 @@ export default function Doubler() {
   const chance = chain ? chainProbability(chain) : null;
   const complete = chain != null && chance != null;
   const incomplete = chain?.some((s) => s.incomplete) ?? false;
-  const progressText = progress && `${progress.step}. lépés · ${dayLabel(progress.date)} vizsgálata${progress.attempt > 1 ? ` – újrapróbálkozás (${progress.attempt}/${RETRY_DELAYS_MS.length + 1})` : ''}`;
+  const noneAtAll = chain != null && !chain[0]?.slip && !incomplete;
+  const progressText = progress && `${progress.step}. lépés összeállítása (${dayFull(date)})${progress.attempt > 1 ? ` – újrapróbálkozás (${progress.attempt}/${RETRY_DELAYS_MS.length + 1})` : ''}`;
 
   return (
     <div className="space-y-6">
       <PageHeader
         emoji="✌️"
         title="Duplázó"
-        text="Add meg a kezdő- és a célösszeget: lépésenként egy-egy kb. 2,00-s összoddsú szelvényt állítunk össze a meglévő elemzésekből és valódi oddsokból."
+        text="Válassz napot, add meg a kezdő- és a célösszeget: a kiválasztott nap mérkőzéseiből lépésenként egy-egy kb. 2,00-s összoddsú szelvényt állítunk össze a meglévő elemzésekből és valódi oddsokból."
       />
 
       <Note tone="warn">
@@ -161,9 +177,23 @@ export default function Doubler() {
 
       <Card title="Beállítások">
         <form onSubmit={generate} className="space-y-4">
+          <label className="field-label block max-w-xs">
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-primary" aria-hidden /> Nap</span>
+            <input
+              type="date"
+              className="input mt-1.5"
+              value={date}
+              min={today}
+              max={lastDay}
+              disabled={running}
+              onChange={(e) => { setDate(e.target.value); reset(); }}
+            />
+          </label>
+          {dateError && <p role="alert" className="text-sm font-semibold text-danger">{dateError}</p>}
+
           <div className="grid gap-4 md:grid-cols-2">
             <label className="field-label min-w-0">Kezdőösszeg (Ft)
-              <input className="input mt-1.5" inputMode="numeric" value={stakeText} onChange={(e) => { setStakeText(e.target.value); setChain(null); }} />
+              <input className="input mt-1.5" inputMode="numeric" value={stakeText} onChange={(e) => { setStakeText(e.target.value); reset(); }} />
             </label>
             <div className="min-w-0">
               <span className="field-label">Célösszeg</span>
@@ -171,13 +201,13 @@ export default function Doubler() {
                 <ChipGroup
                   ariaLabel="Célösszeg"
                   value={targetChoice}
-                  onChange={(v) => { setTargetChoice(v); setChain(null); }}
+                  onChange={(v) => { setTargetChoice(v); reset(); }}
                   options={[...TARGET_PRESETS.map((t) => ({ value: String(t), label: fmtFt(t) })), { value: 'custom', label: 'Egyéni' }]}
                 />
               </div>
               {targetChoice === 'custom' && (
                 <label className="field-label mt-3 block">Egyéni célösszeg (Ft)
-                  <input className="input mt-1.5" inputMode="numeric" placeholder="pl. 10 000" value={customText} onChange={(e) => { setCustomText(e.target.value); setChain(null); }} />
+                  <input className="input mt-1.5" inputMode="numeric" placeholder="pl. 10 000" value={customText} onChange={(e) => { setCustomText(e.target.value); reset(); }} />
                 </label>
               )}
             </div>
@@ -185,9 +215,15 @@ export default function Doubler() {
 
           <PlanTable plan={plan} target={target} />
 
+          {!dateError && (
+            <p className="text-sm font-semibold text-text-muted" data-doubler-day>
+              A szelvények erre a napra készülnek: <b className="text-text">{dayFull(date)}</b> – kizárólag ennek a napnak a még el nem kezdődött mérkőzéseiből.
+            </p>
+          )}
+
           {pro ? (
             <div className="flex justify-end">
-              <button type="submit" className="btn btn-primary" disabled={!plan.ok || running}>
+              <button type="submit" className="btn btn-primary" disabled={!plan.ok || running || !!dateError}>
                 <Sparkles className="h-4 w-4" aria-hidden /> {running ? 'Keresés folyamatban…' : 'Szelvény generálása'}
               </button>
             </div>
@@ -198,34 +234,38 @@ export default function Doubler() {
       {!pro ? (
         <LockedBlock title="Duplázó – PRO" text="A szelvényeket a PRO szelvényépítő állítja össze a teljes elemzésből és valódi oddsokból – PRO előfizetéssel." />
       ) : running && !chain ? (
-        <Card><Loading text={`${progressText} – napról napra, legfeljebb ${SEARCH_DAYS} nap; egy forgalmas nap első elemzése perceket is igénybe vehet…`} /></Card>
-      ) : error ? (
-        <ErrorBox message={error} />
+        <Card><Loading text={`${progressText} – egy forgalmas nap első elemzése akár percekig is tarthat…`} /></Card>
+      ) : shownError ? (
+        <ErrorBox message={shownError} />
       ) : chain && (
         <section aria-label="Lépések" className="space-y-4">
           {incomplete ? (
             <Note tone="warn">
               <span className="block">
-                Egyes napok lekérése többszöri próbálkozás után sem sikerült (a szerver nem válaszolt időben, vagy megszakadt a kapcsolat).
+                A szelvények lekérése többszöri próbálkozás után sem sikerült (a szerver nem válaszolt időben, vagy megszakadt a kapcsolat).
                 Ez nem azt jelenti, hogy nincs megfelelő tipp: a szerver közben jellemzően befejezi az elemzést, így néhány perc múlva az újrapróbálás gyors lehet.
               </span>
               <button type="button" className="btn btn-sm mt-2" onClick={() => void run()}>Újrapróbálás</button>
             </Note>
+          ) : noneAtAll ? (
+            <Note tone="warn">{NO_DOUBLER_TEXT}</Note>
           ) : complete ? (
             <Note>
-              Mind a(z) {chain.length} lépéshez van szelvény. A teljes sorozat esélye a modell szerint <b>{pct(chance, 1)}</b> – a lépések
+              Mind a(z) {chain.length} lépéshez van szelvény ({dayFull(date)}). A teljes sorozat esélye a modell szerint <b>{pct(chance, 1)}</b> – a lépések
               esélyeinek szorzata, ezért minden további lépéssel csökken.
             </Note>
           ) : (
             <Note tone="warn">
-              Nem minden lépéshez állítható össze megfelelő szelvény – a sorozat a jelzett lépésnél megszakad. Kitalált tippeket nem jelenítünk meg;
-              próbáld újra később, vagy válassz kisebb célösszeget.
+              A kiválasztott napon nincs elég megfelelő mérkőzés minden lépéshez – a sorozat a jelzett lépésnél megáll. Másik napra nem keresünk;
+              válassz kisebb célösszeget vagy másik napot.
             </Note>
           )}
-          <Note tone="warn">
-            Az oddsok a generálás pillanatában érvényesek (a meglévő elemzésből). A későbbi lépések oddsai a fogadás idejéig változhatnak,
-            ezért a becsült kifizetés is – fogadás előtt mindig ellenőrizd az aktuális oddsot.
-          </Note>
+          {!noneAtAll && !incomplete && (
+            <Note tone="warn">
+              Az oddsok a generálás pillanatában érvényesek (a meglévő elemzésből). A fogadás idejéig változhatnak, ezért a becsült kifizetés is –
+              fogadás előtt mindig ellenőrizd az aktuális oddsot.
+            </Note>
+          )}
           {chain.map((s, i) => <StepCard key={s.row.step} step={s} isLast={i === chain.length - 1} />)}
         </section>
       )}

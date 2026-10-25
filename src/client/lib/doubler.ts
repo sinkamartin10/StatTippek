@@ -6,6 +6,7 @@
  * szerinti legnagyobb együttes esély). Itt csak az történik, ami a duplázáshoz kell:
  *  - a ~2,00-s összoddsú, megfelelő adatú szelvény kiválasztása a jelöltek közül,
  *  - az összodds újraszámolása a lábak tényleges oddsainak szorzatából,
+ *  - kizárólag a felhasználó által kiválasztott nap mérkőzései; másik napra soha nem keres,
  *  - a lépések időrendje: egy lépés csak az előző lépés mérkőzéseinek BECSÜLT vége után kezdődhet, mert a
  *    következő tét az előző nyereménye.
  * Oddsot, mérkőzést vagy tippet SOHA nem pótolunk: ha nincs megfelelő szelvény, a lépés üres marad.
@@ -92,10 +93,13 @@ export const grossPayout = (stake: number, totalOdds: number) => Math.round(stak
 /** A lábak modell-valószínűségeinek szorzata (függetlenséget feltételez – ahogy a szelvényépítő is). */
 export const jointProbOf = (legs: Pick<SlipLeg, 'modelProb'>[]) => legs.reduce((p, l) => p * l.modelProb, 1);
 
-export type Rejection = 'missing_odds' | 'missing_kickoff' | 'duplicate_match' | 'weak_data' | 'odds_out_of_range' | 'too_early' | 'used_match';
+export type Rejection = 'missing_odds' | 'missing_kickoff' | 'duplicate_match' | 'weak_data' | 'odds_out_of_range' | 'other_day' | 'too_early' | 'used_match';
+
+/** A jelöltek szűrése: legkorábbi megengedett kezdés, már használt mérkőzések, kötelező (helyi) nap. */
+export interface SlipFilter { notBefore?: number; usedMatches?: Set<string>; onDate?: string }
 
 /** Miért nem használható egy jelölt szelvény a Duplázóban (null: használható). */
-export function rejectReason(slip: Slip, opts: { notBefore?: number; usedMatches?: Set<string> } = {}): Rejection | null {
+export function rejectReason(slip: Slip, opts: SlipFilter = {}): Rejection | null {
   const total = totalOddsOf(slip.legs);
   if (total == null) return 'missing_odds';
   // értelmezhetetlen kezdés nélkül az időrend nem ellenőrizhető (NaN-nal minden összehasonlítás hamis lenne)
@@ -105,6 +109,8 @@ export function rejectReason(slip: Slip, opts: { notBefore?: number; usedMatches
   if (ids.some((id) => opts.usedMatches?.has(id))) return 'used_match';
   if (slip.legs.some((l) => l.dataQuality === 'kevés' || !(l.modelProb > 0 && l.modelProb < 1))) return 'weak_data';
   if (total < ODDS_MIN || total > ODDS_MAX) return 'odds_out_of_range';
+  // kizárólag a kiválasztott (helyi) nap mérkőzései – a szolgáltató napi bontása ettől eltérhet
+  if (opts.onDate != null && slip.legs.some((l) => localDateKey(l.kickoff) !== opts.onDate)) return 'other_day';
   if (opts.notBefore != null && slip.legs.some((l) => Date.parse(l.kickoff) < opts.notBefore!)) return 'too_early';
   return null;
 }
@@ -122,7 +128,7 @@ export const firstKickoff = (slip: Slip) => new Date(Math.min(...slip.legs.map((
  * jelöltek sorrendjétől függetlenül determinisztikus. Ha egyik jelölt sem felel meg, null – gyenge
  * szelvénnyel nem „töltjük ki” a lépést.
  */
-export function pickSlip(slips: Slip[], opts: { notBefore?: number; usedMatches?: Set<string> } = {}): Slip | null {
+export function pickSlip(slips: Slip[], opts: SlipFilter = {}): Slip | null {
   const ok = slips.filter((s) => rejectReason(s, opts) == null);
   ok.sort((a, b) => (lastKickoff(a) - lastKickoff(b))
     || (jointProbOf(b.legs) - jointProbOf(a.legs))
@@ -143,12 +149,6 @@ export function localDateKey(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Két naptári nap (YYYY-MM-DD) távolsága napokban – időzóna- és óraátállítás-független. */
-export function daysBetween(from: string, to: string): number {
-  const utc = (k: string) => { const [y, m, d] = k.split('-').map(Number); return Date.UTC(y, m - 1, d); };
-  return Math.round((utc(to) - utc(from)) / 86_400_000);
-}
-
 /** Rövid, a meglévő elemzés adataiból összerakott indoklás egy lábhoz (nincs kitalált szöveg). */
 export function legReason(l: SlipLeg): string {
   const parts = [`a modell szerint ${Math.round(l.modelProb * 100)}% esély`];
@@ -157,40 +157,34 @@ export function legReason(l: SlipLeg): string {
   return parts.join(' · ');
 }
 
-/** Lépésenként ennyi naptári napot vizsgálunk (a kezdőnap + a következő 4 nap). */
-export const SEARCH_DAYS = 5;
-
 /**
- * Egy napi lekérés kliensoldali időkorlátja. A Render előtti Cloudflare kb. 100 mp után CORS-fejléc nélküli
+ * Egy szelvény-lekérés kliensoldali időkorlátja. A Render előtti Cloudflare kb. 100 mp után CORS-fejléc nélküli
  * hibaoldallal (524) bontja a kapcsolatot – ezt a böngésző csak egy átláthatatlan „Failed to fetch”-ként
  * jelzi. A kliens ELŐTTE, saját maga szakítja meg a kérést (egyértelmű időtúllépés-hiba): a kliens órája a
  * kérés elküldése előtt indul, ezért mindig legalább annyit mér, mint a Cloudflare-é – 90 mp-nél így kb.
  * 10 mp tartalék marad. A szerver a megszakított elemzést befejezi és gyorsítótárazza, így az újrakérés gyors.
  */
 export const REQUEST_TIMEOUT_MS = 90_000;
-/** Ennyi egymást követő, végleg sikertelen nap után a lépés keresése leáll (valószínűleg szerveroldali kiesés). */
-export const MAX_CONSECUTIVE_FAILED_DAYS = 2;
 /**
- * Átmeneti hiba után ennyit várunk a következő próbálkozás előtt (napi lekérésenként legfeljebb 3 kísérlet).
+ * Átmeneti hiba után ennyit várunk a következő próbálkozás előtt (lekérésenként legfeljebb 3 kísérlet).
  * A szerver a megszakadt kérés elemzését is befejezi és 5 percig gyorsítótárazza (a folyamatban lévőhöz
  * csatlakozik, nem indítja újra) – ezért az újrapróbálkozás jellemzően már gyors és sikeres.
  */
 export const RETRY_DELAYS_MS = [10_000, 30_000];
 
+/** A kiválasztott napra nincs megfelelő duplázó – a felületen is pontosan ez a szöveg jelenik meg. */
+export const NO_DOUBLER_TEXT = 'A kiválasztott napra nem található megfelelő duplázó.';
+
 export interface ChainStep {
   row: StepRow;
-  /** a szelvény napja (YYYY-MM-DD) – üres lépésnél a vizsgált időszak első napja */
+  /** a kiválasztott nap (YYYY-MM-DD) – minden lépés ebből dolgozik */
   date: string;
-  /** a lépéshez átvizsgált időszak (YYYY-MM-DD, mindkét nap benne van); null, ha nem is kerestünk */
-  searched: { from: string; to: string } | null;
   slip: Slip | null;
   totalOdds: number | null;
   payout: number | null;
   /** miért nincs szelvény (ha nincs) */
   note: string | null;
-  /** az ablak napjai, amelyek lekérése többszöri próbálkozás után is sikertelen volt (nem vizsgálhatók) */
-  failedDays: string[];
-  /** true: nincs szelvény, de NEM azért, mert nincs megfelelő tipp – a keresés hiba miatt nem teljes */
+  /** true: nincs szelvény, de NEM azért, mert nincs megfelelő tipp – a lekérés hiba miatt nem sikerült */
   incomplete: boolean;
 }
 
@@ -206,7 +200,7 @@ export interface ChainOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-export interface ChainProgress { step: number; date: string; attempt: number }
+export interface ChainProgress { step: number; attempt: number }
 
 const statusOf = (e: unknown): number | undefined => {
   const s = (e as { status?: unknown } | null)?.status;
@@ -261,25 +255,22 @@ export async function fetchDayWithRetry(
 }
 
 /**
- * A lépések szelvényei. Minden lépés NAPRÓL NAPRA keres egy `SEARCH_DAYS` napos ablakban (az 1. lépés a
- * mai naptól, a későbbiek az előző szelvény becsült végének napjától), és az első olyan napnál áll meg, ahol
- * van használható szelvény – így mindig a legkorábbi megfelelő mérkőzések kerülnek sorra. Napon belül előbb
- * 2, majd 3 lábas jelöltet kér a meglévő szelvényépítőtől (a szűrők változatlanok).
+ * A lépések szelvényei – KIZÁRÓLAG a kiválasztott nap (`date`, YYYY-MM-DD) mérkőzéseiből. Másik napot soha
+ * nem kér le és nem keres: ha a napon nincs (több) megfelelő szelvény, a sorozat ott megáll.
  *
- * Kizárva: a már elkezdődött (`now` előtti) és az előző lépés mérkőzéseinek becsült vége előtt kezdődő
- * mérkőzés, valamint a sorozatban már szereplő mérkőzés.
+ * A meglévő szelvényépítőtől előbb 2, majd 3 lábas jelölteket kér (a szűrők változatlanok); egy lábszámot
+ * egy futás alatt csak egyszer kér le – minden lépés ugyanabból a napi jelöltlistából választ. A választás a
+ * meglévő `pickSlip` (legkorábbi megfelelő, majd nagyobb modell-esély). Kizárva: a már elkezdődött
+ * (`now` előtti) mérkőzés, a más napon kezdődő mérkőzés, az előző lépés mérkőzéseinek becsült vége előtt
+ * kezdődő mérkőzés és a sorozatban már szereplő mérkőzés.
  *
- * HIBAKEZELÉS: egy nap átmenetileg sikertelen lekérése (időtúllépés, hálózati hiba, 5xx) korlátozott
- * újrapróbálkozás után sem szakítja meg a keresést – a nap „nem vizsgálható”-ként rögzül, és a keresés a
- * következő nappal folytatódik. `MAX_CONSECUTIVE_FAILED_DAYS` egymást követő végleg sikertelen nap után a
- * lépés keresése leáll (szerveroldali kiesésnél így nem vár percekig napról napra). Ha az ablakban így nincs
- * szelvény, a lépés NEM „nincs megfelelő tipp”, hanem „a keresés nem teljes” (`incomplete`), és a lánc ott megáll. Ha a teljes ablakban sincs megfelelő
- * szelvény (és minden nap lekérhető volt), a lépés üres, a lánc ott megszakad.
- * Egy (nap, lábszám) párt egy futás alatt csak egyszer kérünk le – a végleg sikertelen napot sem kérjük újra.
+ * HIBAKEZELÉS: a lekérés időkorláttal és korlátozott újrapróbálkozással fut (`fetchDayWithRetry`). Ha egy
+ * lekérés végleg sikertelen, a lépés NEM „nincs megfelelő duplázó”, hanem „a keresés nem fejeződött be”
+ * (`incomplete`), és a sorozat ott megáll. Nem átmeneti hiba (pl. 403) azonnal továbbdobódik.
  */
 export async function buildChain(
   rows: StepRow[],
-  dateOf: (offsetDays: number) => string,
+  date: string,
   fetchSlips: SlipFetcher,
   onProgress?: (p: ChainProgress) => void,
   now: number = Date.now(),
@@ -287,60 +278,44 @@ export async function buildChain(
 ): Promise<ChainStep[]> {
   const out: ChainStep[] = [];
   const used = new Set<string>();
-  const cache = new Map<string, Promise<DayFetchResult>>();
+  const cache = new Map<number, Promise<DayFetchResult>>();
   let step = 0;
-  const fetchDay = (date: string, legs: number) => {
-    const key = `${date}|${legs}`;
-    if (!cache.has(key)) {
-      cache.set(key, fetchDayWithRetry(
+  const fetchLegs = (legs: number) => {
+    if (!cache.has(legs)) {
+      cache.set(legs, fetchDayWithRetry(
         fetchSlips,
         { from: date, to: date, legs: String(legs), minOdds: String(ODDS_MIN), minLegProb: String(MIN_LEG_PROB) },
-        { ...opts, onAttempt: (attempt) => onProgress?.({ step, date, attempt }) },
+        { ...opts, onAttempt: (attempt) => onProgress?.({ step, attempt }) },
       ));
     }
-    return cache.get(key)!;
+    return cache.get(legs)!;
   };
   // a pontosan „most” kezdődő mérkőzés már elkezdettnek számít: csak a most UTÁN kezdődő választható
   let notBefore = now + 1;
-  let startOffset = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     step = row.step;
-    const searched = { from: dateOf(startOffset), to: dateOf(startOffset + SEARCH_DAYS - 1) };
-    const failedDays: string[] = [];
     let slip: Slip | null = null;
-    let foundOffset = startOffset;
-    let consecutiveFailed = 0;
-    let stoppedEarly = false;
-    search: for (let d = startOffset; d < startOffset + SEARCH_DAYS; d++) {
-      const date = dateOf(d);
-      for (const legs of LEG_COUNTS) {
-        const res = await fetchDay(date, legs);
-        if (!res.ok) {
-          // a nap nem vizsgálható: rögzítjük, és a következő nappal folytatjuk (nem „nincs tipp”) – de ha
-          // egymás után több nap is végleg sikertelen, a szerver valószínűleg nem érhető el: nem várunk tovább
-          if (!failedDays.includes(date)) failedDays.push(date);
-          if (++consecutiveFailed >= MAX_CONSECUTIVE_FAILED_DAYS) { stoppedEarly = true; break search; }
-          break;
-        }
-        consecutiveFailed = 0;
-        slip = pickSlip(res.slips, { notBefore, usedMatches: used });
-        if (slip) { foundOffset = d; break search; }
-      }
+    let failure: string | null = null;
+    for (const legs of LEG_COUNTS) {
+      const res = await fetchLegs(legs);
+      if (!res.ok) { failure = res.error; break; }
+      slip = pickSlip(res.slips, { notBefore, usedMatches: used, onDate: date });
+      if (slip) break;
     }
     if (!slip) {
-      const incomplete = failedDays.length > 0;
+      const incomplete = failure != null;
       out.push({
-        row, date: searched.from, searched, slip: null, totalOdds: null, payout: null, failedDays, incomplete,
-        note: !incomplete
-          ? 'A vizsgált időszakban nincs megfelelő adatokkal rendelkező, kb. 2,00-s összoddsú szelvény.'
-          : stoppedEarly
-            ? `A keresés nem teljes: ${failedDays.length} egymást követő nap lekérése sem sikerült többszöri próbálkozás után, ezért a keresést leállítottuk (a szerver valószínűleg átmenetileg nem érhető el). Ez nem azt jelenti, hogy nincs megfelelő tipp – próbáld újra néhány perc múlva.`
-            : `A keresés nem teljes: ${failedDays.length} nap lekérése többszöri próbálkozás után sem sikerült. Ez nem azt jelenti, hogy nincs megfelelő tipp – próbáld újra néhány perc múlva.`,
+        row, date, slip: null, totalOdds: null, payout: null, incomplete,
+        note: incomplete
+          ? `A keresés nem fejeződött be: a szelvények lekérése többszöri próbálkozás után sem sikerült (${failure}). Ez nem azt jelenti, hogy nincs megfelelő tipp – próbáld újra néhány perc múlva.`
+          : i === 0
+            ? NO_DOUBLER_TEXT
+            : `Ezen a napon nincs több megfelelő mérkőzés a(z) ${row.step}. lépéshez – a sorozat itt megáll.`,
       });
       for (const rest of rows.slice(i + 1)) {
         out.push({
-          row: rest, date: searched.from, searched: null, slip: null, totalOdds: null, payout: null, failedDays: [], incomplete: false,
+          row: rest, date, slip: null, totalOdds: null, payout: null, incomplete: false,
           note: incomplete ? 'Nem generálható: az előző lépés keresése nem fejeződött be.' : 'Nem generálható: az előző lépéshez nincs szelvény.',
         });
       }
@@ -349,15 +324,33 @@ export async function buildChain(
     const totalOdds = totalOddsOf(slip.legs)!;
     for (const l of slip.legs) used.add(l.matchId);
     notBefore = slipEndsAt(slip);
-    // A következő lépés ablaka a szelvény BECSÜLT végének napján kezdődik (ha az aznapi meccsek elég korán
-    // véget érnek, még aznap is): így éjfél utáni befejezésnél sem vész el egy nap a következő 5 napos ablakból.
-    startOffset = Math.max(foundOffset, daysBetween(dateOf(0), localDateKey(new Date(notBefore).toISOString())));
-    out.push({
-      row, date: localDateKey(firstKickoff(slip)), searched, slip, totalOdds, payout: grossPayout(row.stake, totalOdds),
-      note: null, failedDays, incomplete: false,
-    });
+    out.push({ row, date, slip, totalOdds, payout: grossPayout(row.stake, totalOdds), note: null, incomplete: false });
   }
   return out;
+}
+
+/** Egy generálás eredménye a napjával együtt – a felület csak a kiválasztott nap eredményét mutatja. */
+export interface ChainResult { date: string; chain: ChainStep[] }
+
+/**
+ * A megjeleníthető lánc: csak ha az eredmény a KIVÁLASZTOTT naphoz tartozik. Dátumváltás után a korábbi
+ * (akár később befejeződő) generálás eredménye így sosem marad félrevezetően a felületen.
+ */
+export const chainForDate = (result: ChainResult | null, date: string): ChainStep[] | null =>
+  (result && result.date === date ? result.chain : null);
+
+/** Legfeljebb ennyi nappal előre választható nap (a szolgáltató menetrendje ennél távolabbra ritkán teljes). */
+export const MAX_DAYS_AHEAD = 30;
+
+/** A választott nap ellenőrzése: valós YYYY-MM-DD dátum, a mai nap vagy későbbi, legfeljebb `MAX_DAYS_AHEAD` nappal előre. */
+export function checkDoublerDate(date: string, today: string, lastDay: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'Válassz érvényes dátumot.';
+  const [y, m, d] = date.split('-').map(Number);
+  const real = new Date(Date.UTC(y, m - 1, d));
+  if (real.getUTCFullYear() !== y || real.getUTCMonth() !== m - 1 || real.getUTCDate() !== d) return 'Válassz érvényes dátumot.';
+  if (date < today) return 'Múltbeli napra nem készíthető duplázó – a mérkőzések már elkezdődtek.';
+  if (date > lastDay) return `Legfeljebb ${MAX_DAYS_AHEAD} nappal előre választhatsz napot.`;
+  return null;
 }
 
 /** A teljes sorozat modell szerinti esélye: a lépések együttes esélyeinek szorzata (csak teljes láncra). */

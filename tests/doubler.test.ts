@@ -9,8 +9,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import type { Slip, SlipLeg } from '../src/shared/types';
 import {
-  MATCH_SPAN_MS, MAX_STEPS, ODDS_MIN, buildChain, chainProbability, daysBetween, fmtFt, grossPayout, jointProbOf, legReason, localDateKey,
-  parseAmount, pickSlip, planSteps, rejectReason, totalOddsOf, type ChainStep,
+  MATCH_SPAN_MS, MAX_STEPS, NO_DOUBLER_TEXT, ODDS_MIN, buildChain, chainForDate, chainProbability, checkDoublerDate, fmtFt, grossPayout,
+  jointProbOf, legReason, localDateKey, parseAmount, pickSlip, planSteps, rejectReason, totalOddsOf, type ChainStep,
 } from '../src/client/lib/doubler';
 import { PlanTable, StepCard } from '../src/client/pages/Doubler';
 import { PLAY } from '../src/client/components/Layout';
@@ -129,12 +129,12 @@ describe('Szelvényválasztás', () => {
   });
 });
 
-describe('Lépéssorozat (többnapos keresés)', () => {
+describe('Lépéssorozat (egyetlen, kiválasztott nap)', () => {
   /** a lépésterv sorai (érvényes tervhez) */
   const rowsOf = (stake: number, target: number) => { const p = planSteps(stake, target); if (!p.ok) throw new Error(p.error); return p.rows; };
-  const plan = { rows: rowsOf(1000, 4000) };
   /** a futás „most”-ja: a 0. nap reggele (a tesztnapok kezdései ehhez képest jövőbeliek) */
   const NOW = Date.parse(`${day(0)}T06:00:00Z`);
+  /** déli időpontok: a helyi naptári nap minden szokásos időzónában ugyanaz, mint az UTC-dátum */
   const at = (d: number, hhmm: string) => `${day(d)}T${hhmm}:00Z`;
   /** két lábas, 2,03-as szelvény a megadott meccsekből és kezdésekkel */
   const pair = (m1: string, k1: string, m2: string, k2: string) =>
@@ -143,143 +143,120 @@ describe('Lépéssorozat (többnapos keresés)', () => {
   const fetcher = (byDate: Record<string, Slip[]>) =>
     vi.fn(async (p: Record<string, string | undefined>) => ({ slips: byDate[p.from!] ?? [] }));
 
-  it('L1. ha ma nincs megfelelő szelvény, de holnap van, azt találja meg (a „ma” üres lépés nincs)', async () => {
-    const fetch = fetcher({ [day(1)]: [pair('a', at(1, '14:00'), 'b', at(1, '16:00'))] });
-    const chain = await buildChain(rowsOf(1000, 2000), day, fetch, undefined, NOW);
-    expect(chain).toHaveLength(1);
-    expect(chain[0]).toMatchObject({ date: day(1), totalOdds: 2.03, payout: 2030, searched: { from: day(0), to: day(4) } });
-    // a mai napot (2 és 3 lábbal) végignézte, mielőtt továbblépett
-    expect(fetch.mock.calls.map(([p]) => `${p.from}/${p.legs}`)).toEqual([`${day(0)}/2`, `${day(0)}/3`, `${day(1)}/2`]);
+  it('S1. mai nap: a mai nap mérkőzéseiből készül a szelvény, csak a mai napot kéri le', async () => {
+    const fetch = fetcher({ [day(0)]: [pair('a', at(0, '12:00'), 'b', at(0, '14:00'))] });
+    const chain = await buildChain(rowsOf(1000, 2000), day(0), fetch, undefined, NOW);
+    expect(chain[0]).toMatchObject({ date: day(0), totalOdds: 2.03, payout: 2030, incomplete: false });
+    expect(fetch.mock.calls.map(([p]) => [p.from, p.to, p.legs])).toEqual([[day(0), day(0), '2']]);
+    expect(fetch.mock.calls[0][0]).toMatchObject({ minOdds: String(ODDS_MIN) });
   });
 
-  it('L2. ma és holnap sincs, holnapután van → holnaputáni szelvény', async () => {
-    const one = { rows: rowsOf(1000, 2000) };
-    const chain = await buildChain(one.rows, day, fetcher({ [day(2)]: [pair('a', at(2, '12:00'), 'b', at(2, '12:00'))] }), undefined, NOW);
-    expect(chain[0].slip?.legs.map((l) => l.matchId)).toEqual(['a', 'b']);
-    expect(chain[0].date).toBe(day(2));
-  });
-
-  it('L3. a legkorábbi napot választja, akkor is, ha egy későbbi napon nagyobb esélyű szelvény lenne', async () => {
-    const one = { rows: rowsOf(1000, 2000) };
-    const early = pair('a', at(1, '12:00'), 'b', at(1, '13:00'));
-    const better = slip([leg({ matchId: 'c', odds: 1.4, modelProb: 0.95, kickoff: at(3, '12:00') }), leg({ matchId: 'd', odds: 1.45, modelProb: 0.95, kickoff: at(3, '12:00') })]);
-    const chain = await buildChain(one.rows, day, fetcher({ [day(1)]: [early], [day(3)]: [better] }), undefined, NOW);
-    expect(chain[0].slip).toBe(early);
-    // napon belül is a legkorábbi szelvény nyer
-    const late = pair('e', at(1, '20:00'), 'f', at(1, '20:00'));
-    expect(pickSlip([late, early])).toBe(early);
-  });
-
-  it('L4. több lépés: minden lépés az előző szelvény becsült vége után kezdődik, meccs nem ismétlődik', async () => {
+  it('S2. másik nap kiválasztása: kizárólag annak a napnak a lekérése és mérkőzései', async () => {
     const fetch = fetcher({
-      [day(0)]: [pair('a', at(0, '12:00'), 'b', at(0, '14:00'))],
-      // ugyanazon a napon az előző lépés meccsei / átfedő kezdések → kizárva; a 0. nap esti szelvénye már jó
-      [day(1)]: [pair('c', at(1, '12:00'), 'd', at(1, '13:00'))],
+      [day(0)]: [pair('x', at(0, '12:00'), 'y', at(0, '12:00'))],
+      [day(3)]: [pair('a', at(3, '12:00'), 'b', at(3, '13:00'))],
     });
-    const chain = await buildChain(plan.rows, day, fetch, undefined, NOW);
-    expect(chain.map((s) => [s.row.stake, s.date, s.slip?.legs.map((l) => l.matchId).join(',')])).toEqual([
-      [1000, day(0), 'a,b'],
-      [2000, day(1), 'c,d'],
-    ]);
+    const chain = await buildChain(rowsOf(1000, 2000), day(3), fetch, undefined, NOW);
+    expect(chain[0].date).toBe(day(3));
+    expect(chain[0].slip?.legs.map((l) => l.matchId)).toEqual(['a', 'b']);
+    expect(fetch.mock.calls.every(([p]) => p.from === day(3) && p.to === day(3))).toBe(true);
+  });
+
+  it('S3. kizárólag a kiválasztott nap mérkőzései: a szolgáltató napi listájában lévő másnapi mérkőzés kiesik', async () => {
+    const spills = pair('a', at(2, '12:00'), 'b', at(3, '12:00')); // egyik lába már a következő napon kezdődik
+    const same = pair('c', at(2, '15:00'), 'd', at(2, '16:00'));
+    expect(rejectReason(spills, { onDate: day(2) })).toBe('other_day');
+    expect(rejectReason(same, { onDate: day(2) })).toBeNull();
+    const chain = await buildChain(rowsOf(1000, 2000), day(2), fetcher({ [day(2)]: [spills, same] }), undefined, NOW);
+    expect(chain[0].slip).toBe(same);
+    expect(chain[0].slip!.legs.every((l) => localDateKey(l.kickoff) === day(2))).toBe(true);
+  });
+
+  it('S4. nincs automatikus másnapi keresés: ha a napon nincs megfelelő szelvény, csak azt a napot kérte le, és pontos üzenet jelenik meg', async () => {
+    const fetch = fetcher({ [day(1)]: [pair('a', at(1, '12:00'), 'b', at(1, '12:00'))] });
+    const chain = await buildChain(rowsOf(1000, 4000), day(0), fetch, undefined, NOW);
+    expect(chain[0]).toMatchObject({ slip: null, incomplete: false, note: NO_DOUBLER_TEXT });
+    expect(NO_DOUBLER_TEXT).toBe('A kiválasztott napra nem található megfelelő duplázó.');
+    expect(fetch.mock.calls.map(([p]) => `${p.from}/${p.legs}`)).toEqual([`${day(0)}/2`, `${day(0)}/3`]);
+    expect(chain[1]).toMatchObject({ slip: null, note: 'Nem generálható: az előző lépéshez nincs szelvény.' });
+  });
+
+  it('S5. több lépés ugyanazon a napon: időrendben, meccs-ismétlés nélkül, a napi jelöltlistát egyszer kéri le', async () => {
+    const morning = pair('a', at(0, '10:00'), 'b', at(0, '10:30'));
+    const evening = pair('c', at(0, '15:00'), 'd', at(0, '16:00'));
+    const clash = pair('a', at(0, '18:00'), 'e', at(0, '18:00')); // „a” már szerepelt
+    const fetch = fetcher({ [day(0)]: [clash, evening, morning] });
+    const chain = await buildChain(rowsOf(1000, 4000), day(0), fetch, undefined, NOW);
+    expect(chain.map((s) => s.slip?.legs.map((l) => l.matchId).join(','))).toEqual(['a,b', 'c,d']);
+    expect(chain.every((s) => s.date === day(0))).toBe(true);
+    expect(Date.parse(chain[1].slip!.legs[0].kickoff)).toBeGreaterThanOrEqual(Date.parse(at(0, '10:30')) + MATCH_SPAN_MS);
     const ids = chain.flatMap((s) => s.slip!.legs.map((l) => l.matchId));
     expect(new Set(ids).size).toBe(ids.length);
-    expect(Date.parse(chain[1].slip!.legs[0].kickoff)).toBeGreaterThanOrEqual(Date.parse(at(0, '14:00')) + MATCH_SPAN_MS);
-    expect(chain[1]).toMatchObject({ totalOdds: 2.03, payout: 4060 }); // 2 000 × 2,03
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(chainProbability(chain)).toBeCloseTo(jointProbOf(chain[0].slip!.legs) * jointProbOf(chain[1].slip!.legs), 12);
   });
 
-  it('L5. a következő lépés ugyanazon a napon is folytatódhat, ha az előző meccsek becsült vége után van még megfelelő meccs', async () => {
-    const morning = pair('a', at(1, '10:00'), 'b', at(1, '10:00'));
-    const evening = pair('c', at(1, '18:00'), 'd', at(1, '19:00'));
-    const chain = await buildChain(plan.rows, day, fetcher({ [day(1)]: [morning, evening] }), undefined, NOW);
-    expect(chain.map((s) => s.slip?.legs[0].matchId)).toEqual(['a', 'c']);
-    expect(chain[1].searched).toEqual({ from: day(1), to: day(5) }); // a 2. lépés a szelvény napjától keres
+  it('S6. ha a napon nincs elég megfelelő mérkőzés a következő lépéshez, a sorozat megáll – másik napot nem keres', async () => {
+    const fetch = fetcher({
+      [day(0)]: [pair('a', at(0, '10:00'), 'b', at(0, '10:00')), pair('c', at(0, '11:00'), 'd', at(0, '11:00'))], // a második túl korán kezdődik
+      [day(1)]: [pair('e', at(1, '12:00'), 'f', at(1, '12:00'))],
+    });
+    const chain = await buildChain(rowsOf(1000, 8000), day(0), fetch, undefined, NOW);
+    expect(chain[0].slip?.legs[0].matchId).toBe('a');
+    expect(chain[1]).toMatchObject({ slip: null, incomplete: false });
+    expect(chain[1].note).toMatch(/nincs több megfelelő mérkőzés a\(z\) 2\. lépéshez/);
+    expect(chain[2]).toMatchObject({ slip: null, note: 'Nem generálható: az előző lépéshez nincs szelvény.' });
+    expect(fetch.mock.calls.some(([p]) => p.from !== day(0))).toBe(false);
   });
 
-  it('L6. már elkezdődött mérkőzést nem választ, és ugyanaz a meccs más napon sem kerül újra sorra', async () => {
-    const started = pair('a', at(0, '05:00'), 'b', at(0, '12:00')); // 05:00 < most (06:00)
-    const ok = pair('c', at(0, '15:00'), 'd', at(0, '16:00'));
-    const reuse = pair('c', at(2, '12:00'), 'e', at(2, '12:00')); // „c” már szerepelt
-    const fresh = pair('f', at(3, '12:00'), 'g', at(3, '12:00'));
-    const chain = await buildChain(plan.rows, day, fetcher({ [day(0)]: [started, ok], [day(2)]: [reuse], [day(3)]: [fresh] }), undefined, NOW);
-    expect(chain.map((s) => s.slip?.legs.map((l) => l.matchId).join(','))).toEqual(['c,d', 'f,g']);
-  });
-
-  it('L7. 2 lábú szelvény hiányában ugyanazon a napon 3 lábút keres, mielőtt a következő napra lépne', async () => {
-    const one = { rows: rowsOf(1000, 2000) };
+  it('S7. 2 lábú szelvény hiányában ugyanazon a napon 3 lábút keres', async () => {
     const three = slip([leg({ matchId: 'a', odds: 1.25, kickoff: at(0, '12:00') }), leg({ matchId: 'b', odds: 1.3, kickoff: at(0, '12:00') }), leg({ matchId: 'c', odds: 1.25, kickoff: at(0, '12:00') })]);
-    const fetch = vi.fn(async (p: Record<string, string | undefined>) => ({ slips: p.legs === '3' && p.from === day(0) ? [three] : [] }));
-    const chain = await buildChain(one.rows, day, fetch, undefined, NOW);
+    const fetch = vi.fn(async (p: Record<string, string | undefined>) => ({ slips: p.legs === '3' ? [three] : [] }));
+    const chain = await buildChain(rowsOf(1000, 2000), day(0), fetch, undefined, NOW);
     expect(fetch.mock.calls.map(([p]) => `${p.from}/${p.legs}`)).toEqual([`${day(0)}/2`, `${day(0)}/3`]);
     expect(chain[0].slip).toBe(three);
   });
 
-  it('L8. csak ha a teljes ablakban (ma + 4 nap) sincs megfelelő szelvény, akkor üres a lépés; a sorozat ott megszakad', async () => {
-    const fetch = fetcher({ [day(0)]: [pair('a', at(0, '12:00'), 'b', at(0, '12:00'))], [day(6)]: [pair('x', at(6, '12:00'), 'y', at(6, '12:00'))] });
-    const chain = await buildChain(rowsOf(1000, 8000), day, fetch, undefined, NOW);
-    expect(chain).toHaveLength(3);
-    expect(chain[0].slip?.legs[0].matchId).toBe('a');
-    // a 2. lépés a 0–4. napot nézte végig; a 6. napi szelvény az ablakon kívül esik
-    expect(chain[1]).toMatchObject({ slip: null, totalOdds: null, payout: null, searched: { from: day(0), to: day(4) } });
-    expect(chain[1].note).toMatch(/vizsgált időszakban/);
-    expect(chain[2]).toMatchObject({ slip: null, searched: null });
-    expect(chain[2].note).toMatch(/előző lépéshez nincs szelvény/);
-    expect(chainProbability(chain)).toBeNull();
-    expect(fetch.mock.calls.some(([p]) => p.from === day(6))).toBe(false);
+  it('S8. már elkezdődött és pontosan „most” kezdődő mérkőzést nem választ', async () => {
+    const started = pair('a', at(0, '05:00'), 'b', at(0, '12:00')); // 05:00 < most (06:00)
+    const exactlyNow = pair('c', new Date(NOW).toISOString(), 'd', at(0, '12:00'));
+    const ok = pair('e', at(0, '15:00'), 'f', at(0, '16:00'));
+    const chain = await buildChain(rowsOf(1000, 2000), day(0), fetcher({ [day(0)]: [started, exactlyNow, ok] }), undefined, NOW);
+    expect(chain[0].slip).toBe(ok);
   });
 
-  it('L9. egy (nap, lábszám) párt egy futás alatt csak egyszer kér le', async () => {
-    const fetch = fetcher({ [day(0)]: [pair('a', at(0, '08:00'), 'b', at(0, '08:00'))] });
-    await buildChain(plan.rows, day, fetch, undefined, NOW);
-    const keys = fetch.mock.calls.map(([p]) => `${p.from}/${p.legs}`);
-    expect(new Set(keys).size).toBe(keys.length);
-    expect(keys).toContain(`${day(0)}/2`);
-  });
-
-  it('L10. ha már az első lépéshez sincs szelvény a teljes ablakban, a többi lépés sem generálódik', async () => {
-    const fetch = fetcher({});
-    const chain = await buildChain(plan.rows, day, fetch, undefined, NOW);
-    expect(chain.map((s) => s.slip)).toEqual([null, null]);
-    expect(chain[0].searched).toEqual({ from: day(0), to: day(4) });
-    expect(fetch).toHaveBeenCalledTimes(10); // 5 nap × (2 és 3 láb)
-  });
-
-  it('L11. értelmezhetetlen kezdési idő: a jelölt kiesik, és a későbbi lépések időszűrőjét sem rontja el', async () => {
-    const broken = slip([leg({ matchId: 'a', odds: 1.4, kickoff: 'nincs-adat' }), leg({ matchId: 'b', odds: 1.45, kickoff: at(0, '08:00') })]);
-    expect(rejectReason(broken)).toBe('missing_kickoff');
-    expect(pickSlip([broken])).toBeNull();
-    const good = pair('c', at(0, '12:00'), 'd', at(0, '12:00'));
-    const tooSoon = pair('e', at(0, '13:00'), 'f', at(0, '13:00')); // a „c, d” becsült vége (14:30) előtt
-    const chain = await buildChain(plan.rows, day, fetcher({ [day(0)]: [broken, good, tooSoon] }), undefined, NOW);
-    expect(chain[0].slip).toBe(good);
-    expect(chain[1].slip).toBeNull(); // az időrend továbbra is érvényes
-  });
-
-  it('L12. a következő ablak az előző szelvény BECSÜLT végének napjától indul (éjfél utáni befejezésnél sem vész el nap)', async () => {
-    const late = pair('a', at(0, '22:00'), 'b', at(0, '23:30')); // becsült vége: másnap 02:00 (UTC)
-    const endKey = localDateKey(new Date(Date.parse(at(0, '23:30')) + MATCH_SPAN_MS).toISOString());
-    const anchor = Math.max(0, daysBetween(day(0), endKey));
-    // a jelölt pontosan az ablak utolsó napján van: a régi (talált naphoz kötött) ablak ezt nem látta volna
-    const last = pair('c', at(anchor + 4, '12:00'), 'd', at(anchor + 4, '12:00'));
-    const chain = await buildChain(plan.rows, day, fetcher({ [day(0)]: [late], [day(anchor + 4)]: [last] }), undefined, NOW);
-    expect(chain[1].searched).toEqual({ from: day(anchor), to: day(anchor + 4) });
-    expect(chain[1].slip).toBe(last);
-    expect(daysBetween('2026-10-25', '2026-10-30')).toBe(5);
-    expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2); // óraátállítás körül is egész nap
-  });
-
-  it('L13. teljes holtversenyben is determinisztikus: a jelöltek sorrendje nem számít', () => {
+  it('S9. a legkorábbi megfelelő szelvényt választja (meglévő logika); teljes holtversenyben is determinisztikus', () => {
+    const early = pair('a', at(1, '12:00'), 'b', at(1, '13:00'));
+    const late = pair('e', at(1, '20:00'), 'f', at(1, '20:00'));
+    expect(pickSlip([late, early])).toBe(early);
     const x = pair('m1', at(1, '12:00'), 'm2', at(1, '12:00'));
     const y = pair('m3', at(1, '12:00'), 'm4', at(1, '12:00'));
     expect(pickSlip([x, y])).toBe(x);
     expect(pickSlip([y, x])).toBe(x);
   });
 
-  it('L14. a pontosan „most” kezdődő mérkőzés már elkezdettnek számít', async () => {
-    const one = { rows: rowsOf(1000, 2000) };
-    const exactlyNow = pair('a', new Date(NOW).toISOString(), 'b', at(0, '12:00'));
-    const chain = await buildChain(one.rows, day, fetcher({ [day(0)]: [exactlyNow] }), undefined, NOW);
-    expect(chain[0].slip).toBeNull();
+  it('S10. értelmezhetetlen kezdési idejű jelölt kiesik', () => {
+    const broken = slip([leg({ matchId: 'a', odds: 1.4, kickoff: 'nincs-adat' }), leg({ matchId: 'b', odds: 1.45, kickoff: at(0, '08:00') })]);
+    expect(rejectReason(broken)).toBe('missing_kickoff');
+    expect(pickSlip([broken])).toBeNull();
+  });
+});
+
+describe('Dátumválasztás', () => {
+  it('a választott nap ellenőrzése: ma és későbbi, legfeljebb 30 nappal előre, valós dátum', () => {
+    expect(checkDoublerDate('2026-10-25', '2026-10-25', '2026-11-24')).toBeNull();
+    expect(checkDoublerDate('2026-11-24', '2026-10-25', '2026-11-24')).toBeNull();
+    expect(checkDoublerDate('2026-10-24', '2026-10-25', '2026-11-24')).toMatch(/Múltbeli/);
+    expect(checkDoublerDate('2026-11-25', '2026-10-25', '2026-11-24')).toMatch(/30 nappal/);
+    for (const bad of ['', '2026-02-30', '2026-13-01', 'holnap']) expect(checkDoublerDate(bad, '2026-01-01', '2026-12-31'), bad).toMatch(/érvényes dátumot/);
+  });
+
+  it('dátumváltáskor a korábbi eredmény nem látszik: csak a kiválasztott naphoz tartozó lánc jelenik meg', () => {
+    const chain: ChainStep[] = [{ row: { step: 1, stake: 1000, goal: 2000 }, date: day(0), slip: null, totalOdds: null, payout: null, note: NO_DOUBLER_TEXT, incomplete: false }];
+    const result = { date: day(0), chain };
+    expect(chainForDate(result, day(0))).toBe(chain);
+    expect(chainForDate(result, day(1))).toBeNull(); // egy később befejeződő régi futás sem jelenik meg
+    expect(chainForDate(null, day(0))).toBeNull();
   });
 });
 
@@ -294,7 +271,7 @@ describe('Megjelenítés, navigáció', () => {
 
   it('D19. lépéskártya: meccs, piac, odds, indoklás, összodds, tét, kifizetés, figyelmeztetés', () => {
     const s = slip([leg({ matchId: 'a', odds: 1.4 }), leg({ matchId: 'b', odds: 1.45, matchLabel: 'Real Madrid – Barcelona', label: 'Mindkét csapat szerez gólt – igen' })]);
-    const step: ChainStep = { row: { step: 1, stake: 1000, goal: 2000 }, date: '2026-10-25', searched: { from: '2026-10-25', to: '2026-10-29' }, slip: s, totalOdds: 2.03, payout: 2030, note: null, failedDays: [], incomplete: false };
+    const step: ChainStep = { row: { step: 1, stake: 1000, goal: 2000 }, date: '2026-10-25', slip: s, totalOdds: 2.03, payout: 2030, note: null, incomplete: false };
     const out = html(createElement(StepCard, { step, isLast: false }));
     for (const t of ['Arsenal', 'Real Madrid', 'Gólszám több mint 1,5', 'Mindkét csapat szerez gólt – igen', '1,40', '1,45', '2,03', '1 000 Ft', '2 030 Ft', 'a modell szerint', 'nem garantált', 'csak akkor indulhat']) {
       expect(out, t).toContain(t);
@@ -306,10 +283,13 @@ describe('Megjelenítés, navigáció', () => {
     const empty = html(createElement(StepCard, { step: { ...step, slip: null, totalOdds: null, payout: null, note: 'Nincs adat.' }, isLast: true }));
     expect(empty).toContain('Nincs megfelelő szelvény');
     expect(empty).not.toContain('Összodds');
-    // a kártya fejléce: a lépés kezdőnapja (szelvénynél), illetve a vizsgált napok (üres lépésnél)
+    // a kártya fejléce: a lépés kezdése (szelvénynél); a lábaknál a mérkőzések kezdési időpontja
     expect(out).toContain('Kezdés:');
-    expect(empty).toContain('Vizsgált napok:');
+    expect(out).toContain('kezdés: 2026. 10. 25.');
     expect(empty).not.toContain('Kezdés:');
+    // a „nincs megfelelő duplázó” lépés pontosan a kért szöveget mutatja
+    const none = html(createElement(StepCard, { step: { ...step, slip: null, totalOdds: null, payout: null, note: NO_DOUBLER_TEXT }, isLast: true }));
+    expect(none).toContain('A kiválasztott napra nem található megfelelő duplázó.');
   });
 
   it('D20. a „Játék” menüben elérhető; nyilvános, indexelhető oldal (a PRO-szelvények ettől védettek maradnak)', () => {
