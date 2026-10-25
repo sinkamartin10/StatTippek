@@ -19,6 +19,7 @@ import { adminCompetitionRouter, competitionRouter } from './routes/competition'
 import { CompetitionService } from './competition/service';
 import { profileRouter } from './routes/profile';
 import { socialRouter } from './routes/social';
+import { communityRouter } from './routes/community';
 import { progressionRouter } from './routes/progression';
 import { missionsRouter } from './routes/missions';
 import { battlesRouter } from './routes/battles';
@@ -29,6 +30,7 @@ import { BattleService } from './battles/service';
 import { NotificationService } from './notifications/service';
 import { CoinService } from './coins/service';
 import { SocialService } from './social/service';
+import { CommunityService } from './community/service';
 import { CoinRewardService } from './coins/rewards';
 import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
@@ -230,6 +232,13 @@ app.use('/api/notifications', notificationsRouter(notificationService));
 // Social: követés, játékos-keresés, Top Tipsterek. FREE és PRO egyaránt;
 // a követés tisztán social, semmilyen pontozást vagy gazdaságot nem érint.
 app.use('/api/social', socialRouter(socialService));
+// Közösségi Feed: szöveges bejegyzések és lájkok. Olvasás nyilvános, írás csak bejelentkezve;
+// a szerző a meglévő nyilvános kozmetikum-réteggel jelenik meg (nincs második profilrendszer).
+app.use('/api/community', communityRouter(new CommunityService(
+  container.community,
+  container.displayNames,
+  (userIds) => progressionService.publicProfiles(userIds),
+)));
 app.use('/api/coins', coinsRouter(coinService));
 app.use('/api/shop', shopRouter(coinService));
 // Modell-tipp archívum – nyilvános, csak olvasható (csak elkezdődött meccsek)

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Archive, BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, Trophy,
+  Archive, BarChart3, BookOpen, CalendarDays, ChartLine, ChevronDown, Crown, History, LayoutDashboard, Lightbulb, LogIn, Menu, MessagesSquare, Trophy,
   Bell, Radar, Search, Settings, ShoppingBag, Sparkles, Swords, Target, Ticket, UserCircle2, UserPlus, UserSearch, Users, X,
   type LucideIcon,
 } from 'lucide-react';
@@ -36,6 +36,7 @@ export const PLAY = [
   { to: '/elozmenyek', label: 'Előzmények', icon: History },
   { to: '/szelvenyek', label: 'Szelvény', icon: Ticket },
   { to: '/kovetes', label: 'Követés', icon: Users },
+  { to: '/kozosseg', label: 'Közösség', icon: MessagesSquare },
 ];
 
 /** „Felfedezés” – adat, elemzés, beállítások. */

@@ -26,6 +26,7 @@ import { PostgresBattleStore, SqliteBattleStore, type BattleStore } from './batt
 import { PostgresNotificationStore, SqliteNotificationStore, type NotificationStore } from './notifications/store';
 import { PostgresCoinStore, SqliteCoinStore, type CoinStore } from './coins/store';
 import { PostgresFollowStore, SqliteFollowStore, type FollowStore } from './social/store';
+import { PostgresCommunityStore, SqliteCommunityStore, type CommunityStore } from './community/store';
 import { PostgresTipArchiveStore, SqliteTipArchiveStore, type TipArchiveStore } from './tipArchive/store';
 import { PostgresModelLearningStore, SqliteModelLearningStore, type ModelLearningStore } from './modelLearning/store';
 
@@ -49,6 +50,8 @@ export interface Container {
   coins: CoinStore;
   /** Követés (social) – saját tábla a 0013-ból, más rendszert nem érint */
   follows: FollowStore;
+  /** Közösségi Feed – saját táblák a 0023-ból; a követést csak olvassa */
+  community: CommunityStore;
   /** Modell-tipp archívum – saját tábla a 0014-ből; felhasználói adatot nem tárol */
   tipArchive: TipArchiveStore;
   /** Modell-kalibráció (tanulási réteg) – saját táblák a 0015-ből; az archívumot csak olvassa */
@@ -123,6 +126,11 @@ export function buildContainer(): Container {
     ? new PostgresFollowStore(supabaseUrl, serviceRoleKey)
     : new SqliteFollowStore(db.sqliteHandle());
 
+  // Közösségi Feed: élesben Supabase (0023), kulcs nélkül helyi SQLite azonos szerződéssel
+  const community: CommunityStore = supabaseUrl && serviceRoleKey
+    ? new PostgresCommunityStore(supabaseUrl, serviceRoleKey)
+    : new SqliteCommunityStore(db.sqliteHandle());
+
   // Modell-tipp archívum: élesben Supabase (0014), kulcs nélkül helyi SQLite azonos szerződéssel
   const tipArchive: TipArchiveStore = supabaseUrl && serviceRoleKey
     ? new PostgresTipArchiveStore(supabaseUrl, serviceRoleKey)
@@ -145,6 +153,7 @@ export function buildContainer(): Container {
     notifications,
     coins,
     follows,
+    community,
     tipArchive,
     learning,
     status: () => ({

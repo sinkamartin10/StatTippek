@@ -3,6 +3,7 @@
  */
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
+import type { FeedPost, FeedResponse, FeedView, LikeResponse } from '@shared/community';
 import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo, ProPlanId,
 } from '@shared/manualPayment';
@@ -229,6 +230,20 @@ export const api = {
   followers: (limit?: number, before?: string) =>
     request<FollowListResponse>(`/followers${qs({ limit, before })}`, {}, '/api/social'),
   topTipsters: () => request<TopTipstersResponse>('/top-tipsters', {}, '/api/social'),
+
+  // ---------- Közösségi Feed ----------
+  /** Feed – a „Mindenki” nézet nyilvános, a „Követettek” bejelentkezést kér */
+  communityFeed: (view: FeedView, before?: string | null) =>
+    request<FeedResponse>(`/feed${qs({ view, before })}`, {}, '/api/community'),
+  /** Új bejegyzés – a szerzőt a szerver a hitelesített tokenből állapítja meg */
+  createPost: (body: string) =>
+    request<FeedPost>('/posts', { method: 'POST', body: JSON.stringify({ body }) }, '/api/community'),
+  deletePost: (id: string) =>
+    request<{ deleted: true }>(`/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }, '/api/community'),
+  likePost: (id: string) =>
+    request<LikeResponse>(`/posts/${encodeURIComponent(id)}/like`, { method: 'POST' }, '/api/community'),
+  unlikePost: (id: string) =>
+    request<LikeResponse>(`/posts/${encodeURIComponent(id)}/like`, { method: 'DELETE' }, '/api/community'),
   /** Modell-tipp archívum – nyilvános, csak elkezdődött meccsek. */
   tipArchive: (q: TipArchiveQuery) =>
     request<TipArchiveResponse>(qs({ ...q }), {}, '/api/tip-archive'),

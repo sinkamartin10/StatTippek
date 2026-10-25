@@ -84,7 +84,7 @@ const NOINDEX_DESC = 'TippStats – futballstatisztika és mérkőzéselemzés.'
 const PRIVATE: Record<string, string> = {
   '/dashboard': 'Áttekintés', '/bejelentkezes': 'Bejelentkezés', '/regisztracio': 'Regisztráció',
   '/elfelejtett-jelszo': 'Elfelejtett jelszó', '/uj-jelszo': 'Új jelszó', '/profil': 'Profil',
-  '/kovetes': 'Követés', '/statisztikaim': 'Statisztikáim', '/ertesitesek': 'Értesítések', '/shop': 'Shop',
+  '/kovetes': 'Követés', '/kozosseg': 'Közösség', '/statisztikaim': 'Statisztikáim', '/ertesitesek': 'Értesítések', '/shop': 'Shop',
   '/battles': 'Párbajok', '/szelvenyek': 'Szelvények', '/edge-radar': 'Edge Radar', '/felfedezes': 'Felfedezés',
   '/elozmenyek': 'Előzmények', '/beallitasok': 'Beállítások', '/kereses': 'Keresés',
   '/admin/tippverseny': 'Admin', '/admin/modell-tanulas': 'Admin', '/admin/pro-befizetesek': 'Admin', '/admin/pro-statisztika': 'Admin',

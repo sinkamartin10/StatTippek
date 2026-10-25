@@ -24,6 +24,7 @@ import Shop from './pages/Shop';
 import PublicProfile from './pages/PublicProfile';
 import Discover from './pages/Discover';
 import Following from './pages/Following';
+import Community from './pages/Community';
 import Stats from './pages/Stats';
 import History from './pages/History';
 import TipArchive from './pages/TipArchive';
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/jatekos/:name" element={<PublicProfile />} />
         <Route path="/felfedezes" element={<Discover />} />
         <Route path="/kovetes" element={<RequireAuth><Following /></RequireAuth>} />
+        <Route path="/kozosseg" element={<Community />} />
         <Route path="/statisztikaim" element={<RequireAuth><MyStats /></RequireAuth>} />
         <Route path="/ertesitesek" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="/shop" element={<RequireAuth><Shop /></RequireAuth>} />
