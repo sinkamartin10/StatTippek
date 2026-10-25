@@ -12,8 +12,8 @@ import { Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { fmtDate, fmtDateTime, fmtTime, odds as fo, pct, todayKey } from '../lib/format';
 import {
-  DEFAULT_STAKE, MAX_STEPS, SEARCH_DAYS, TARGET_PRESETS, buildChain, chainProbability, firstKickoff, fmtFt, jointProbOf, legReason, parseAmount, planSteps,
-  type ChainStep, type Plan,
+  DEFAULT_STAKE, MAX_STEPS, RETRY_DELAYS_MS, SEARCH_DAYS, TARGET_PRESETS, buildChain, chainProbability, firstKickoff, fmtFt, jointProbOf, legReason,
+  parseAmount, planSteps, type ChainProgress, type ChainStep, type Plan,
 } from '../lib/doubler';
 import { LockedBlock, usePlan } from '../auth/PlanContext';
 import { Card, ChipGroup, Disclaimer, EmptyState, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
@@ -62,9 +62,16 @@ export function StepCard({ step, isLast }: { step: ChainStep; isLast: boolean })
         : step.searched && <span className="text-xs font-semibold text-text-muted">Vizsgált napok: {dayLabel(step.searched.from)} – {dayLabel(step.searched.to)}</span>}
     >
       {!slip ? (
-        <EmptyState emoji="🧩" title="Nincs megfelelő szelvény" text={step.note ?? undefined} />
+        step.incomplete
+          ? <EmptyState emoji="⚠️" title="A keresés nem fejeződött be" text={`${step.note ?? ''} Nem vizsgálható napok: ${step.failedDays.map(dayLabel).join(', ')}.`} />
+          : <EmptyState emoji="🧩" title="Nincs megfelelő szelvény" text={step.note ?? undefined} />
       ) : (
         <div className="space-y-3">
+          {step.failedDays.length > 0 && (
+            <p className="text-xs font-bold text-warning-text">
+              Figyelem: {step.failedDays.map(dayLabel).join(', ')} lekérése nem sikerült, ezért ezeken a napokon nem kerestünk – korábbi megfelelő szelvény is lehetett.
+            </p>
+          )}
           <ul className="space-y-2">
             {slip.legs.map((l) => (
               <li key={l.matchId + l.market} className="rounded-xl border border-border bg-card-2 p-3 text-sm">
@@ -108,7 +115,7 @@ export default function Doubler() {
   const [stakeText, setStakeText] = useState(String(DEFAULT_STAKE));
   const [targetChoice, setTargetChoice] = useState<string>(String(TARGET_PRESETS[0]));
   const [customText, setCustomText] = useState('');
-  const [progress, setProgress] = useState<number | null>(null);
+  const [progress, setProgress] = useState<ChainProgress | null>(null);
   const [chain, setChain] = useState<ChainStep[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,13 +124,14 @@ export default function Doubler() {
   const plan = planSteps(stake, target);
   const running = progress != null;
 
-  const generate = async (ev: FormEvent) => {
-    ev.preventDefault();
+  const run = async () => {
     if (!plan.ok || running) return;
     setError(null);
     setChain(null);
+    setProgress({ step: 1, date: todayKey(), attempt: 1 });
     try {
-      setChain(await buildChain(plan.rows, todayKey, api.slips, setProgress));
+      // a napi lekérés időkorlátja a `signal`-on át érvényesül (lásd lib/doubler: fetchDayWithRetry)
+      setChain(await buildChain(plan.rows, todayKey, (params, signal) => api.slips(params, { signal }), setProgress));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ismeretlen hiba.');
     } finally {
@@ -131,8 +139,12 @@ export default function Doubler() {
     }
   };
 
+  const generate = (ev: FormEvent) => { ev.preventDefault(); void run(); };
+
   const chance = chain ? chainProbability(chain) : null;
   const complete = chain != null && chance != null;
+  const incomplete = chain?.some((s) => s.incomplete) ?? false;
+  const progressText = progress && `${progress.step}. lépés · ${dayLabel(progress.date)} vizsgálata${progress.attempt > 1 ? ` – újrapróbálkozás (${progress.attempt}/${RETRY_DELAYS_MS.length + 1})` : ''}`;
 
   return (
     <div className="space-y-6">
@@ -176,7 +188,7 @@ export default function Doubler() {
           {pro ? (
             <div className="flex justify-end">
               <button type="submit" className="btn btn-primary" disabled={!plan.ok || running}>
-                <Sparkles className="h-4 w-4" aria-hidden /> {running ? `${progress}. lépés összeállítása…` : 'Szelvény generálása'}
+                <Sparkles className="h-4 w-4" aria-hidden /> {running ? 'Keresés folyamatban…' : 'Szelvény generálása'}
               </button>
             </div>
           ) : null}
@@ -186,12 +198,20 @@ export default function Doubler() {
       {!pro ? (
         <LockedBlock title="Duplázó – PRO" text="A szelvényeket a PRO szelvényépítő állítja össze a teljes elemzésből és valódi oddsokból – PRO előfizetéssel." />
       ) : running && !chain ? (
-        <Card><Loading text={`${progress}. lépés: szelvény keresése napról napra (legfeljebb ${SEARCH_DAYS} nap) – első alkalommal ez eltarthat egy ideig…`} /></Card>
+        <Card><Loading text={`${progressText} – napról napra, legfeljebb ${SEARCH_DAYS} nap; egy forgalmas nap első elemzése perceket is igénybe vehet…`} /></Card>
       ) : error ? (
         <ErrorBox message={error} />
       ) : chain && (
         <section aria-label="Lépések" className="space-y-4">
-          {complete ? (
+          {incomplete ? (
+            <Note tone="warn">
+              <span className="block">
+                Egyes napok lekérése többszöri próbálkozás után sem sikerült (a szerver nem válaszolt időben, vagy megszakadt a kapcsolat).
+                Ez nem azt jelenti, hogy nincs megfelelő tipp: a szerver közben jellemzően befejezi az elemzést, így néhány perc múlva az újrapróbálás gyors lehet.
+              </span>
+              <button type="button" className="btn btn-sm mt-2" onClick={() => void run()}>Újrapróbálás</button>
+            </Note>
+          ) : complete ? (
             <Note>
               Mind a(z) {chain.length} lépéshez van szelvény. A teljes sorozat esélye a modell szerint <b>{pct(chance, 1)}</b> – a lépések
               esélyeinek szorzata, ezért minden további lépéssel csökken.

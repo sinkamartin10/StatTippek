@@ -294,7 +294,7 @@ describe('Megjelenítés, navigáció', () => {
 
   it('D19. lépéskártya: meccs, piac, odds, indoklás, összodds, tét, kifizetés, figyelmeztetés', () => {
     const s = slip([leg({ matchId: 'a', odds: 1.4 }), leg({ matchId: 'b', odds: 1.45, matchLabel: 'Real Madrid – Barcelona', label: 'Mindkét csapat szerez gólt – igen' })]);
-    const step: ChainStep = { row: { step: 1, stake: 1000, goal: 2000 }, date: '2026-10-25', searched: { from: '2026-10-25', to: '2026-10-29' }, slip: s, totalOdds: 2.03, payout: 2030, note: null };
+    const step: ChainStep = { row: { step: 1, stake: 1000, goal: 2000 }, date: '2026-10-25', searched: { from: '2026-10-25', to: '2026-10-29' }, slip: s, totalOdds: 2.03, payout: 2030, note: null, failedDays: [], incomplete: false };
     const out = html(createElement(StepCard, { step, isLast: false }));
     for (const t of ['Arsenal', 'Real Madrid', 'Gólszám több mint 1,5', 'Mindkét csapat szerez gólt – igen', '1,40', '1,45', '2,03', '1 000 Ft', '2 030 Ft', 'a modell szerint', 'nem garantált', 'csak akkor indulhat']) {
       expect(out, t).toContain(t);

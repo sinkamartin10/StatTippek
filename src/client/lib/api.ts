@@ -176,7 +176,8 @@ export const api = {
   search: (q: string) => request<SearchResponse>(`/search${qs({ q })}`),
   history: (params: Record<string, string | undefined>) => request<HistoryResponse>(`/history${qs(params)}`),
   sources: (params: Record<string, string | undefined>) => request<SourceRecord[]>(`/sources${qs(params)}`),
-  slips: (params: Record<string, string | undefined>) => request<SlipBuildResponse>(`/slips${qs(params)}`),
+  /** `init` opcionális – pl. `signal` a kliensoldali időtúllépéshez (a Duplázó használja) */
+  slips: (params: Record<string, string | undefined>, init?: RequestInit) => request<SlipBuildResponse>(`/slips${qs(params)}`, init),
   savedSlips: () => request<SlipRecord[]>('/slips/saved'),
   saveSlip: (strategy: SlipStrategy, label: string, legs: { matchId: string; market: string }[]) => request<SlipRecord>('/slips', { method: 'POST', body: JSON.stringify({ strategy, label, legs }) }),
   billingConfig: () => request<{ configured: boolean; supabase: boolean; productName?: string; amount?: number; currency?: string; interval?: string; label?: string; error?: string }>('/billing/config'),

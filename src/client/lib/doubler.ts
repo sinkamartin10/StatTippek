@@ -160,6 +160,23 @@ export function legReason(l: SlipLeg): string {
 /** Lépésenként ennyi naptári napot vizsgálunk (a kezdőnap + a következő 4 nap). */
 export const SEARCH_DAYS = 5;
 
+/**
+ * Egy napi lekérés kliensoldali időkorlátja. A Render előtti Cloudflare kb. 100 mp után CORS-fejléc nélküli
+ * hibaoldallal (524) bontja a kapcsolatot – ezt a böngésző csak egy átláthatatlan „Failed to fetch”-ként
+ * jelzi. A kliens ELŐTTE, saját maga szakítja meg a kérést (egyértelmű időtúllépés-hiba): a kliens órája a
+ * kérés elküldése előtt indul, ezért mindig legalább annyit mér, mint a Cloudflare-é – 90 mp-nél így kb.
+ * 10 mp tartalék marad. A szerver a megszakított elemzést befejezi és gyorsítótárazza, így az újrakérés gyors.
+ */
+export const REQUEST_TIMEOUT_MS = 90_000;
+/** Ennyi egymást követő, végleg sikertelen nap után a lépés keresése leáll (valószínűleg szerveroldali kiesés). */
+export const MAX_CONSECUTIVE_FAILED_DAYS = 2;
+/**
+ * Átmeneti hiba után ennyit várunk a következő próbálkozás előtt (napi lekérésenként legfeljebb 3 kísérlet).
+ * A szerver a megszakadt kérés elemzését is befejezi és 5 percig gyorsítótárazza (a folyamatban lévőhöz
+ * csatlakozik, nem indítja újra) – ezért az újrapróbálkozás jellemzően már gyors és sikeres.
+ */
+export const RETRY_DELAYS_MS = [10_000, 30_000];
+
 export interface ChainStep {
   row: StepRow;
   /** a szelvény napja (YYYY-MM-DD) – üres lépésnél a vizsgált időszak első napja */
@@ -171,35 +188,115 @@ export interface ChainStep {
   payout: number | null;
   /** miért nincs szelvény (ha nincs) */
   note: string | null;
+  /** az ablak napjai, amelyek lekérése többszöri próbálkozás után is sikertelen volt (nem vizsgálhatók) */
+  failedDays: string[];
+  /** true: nincs szelvény, de NEM azért, mert nincs megfelelő tipp – a keresés hiba miatt nem teljes */
+  incomplete: boolean;
 }
 
-export type SlipFetcher = (params: Record<string, string | undefined>) => Promise<{ slips: Slip[] }>;
+export type SlipFetcher = (params: Record<string, string | undefined>, signal?: AbortSignal) => Promise<{ slips: Slip[] }>;
+
+/** Egy napi lekérés kimenete: a jelöltek, vagy a végleges (átmeneti, de kifogyott próbálkozású) hiba. */
+export type DayFetchResult = { ok: true; slips: Slip[] } | { ok: false; error: string };
+
+export interface ChainOptions {
+  timeoutMs?: number;
+  retryDelaysMs?: number[];
+  /** várakozás (tesztben helyettesíthető) */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface ChainProgress { step: number; date: string; attempt: number }
+
+const statusOf = (e: unknown): number | undefined => {
+  const s = (e as { status?: unknown } | null)?.status;
+  return typeof s === 'number' ? s : undefined;
+};
+
+/** Átmeneti-e a hiba: hálózati / CORS nélküli proxyhiba („Failed to fetch”), időtúllépés, 5xx, 408 vagy 429. */
+export function isRetryable(e: unknown): boolean {
+  if ((e as { name?: unknown } | null)?.name === 'AbortError') return true;
+  if (e instanceof TypeError) return true;
+  const status = statusOf(e);
+  return status != null && (status >= 500 || status === 408 || status === 429);
+}
+
+/** Érthető magyar leírás egy végleg sikertelen napi lekéréshez. */
+export function fetchErrorText(e: unknown): string {
+  if ((e as { name?: unknown } | null)?.name === 'AbortError') return 'a szerver nem válaszolt időben';
+  if (e instanceof TypeError) return 'megszakadt a kapcsolat a szerverrel, vagy a szerver nem válaszolt időben';
+  const status = statusOf(e);
+  if (status === 429) return 'túl sok kérés – a szerver átmenetileg korlátozza a lekéréseket';
+  return status != null ? `szerverhiba (${status})` : 'ismeretlen hiba';
+}
+
+/**
+ * Egy napi lekérés időkorláttal és korlátozott számú újrapróbálkozással. Átmeneti hibánál várakozás után
+ * újra kér (egyszerre mindig csak egy kérés fut); a végleges átmeneti hibát EREDMÉNYKÉNT adja vissza
+ * (`ok: false`), nem dobja. Nem átmeneti hiba (pl. 400, 401, 403 – jogosultság) azonnal továbbdobódik:
+ * azt újrapróbálni értelmetlen, és a keresés sem folytatható.
+ */
+export async function fetchDayWithRetry(
+  fetchSlips: SlipFetcher,
+  params: Record<string, string | undefined>,
+  opts: ChainOptions & { onAttempt?: (attempt: number) => void } = {},
+): Promise<DayFetchResult> {
+  const delays = opts.retryDelaysMs ?? RETRY_DELAYS_MS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let attempt = 1; ; attempt++) {
+    opts.onAttempt?.(attempt);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    try {
+      return { ok: true, slips: (await fetchSlips(params, ctrl.signal)).slips };
+    } catch (e) {
+      if (!isRetryable(e)) throw e;
+      console.warn(`[duplázó] ${params.from} (${params.legs} láb) lekérése sikertelen, ${attempt}. kísérlet:`, (e as Error)?.message ?? e);
+      if (attempt > delays.length) return { ok: false, error: fetchErrorText(e) };
+      await sleep(delays[attempt - 1]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
 
 /**
  * A lépések szelvényei. Minden lépés NAPRÓL NAPRA keres egy `SEARCH_DAYS` napos ablakban (az 1. lépés a
- * mai naptól, a későbbiek az előző szelvény becsült végének napjától), és az első olyan napnál áll meg, ahol van használható
- * szelvény – így mindig a legkorábbi megfelelő mérkőzések kerülnek sorra. Napon belül előbb 2, majd 3 lábas
- * jelöltet kér a meglévő szelvényépítőtől (a szűrők változatlanok).
+ * mai naptól, a későbbiek az előző szelvény becsült végének napjától), és az első olyan napnál áll meg, ahol
+ * van használható szelvény – így mindig a legkorábbi megfelelő mérkőzések kerülnek sorra. Napon belül előbb
+ * 2, majd 3 lábas jelöltet kér a meglévő szelvényépítőtől (a szűrők változatlanok).
  *
  * Kizárva: a már elkezdődött (`now` előtti) és az előző lépés mérkőzéseinek becsült vége előtt kezdődő
- * mérkőzés, valamint a sorozatban már szereplő mérkőzés. Ha a teljes ablakban sincs megfelelő szelvény, a
- * lépés üres marad, és a lánc ott megszakad – a későbbi lépésekhez nem generálunk szelvényt.
- * Egy (nap, lábszám) párt egy futás alatt csak egyszer kérünk le.
+ * mérkőzés, valamint a sorozatban már szereplő mérkőzés.
+ *
+ * HIBAKEZELÉS: egy nap átmenetileg sikertelen lekérése (időtúllépés, hálózati hiba, 5xx) korlátozott
+ * újrapróbálkozás után sem szakítja meg a keresést – a nap „nem vizsgálható”-ként rögzül, és a keresés a
+ * következő nappal folytatódik. `MAX_CONSECUTIVE_FAILED_DAYS` egymást követő végleg sikertelen nap után a
+ * lépés keresése leáll (szerveroldali kiesésnél így nem vár percekig napról napra). Ha az ablakban így nincs
+ * szelvény, a lépés NEM „nincs megfelelő tipp”, hanem „a keresés nem teljes” (`incomplete`), és a lánc ott megáll. Ha a teljes ablakban sincs megfelelő
+ * szelvény (és minden nap lekérhető volt), a lépés üres, a lánc ott megszakad.
+ * Egy (nap, lábszám) párt egy futás alatt csak egyszer kérünk le – a végleg sikertelen napot sem kérjük újra.
  */
 export async function buildChain(
   rows: StepRow[],
   dateOf: (offsetDays: number) => string,
   fetchSlips: SlipFetcher,
-  onProgress?: (step: number) => void,
+  onProgress?: (p: ChainProgress) => void,
   now: number = Date.now(),
+  opts: ChainOptions = {},
 ): Promise<ChainStep[]> {
   const out: ChainStep[] = [];
   const used = new Set<string>();
-  const cache = new Map<string, Promise<{ slips: Slip[] }>>();
+  const cache = new Map<string, Promise<DayFetchResult>>();
+  let step = 0;
   const fetchDay = (date: string, legs: number) => {
     const key = `${date}|${legs}`;
     if (!cache.has(key)) {
-      cache.set(key, fetchSlips({ from: date, to: date, legs: String(legs), minOdds: String(ODDS_MIN), minLegProb: String(MIN_LEG_PROB) }));
+      cache.set(key, fetchDayWithRetry(
+        fetchSlips,
+        { from: date, to: date, legs: String(legs), minOdds: String(ODDS_MIN), minLegProb: String(MIN_LEG_PROB) },
+        { ...opts, onAttempt: (attempt) => onProgress?.({ step, date, attempt }) },
+      ));
     }
     return cache.get(key)!;
   };
@@ -208,23 +305,44 @@ export async function buildChain(
   let startOffset = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    onProgress?.(row.step);
+    step = row.step;
     const searched = { from: dateOf(startOffset), to: dateOf(startOffset + SEARCH_DAYS - 1) };
+    const failedDays: string[] = [];
     let slip: Slip | null = null;
     let foundOffset = startOffset;
+    let consecutiveFailed = 0;
+    let stoppedEarly = false;
     search: for (let d = startOffset; d < startOffset + SEARCH_DAYS; d++) {
+      const date = dateOf(d);
       for (const legs of LEG_COUNTS) {
-        slip = pickSlip((await fetchDay(dateOf(d), legs)).slips, { notBefore, usedMatches: used });
+        const res = await fetchDay(date, legs);
+        if (!res.ok) {
+          // a nap nem vizsgálható: rögzítjük, és a következő nappal folytatjuk (nem „nincs tipp”) – de ha
+          // egymás után több nap is végleg sikertelen, a szerver valószínűleg nem érhető el: nem várunk tovább
+          if (!failedDays.includes(date)) failedDays.push(date);
+          if (++consecutiveFailed >= MAX_CONSECUTIVE_FAILED_DAYS) { stoppedEarly = true; break search; }
+          break;
+        }
+        consecutiveFailed = 0;
+        slip = pickSlip(res.slips, { notBefore, usedMatches: used });
         if (slip) { foundOffset = d; break search; }
       }
     }
     if (!slip) {
+      const incomplete = failedDays.length > 0;
       out.push({
-        row, date: searched.from, searched, slip: null, totalOdds: null, payout: null,
-        note: 'A vizsgált időszakban nincs megfelelő adatokkal rendelkező, kb. 2,00-s összoddsú szelvény.',
+        row, date: searched.from, searched, slip: null, totalOdds: null, payout: null, failedDays, incomplete,
+        note: !incomplete
+          ? 'A vizsgált időszakban nincs megfelelő adatokkal rendelkező, kb. 2,00-s összoddsú szelvény.'
+          : stoppedEarly
+            ? `A keresés nem teljes: ${failedDays.length} egymást követő nap lekérése sem sikerült többszöri próbálkozás után, ezért a keresést leállítottuk (a szerver valószínűleg átmenetileg nem érhető el). Ez nem azt jelenti, hogy nincs megfelelő tipp – próbáld újra néhány perc múlva.`
+            : `A keresés nem teljes: ${failedDays.length} nap lekérése többszöri próbálkozás után sem sikerült. Ez nem azt jelenti, hogy nincs megfelelő tipp – próbáld újra néhány perc múlva.`,
       });
       for (const rest of rows.slice(i + 1)) {
-        out.push({ row: rest, date: searched.from, searched: null, slip: null, totalOdds: null, payout: null, note: 'Nem generálható: az előző lépéshez nincs szelvény.' });
+        out.push({
+          row: rest, date: searched.from, searched: null, slip: null, totalOdds: null, payout: null, failedDays: [], incomplete: false,
+          note: incomplete ? 'Nem generálható: az előző lépés keresése nem fejeződött be.' : 'Nem generálható: az előző lépéshez nincs szelvény.',
+        });
       }
       break;
     }
@@ -234,7 +352,10 @@ export async function buildChain(
     // A következő lépés ablaka a szelvény BECSÜLT végének napján kezdődik (ha az aznapi meccsek elég korán
     // véget érnek, még aznap is): így éjfél utáni befejezésnél sem vész el egy nap a következő 5 napos ablakból.
     startOffset = Math.max(foundOffset, daysBetween(dateOf(0), localDateKey(new Date(notBefore).toISOString())));
-    out.push({ row, date: localDateKey(firstKickoff(slip)), searched, slip, totalOdds, payout: grossPayout(row.stake, totalOdds), note: null });
+    out.push({
+      row, date: localDateKey(firstKickoff(slip)), searched, slip, totalOdds, payout: grossPayout(row.stake, totalOdds),
+      note: null, failedDays, incomplete: false,
+    });
   }
   return out;
 }
