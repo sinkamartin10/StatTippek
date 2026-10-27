@@ -3,10 +3,12 @@
  * Az összes számítás itt tiszta függvényekkel történik; a szerver csak adatot gyűjt és ezt hívja.
  */
 import type { League, Match, MatchAnalysis, MatchOdds, MatchResult, ResearchResult, Team } from '../types';
-import { computeForm, computeGoalMarkets, computeH2H, computeLeagueAverages, computeStandings } from './stats';
+import { computeForm, computeGoalMarkets, computeH2H, computeStandings } from './stats';
 import { poissonModel, xgModel, type XgModelOptions } from './models';
 import { computeConsensus, computeDataQuality, computeValue } from './evaluation';
 import { generateTips } from './tips';
+import { chooseBaseline } from './baseline';
+import { hasLeagueTable } from '../competitionFormat';
 
 export interface AnalysisInput {
   match: Match;
@@ -21,6 +23,11 @@ export interface AnalysisInput {
   modelOptions?: XgModelOptions;
   /** ha adott, a tabella csak az ettől kezdődő (aktuális idény) eredményekből épül */
   seasonStart?: string;
+  /**
+   * a két csapat elsődleges sorozata – KUPAMECCSNÉL ebből a(z) bajnokság(ok)ból jön a liga-alapérték
+   * (lásd `chooseBaseline`); bajnoki meccsnél nem használjuk
+   */
+  teamLeagues?: { home: League | null; away: League | null };
 }
 
 const f1 = (x: number) => x.toFixed(2).replace('.', ',');
@@ -37,13 +44,17 @@ export function analyzeMatch(inp: AnalysisInput): MatchAnalysis {
   const homeAtHome = computeForm(hId, results, 10, 'hazai', before);
   const awayAtAway = computeForm(aId, results, 10, 'idegen', before);
   const h2h = computeH2H(hId, aId, results, 10, before);
-  const standingsList = computeStandings(league.id, inp.seasonStart ? results.filter((r) => r.date >= inp.seasonStart!) : results, before);
+  // kupánál / válogatott sorozatnál nincs bajnoki tabella: a 3-1-0 pontsorrend félrevezető helyezést adna
+  const standingsList = hasLeagueTable(league)
+    ? computeStandings(league.id, inp.seasonStart ? results.filter((r) => r.date >= inp.seasonStart!) : results, before)
+    : [];
   const standings = {
     home: standingsList.find((s) => s.teamId === hId) ?? null,
     away: standingsList.find((s) => s.teamId === aId) ?? null,
     total: standingsList.length,
   };
-  const leagueAverages = computeLeagueAverages(league.id, results, before);
+  const baseline = chooseBaseline({ league, teamLeagues: inp.teamLeagues, results, before });
+  const leagueAverages = baseline.averages;
   const goalMarkets = computeGoalMarkets(homeLast10, awayLast10);
 
   const insufficientReasons: string[] = [];
@@ -51,7 +62,7 @@ export function analyzeMatch(inp: AnalysisInput): MatchAnalysis {
   if (awayLast10.sampleSize < 3) insufficientReasons.push(`${awayTeam.name}: csak ${awayLast10.sampleSize} lejátszott meccs érhető el.`);
   if (homeAtHome.sampleSize < 3) insufficientReasons.push(`${homeTeam.name}: kevesebb mint 3 hazai meccs – a hazai/idegen modell nem futtatható.`);
   if (awayAtAway.sampleSize < 3) insufficientReasons.push(`${awayTeam.name}: kevesebb mint 3 idegenbeli meccs – a hazai/idegen modell nem futtatható.`);
-  if (leagueAverages.matches < 10) insufficientReasons.push(`A(z) ${league.name} bajnokságból kevesebb mint 10 lejátszott meccs áll rendelkezésre a liga-átlaghoz.`);
+  if (leagueAverages.matches < 10) insufficientReasons.push(`A(z) ${baseline.label} bajnokságból kevesebb mint 10 lejátszott meccs áll rendelkezésre a liga-átlaghoz.`);
 
   const xg = xgModel(homeAtHome, awayAtAway, leagueAverages, inp.modelOptions);
   const poisson = xg ? poissonModel(xg.homeExpected, xg.awayExpected) : null;
@@ -76,6 +87,11 @@ export function analyzeMatch(inp: AnalysisInput): MatchAnalysis {
   const oneXtwoFactors: string[] = [];
   if (xg && poisson) {
     oneXtwoFactors.push(`Várható gólok: ${homeTeam.shortName} ${f1(xg.homeExpected)} – ${awayTeam.shortName} ${f1(xg.awayExpected)} (hazai támadóerő ${f1(xg.homeAttack)}, vendég védőerő ${f1(xg.awayDefense)}).`);
+    if (baseline.source === 'teams_league' || baseline.source === 'teams_leagues_mixed') {
+      oneXtwoFactors.push(`Kupamérkőzés: a liga-alapérték a(z) ${baseline.label} rendes játékidős eredményeiből származik${baseline.source === 'teams_leagues_mixed' ? ' (a két bajnokság egyenlő súlyú átlaga)' : ''}, nem a(z) ${league.name} eredményeiből.`);
+    } else if (baseline.source === 'competition') {
+      oneXtwoFactors.push(`Kupamérkőzés: a csapatok bajnokságáról nincs elég adat, ezért a liga-alapérték a(z) ${league.name} rendes játékidős eredményeiből származik.`);
+    }
     oneXtwoFactors.push(`Liga-átlag: hazai győzelem ${leagueAverages.homeWinPct}%, döntetlen ${leagueAverages.drawPct}%, vendég ${leagueAverages.awayWinPct}% (${leagueAverages.matches} meccs) – a hazai pálya előnye a liga-átlagon keresztül épül be.`);
     if (standings.home && standings.away) oneXtwoFactors.push(`Tabella: ${homeTeam.shortName} ${standings.home.position}. (${standings.home.points} pont), ${awayTeam.shortName} ${standings.away.position}. (${standings.away.points} pont) ${standings.total} csapatból.`);
     if (h2h.sampleSize >= 3) oneXtwoFactors.push(`Egymás elleni (${h2h.sampleSize}): ${h2h.homeTeamWins} ${homeTeam.shortName}-győzelem, ${h2h.draws} döntetlen, ${h2h.awayTeamWins} ${awayTeam.shortName}-győzelem – tájékoztató jellegű, a modellbe nem számít be.`);

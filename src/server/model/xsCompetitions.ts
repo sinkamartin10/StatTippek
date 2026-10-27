@@ -7,7 +7,10 @@ import { HISTORY_ONLY_DOMESTIC, NATIONAL_COMPETITIONS } from '../data/historyPla
 import type { CompetitionKind } from '../../shared/engine/experimental/crossLeague';
 
 export const XS_KINDS: Record<string, CompetitionKind> = {
-  ...Object.fromEntries(ESPN_LEAGUES.map((l) => [l.id, NATIONAL_COMPETITIONS.has(l.id) ? 'national' : l.international ? 'club_intl' : 'domestic'])),
+  // a hazai kupa (pl. DFB-Pokal) nincs a tanítóadatban: a tanítóhalmaz és a becslés változatlan, a kupameccset
+  // az alap motor szolgálja ki (a kiszolgálás „competition” okkal esik vissza)
+  ...Object.fromEntries(ESPN_LEAGUES.filter((l) => !l.domesticCup)
+    .map((l) => [l.id, NATIONAL_COMPETITIONS.has(l.id) ? 'national' : l.international ? 'club_intl' : 'domestic'])),
   ...Object.fromEntries(Object.keys(HISTORY_ONLY_DOMESTIC).map((id) => [id, 'domestic' as const])),
 };
 

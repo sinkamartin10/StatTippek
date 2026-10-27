@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Container } from '../container';
 import { AnalysisService } from '../services/analysisService';
 import { computeForm, computeStandings, computeLeagueAverages } from '../../shared/engine/stats';
+import { COMPETITION_RESULTS_LIMIT, competitionFormat, hasLeagueTable } from '../../shared/competitionFormat';
 import { localDateKey } from '../data/demoProvider';
 import type { MatchOdds, SlipStrategy } from '../../shared/types';
 import { freeMatchIds, redactAnalysisForFree, redactTipsForFree } from '../../shared/engine/plan';
@@ -221,16 +222,24 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
     const seasonStart = await c.data.getSeasonStart?.(league.id);
     const results = seasonStart ? all.filter((r) => r.date >= seasonStart) : all;
     const teams = await c.data.getTeams();
-    const standings = computeStandings(league.id, results);
+    // tabella csak valódi bajnokságnál: kupánál / válogatott sorozatnál a 3-1-0 pontsorrend félrevezető lenne
+    const table = hasLeagueTable(league);
+    const standings = table ? computeStandings(league.id, results) : [];
     const averages = computeLeagueAverages(league.id, results);
     const teamById = new Map(teams.map((t) => [t.id, t]));
+    const pro = planOf(res).pro;
+    const own = table ? [] : results.filter((r) => r.leagueId === league.id).sort((a, b) => b.date.localeCompare(a.date));
     res.json({
       league,
+      format: competitionFormat(league),
       averages,
       seasonStart: seasonStart ?? null,
       origin: c.data.origin,
       // FREE: csak a liga-átlagok; a tabella és a forma PRO (a szerver takarja ki, nem a felület)
-      standings: planOf(res).pro ? standings.map((s) => ({ ...s, team: teamById.get(s.teamId) ?? null, form: computeForm(s.teamId, results, 5).formString })) : [],
+      standings: pro ? standings.map((s) => ({ ...s, team: teamById.get(s.teamId) ?? null, form: computeForm(s.teamId, results, 5).formString })) : [],
+      // nem-bajnoki sorozat: a tabella HELYETT a mérkőzések és eredmények, ugyanazzal a PRO-kapuval
+      results: pro ? own.slice(0, COMPETITION_RESULTS_LIMIT).map((r) => ({ ...r, homeTeam: teamById.get(r.homeTeamId) ?? null, awayTeam: teamById.get(r.awayTeamId) ?? null })) : [],
+      resultsTotal: own.length,
     });
   });
 

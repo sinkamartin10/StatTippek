@@ -279,7 +279,10 @@ describe('API kikapcsolt és bekapcsolt modellel – jogosultság, mentés, szel
     const date = new Date(m.kickoff).toLocaleDateString('sv-SE');
     const tips = await call('GET', `/api/tips?date=${date}`);
     expect(tips.status).toBe(200);
-    expect((tips.body as TipListEntry[]).every((e) => e.model?.id === 'xg-poisson-1')).toBe(true);
+    // az alap motor: bajnoki meccsen xg-poisson-1, kupa- (nemzetközi) meccsen a külön kupa-verzió – visszaesés-zaj nélkül
+    const demoLeagues = await demo.getLeagues();
+    const baseIdOf = (leagueId: string) => (demoLeagues.find((l) => l.id === leagueId)?.international ? 'xg-poisson-cup-1' : 'xg-poisson-1');
+    expect((tips.body as TipListEntry[]).every((e) => e.model?.id === baseIdOf(e.leagueId) && !e.model?.fallbackReason)).toBe(true);
     const tip = (an.body as MatchAnalysis).tips[0];
     const saved = await call('POST', `/api/matches/${m.id}/predictions`, { market: tip.market });
     expect(saved.status).toBe(200);

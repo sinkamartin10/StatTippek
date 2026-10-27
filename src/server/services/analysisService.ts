@@ -9,7 +9,7 @@ import { marketLabel } from '../../shared/engine/markets';
 import { randomUUID } from 'node:crypto';
 import type { Container } from '../container';
 import { baselineServed, type TipArchiveService } from '../tipArchive/service';
-import { XG_MODEL_INFO } from '../../shared/engine/xsAnalysis';
+import { XG_MODEL_INFO, baseModelInfo } from '../../shared/engine/xsAnalysis';
 
 /**
  * A PRO-elemzés kiszolgálója (több ligás modell). `serve` mindig ad elemzést: a több ligás
@@ -161,11 +161,16 @@ export class AnalysisService {
     const league = leagues.find((l) => l.id === match.leagueId);
     if (!league || !homeTeam || !awayTeam) return null;
 
-    const analysis: MatchAnalysis = { ...analyzeMatch({ match, league, homeTeam, awayTeam, results, odds, research, now: new Date().toISOString(), modelOptions, seasonStart }), model: XG_MODEL_INFO };
+    // a csapatok elsődleges sorozata – kupameccsnél ebből jön a liga-alapérték (bajnoki meccsnél a motor nem használja)
+    const teamLeagues = {
+      home: leagues.find((l) => l.id === homeTeam.leagueId) ?? null,
+      away: leagues.find((l) => l.id === awayTeam.leagueId) ?? null,
+    };
+    const analysis: MatchAnalysis = { ...analyzeMatch({ match, league, homeTeam, awayTeam, results, odds, research, now: new Date().toISOString(), modelOptions, seasonStart, teamLeagues }), model: baseModelInfo(league) };
     let pro = analysis;
     if (this.proModel) {
       try { pro = this.proModel.serve(match, analysis); }
-      catch (e) { console.error('[xs] PRO-kiszolgálás hiba, alap motor:', (e as Error).message); pro = { ...analysis, model: { ...XG_MODEL_INFO, fallbackReason: 'A több ligás modell hibát jelzett – az alap motor szolgál ki.', fallbackCode: 'error' } }; }
+      catch (e) { console.error('[xs] PRO-kiszolgálás hiba, alap motor:', (e as Error).message); pro = { ...analysis, model: { ...(analysis.model ?? XG_MODEL_INFO), fallbackReason: 'A több ligás modell hibát jelzett – az alap motor szolgál ki.', fallbackCode: 'error' } }; }
     }
     const pair = { base: analysis, pro };
     this.cache.set(key, { at: Date.now(), value: pair });

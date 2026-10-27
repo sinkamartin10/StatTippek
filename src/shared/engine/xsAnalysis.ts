@@ -11,8 +11,15 @@ import type { MatchAnalysis, ServedModelInfo, XgModelResult } from '../types';
 import { generateTips } from './tips';
 import { computeValue } from './evaluation';
 import { XS_MODEL_ID, XS_QUALITY_LABEL, type XsPrediction, type XsQuality } from './experimental/crossLeague';
+import { hasLeagueTable } from '../competitionFormat';
 
 export const XG_MODEL_INFO: ServedModelInfo = { id: 'xg-poisson-1', label: 'xG + Poisson (alap motor)' };
+/** Az alap motor kupasorozatokra – külön motorverzió (lásd engine/version: CUP_ENGINE_VERSION). */
+export const CUP_MODEL_INFO: ServedModelInfo = { id: 'xg-poisson-cup-1', label: 'xG + Poisson (alap motor, kupa-alapérték)' };
+
+/** Az alap motor modell-azonosítója a sorozat szerint: bajnokság → xg-poisson-1, minden más → xg-poisson-cup-1. */
+export const baseModelInfo = (league: Parameters<typeof hasLeagueTable>[0]): ServedModelInfo =>
+  (hasLeagueTable(league) ? XG_MODEL_INFO : CUP_MODEL_INFO);
 export const XS_MODEL_LABEL = 'Több ligás erősségmodell';
 
 export interface XsFitMeta { fitId: string; cutoff: string; trainedMatches: number }

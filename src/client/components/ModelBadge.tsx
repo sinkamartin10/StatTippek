@@ -29,7 +29,8 @@ export function ModelBadge({ model }: { model?: ServedModelInfo }) {
 
 /** Részletes magyarázat a mérkőzésoldalon: kategória-indoklás, visszaesés oka, becslés-azonosító. */
 export function ModelNote({ model }: { model?: ServedModelInfo }) {
-  if (!model || (model.id === 'xg-poisson-1' && !model.fallbackReason)) return null;
+  // az alap motor (bajnoki és kupás változata) külön magyarázatot nem kap
+  if (!model || ((model.id === 'xg-poisson-1' || model.id === 'xg-poisson-cup-1') && !model.fallbackReason)) return null;
   if (model.id === 'xs-strength-1') {
     return (
       <div className="rounded-xl border border-primary/20 bg-primary-soft px-4 py-3 text-sm font-semibold" data-model-note="xs">

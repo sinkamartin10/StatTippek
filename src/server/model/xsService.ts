@@ -193,7 +193,8 @@ export class XsModelService {
       // okonként az első előfordulás naplózódik; a számláló az admin-állapotban látszik
       if (!f[code]) this.log(`[xs] visszaesés az alap motorra (${code}): ${reason}`);
       f[code] = (f[code] ?? 0) + 1;
-      return { ...base, model: { ...XG_MODEL_INFO, fallbackReason: reason, fallbackCode: code } };
+      // az alap elemzés modell-azonosítója marad (bajnokság: xg-poisson-1, kupa: xg-poisson-cup-1)
+      return { ...base, model: { ...(base.model ?? XG_MODEL_INFO), fallbackReason: reason, fallbackCode: code } };
     };
     const fit = this.fit;
     if (!fit) return fallback('not_ready', 'A több ligás modell még nem áll készen (a tanítóadat gyűjtése folyamatban).');

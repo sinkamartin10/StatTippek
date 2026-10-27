@@ -30,7 +30,7 @@
 import { createHash } from 'node:crypto';
 import type { Match, MatchAnalysis } from '../../shared/types';
 import { evaluateMarket, marketLabel, marketType } from '../../shared/engine/markets';
-import { ENGINE_VERSION } from '../../shared/engine/version';
+import { CUP_ENGINE_VERSION, ENGINE_VERSION } from '../../shared/engine/version';
 import {
   ARCHIVE_MARKET_TYPES, ARCHIVE_MAX_OFFSET, ARCHIVE_PAGE_MAX, ARCHIVE_PAGE_SIZE, SETTLEMENT_STATUSES,
   TIP_AVAILABILITIES, hitRateOf, parseCategory, sanitizeSearch,
@@ -97,7 +97,10 @@ export const XS_ENGINE_VERSION = 'xs-strength-1';
  * xg-poisson-1 sorai (és a rá épülő kalibrációs diagnosztika) nem keverednek az új modellel.
  */
 export function engineOf(a: MatchAnalysis): string {
-  return a.model?.id === XS_ENGINE_VERSION ? XS_ENGINE_VERSION : ENGINE_VERSION;
+  if (a.model?.id === XS_ENGINE_VERSION) return XS_ENGINE_VERSION;
+  // kupasorozat: külön motorverzió – a bajnoki (xg-poisson-1) sorokkal nem keveredik
+  if (a.model?.id === CUP_ENGINE_VERSION) return CUP_ENGINE_VERSION;
+  return ENGINE_VERSION;
 }
 
 /** A motor saját kimenetének kiszolgálása: a kiszolgált érték pontosan a nyers kimenet. */

@@ -4,6 +4,7 @@
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
 import type { FeedPost, FeedResponse, FeedView, LikeResponse } from '@shared/community';
+import type { CompetitionFormat, CompetitionResultRow } from '@shared/competitionFormat';
 import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo, ProPlanId,
 } from '@shared/manualPayment';
@@ -43,9 +44,15 @@ export interface MatchWithTeams extends Match {
 
 export interface StandingsResponse {
   league: League;
+  /** a sorozat formátuma – csak 'league' esetén van tabella */
+  format: CompetitionFormat;
   averages: LeagueAverages;
   origin: 'demo' | 'live';
   standings: (StandingRow & { team: Team | null; form: string })[];
+  /** nem-bajnoki sorozat: a legfrissebb eredmények a tabella helyett (PRO) */
+  results: CompetitionResultRow[];
+  /** a sorozat összes ismert eredménye (FREE-nek is – csak a szám) */
+  resultsTotal: number;
 }
 
 export interface TeamResponse {

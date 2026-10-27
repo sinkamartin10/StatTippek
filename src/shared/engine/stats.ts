@@ -153,7 +153,9 @@ export function computeStandings(leagueId: string, results: MatchResult[], befor
 
 /** Liga-átlagok – a várható gól modell normalizálásához. */
 export function computeLeagueAverages(leagueId: string, results: MatchResult[], beforeDate?: string): LeagueAverages {
-  const ms = results.filter((r) => r.leagueId === leagueId && (!beforeDate || r.date < beforeDate));
+  // csak a rendes játékidőben lezárult meccsek: a hosszabbítás / tizenegyespárbaj gólszáma nem 90 perces
+  // eredmény (bajnokságban ilyen nincs, ott az átlag változatlan)
+  const ms = results.filter((r) => r.leagueId === leagueId && r.regulation !== false && (!beforeDate || r.date < beforeDate));
   const n = ms.length;
   const hg = ms.reduce((s, r) => s + r.homeGoals, 0);
   const ag = ms.reduce((s, r) => s + r.awayGoals, 0);

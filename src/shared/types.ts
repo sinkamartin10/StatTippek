@@ -11,9 +11,15 @@ export interface League {
   name: string;
   country: string;
   countryCode: string;
-  /** 1 = első osztály, 2 = másodosztály, 0 = nemzetközi kupa */
+  /** 1 = első osztály, 2 = másodosztály, 0 = kupa (nemzetközi vagy hazai) */
   tier: number;
   international: boolean;
+  /**
+   * Hazai kupa (pl. DFB-Pokal): nem elsődleges sorozat – a csapat elsődleges sorozata a bajnoksága marad, és a
+   * kupa előző idénye nem kell az előzményekhez –, de NEM nemzetközi: az ország a kupa országa, és a meccs nem
+   * kap „Nemzetközi kupamérkőzés” címkét. Opcionális: a meglévő sorozatok viselkedése változatlan.
+   */
+  domesticCup?: boolean;
   /** külső szolgáltató azonosítója (pl. API-Football league id) – opcionális */
   externalId?: number;
 }
@@ -63,6 +69,16 @@ export interface MatchResult {
   htHomeGoals?: number;
   htAwayGoals?: number;
   origin: DataOrigin;
+  /**
+   * false: a meccs NEM rendes játékidőben dőlt el (hosszabbítás vagy tizenegyespárbaj) – a közölt gólszám így
+   * nem 90 perces eredmény (hosszabbításnál a hosszabbítás góljait is tartalmazza), ezért rendes játékidős
+   * átlagba nem számít. Hiányzó mező = rendes játékidő (a bajnoki eredmények változatlanok).
+   */
+  regulation?: false;
+  /** hogyan dőlt el, ha nem rendes játékidőben: hosszabbítás ('aet') vagy tizenegyespárbaj ('pen') */
+  decidedBy?: 'aet' | 'pen';
+  /** tizenegyespárbaj eredménye (csak 'pen' esetén, ha a forrás közli) */
+  shootout?: { home: number; away: number };
 }
 
 export interface MatchOdds {
@@ -412,7 +428,8 @@ export interface MatchAnalysis {
 
 /** Melyik modell állította elő az elemzés valószínűségeit és tippjeit. */
 export interface ServedModelInfo {
-  id: 'xg-poisson-1' | 'xs-strength-1';
+  /** 'xg-poisson-cup-1': az alap motor kupasorozatokra (a csapatok bajnokságának liga-alapértékével) */
+  id: 'xg-poisson-1' | 'xg-poisson-cup-1' | 'xs-strength-1';
   /** emberi megnevezés */
   label: string;
   /** csak `xs-strength-1`: a validációból származó adatminőségi kategória */
