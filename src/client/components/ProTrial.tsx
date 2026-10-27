@@ -21,18 +21,59 @@ interface ViewProps {
   busy?: boolean;
   msg?: string | null;
   onRequest?: () => void;
+  /** az állapot lekérése még úton van */
+  checking?: boolean;
+  /** az állapot lekérése sikertelen (pl. szerverhiba) – a kártya ettől NEM tűnhet el */
+  loadError?: string | null;
+  onRetry?: () => void;
   className?: string;
 }
 
-/** Tisztán megjelenítő nézet (tesztelhető). Nincs mit mutatni → null. */
-export function ProTrialView({ status, loggedIn, pro, busy = false, msg = null, onRequest, className = '' }: ViewProps) {
-  if (!status || status.state === 'unavailable') return null;
+/**
+ * Tisztán megjelenítő nézet (tesztelhető). Betöltés és lekérési hiba alatt a FREE felhasználó
+ * továbbra is látja az ajánlatot és a gombot (a szabályokat úgyis a szerver érvényesíti);
+ * hibánál ehhez figyelmeztetés és újrapróbálás tartozik. Nincs mit mutatni → null.
+ */
+export function ProTrialView({ status, loggedIn, pro, busy = false, msg = null, onRequest, checking = false, loadError = null, onRetry, className = '' }: ViewProps) {
+  if (status?.state === 'unavailable') return null;
+  const errorNote = loadError && (
+    <div className="mt-3">
+      <Note tone="warn">
+        A próbaidőszak állapotát most nem sikerült betölteni ({loadError}).
+        {onRetry && <button type="button" className="btn btn-sm ml-2" onClick={onRetry}>Újrapróbálás</button>}
+      </Note>
+    </div>
+  );
   const wrap = (body: ReactNode, tone: 'primary' | 'muted' = 'primary') => (
-    <section className={`card p-4 ${tone === 'primary' ? 'border-primary/40' : ''} ${className}`} data-trial-state={status.state} aria-label="Ingyenes PRO próbaidőszak">
+    <section className={`card p-4 ${tone === 'primary' ? 'border-primary/40' : ''} ${className}`} data-trial-state={status?.state ?? (loadError ? 'error' : 'checking')} aria-label="Ingyenes PRO próbaidőszak">
       {body}
+      {errorNote}
       {msg && <div className="mt-3"><Note tone="warn">{msg}</Note></div>}
     </section>
   );
+  const offer = (waiting: boolean) => wrap(
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <Gift className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+        <div className="min-w-0">
+          <h2 className="text-base font-extrabold tracking-tight">{TRIAL_TEXT.title}</h2>
+          <p className="mt-1 text-sm font-semibold text-text-muted">{TRIAL_TEXT.description}</p>
+        </div>
+      </div>
+      {!loggedIn
+        ? <Link to="/bejelentkezes" className="btn btn-primary">{TRIAL_TEXT.button}</Link>
+        : waiting
+          ? <button type="button" className="btn btn-primary" disabled>Állapot ellenőrzése…</button>
+          : <button type="button" className="btn btn-primary" onClick={onRequest} disabled={busy}>{busy ? 'Küldés…' : TRIAL_TEXT.button}</button>}
+    </div>,
+  );
+
+  if (!status) {
+    // PRO, de nem tudjuk, próbaidőszak-e: ajánlatot nem mutatunk, csak a hibát (ha van)
+    if (pro) return loadError ? wrap(<p className="text-sm font-semibold">Ingyenes PRO próbaidőszak</p>, 'muted') : null;
+    if (loadError) return offer(false);
+    return checking ? offer(true) : null;
+  }
 
   if (status.state === 'active') {
     return wrap(
@@ -52,21 +93,7 @@ export function ProTrialView({ status, loggedIn, pro, busy = false, msg = null, 
   if (status.state === 'rejected') return wrap(<p className="text-sm font-semibold">{TRIAL_TEXT.rejected}</p>, 'muted');
   // lejárt próbaidőszak: újra nem igényelhető, és nincs mit mondani róla
   if (status.state === 'used') return null;
-
-  return wrap(
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 items-start gap-3">
-        <Gift className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-        <div className="min-w-0">
-          <h2 className="text-base font-extrabold tracking-tight">{TRIAL_TEXT.title}</h2>
-          <p className="mt-1 text-sm font-semibold text-text-muted">{TRIAL_TEXT.description}</p>
-        </div>
-      </div>
-      {loggedIn
-        ? <button type="button" className="btn btn-primary" onClick={onRequest} disabled={busy}>{busy ? 'Küldés…' : TRIAL_TEXT.button}</button>
-        : <Link to="/bejelentkezes" className="btn btn-primary">{TRIAL_TEXT.button}</Link>}
-    </div>,
-  );
+  return offer(false);
 }
 
 /** Adatkezelő változat: lekéri az állapotot, és elküldi az igénylést (dupla kattintás ellen egyszerre egyet). */
@@ -89,5 +116,11 @@ export function ProTrialCard({ className = '' }: { className?: string }) {
   const surelyPaid = configured && loggedIn && pro && (!profile?.subscription_end
     || new Date(profile.subscription_end).getTime() > Date.now() + PRO_TRIAL_DAYS * 86_400_000);
   const shown = status.data ?? (surelyPaid ? { state: 'pro_member' as const, requestedAt: null, trialEnd: null } : null);
-  return <ProTrialView status={shown} loggedIn={loggedIn} pro={pro} busy={busy} msg={msg} onRequest={() => { if (!busy) void send.current(); }} className={className} />;
+  return (
+    <ProTrialView
+      status={shown} loggedIn={loggedIn} pro={pro} busy={busy} msg={msg} className={className}
+      onRequest={() => { if (!busy) void send.current(); }}
+      checking={status.loading} loadError={status.data ? null : status.error} onRetry={status.reload}
+    />
+  );
 }

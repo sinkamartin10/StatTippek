@@ -360,6 +360,32 @@ describe('PRO próbaidőszak – felület', () => {
     expect(view(st('unavailable'))).toBe('');
   });
 
+  it('API-hiba esetén a FREE felhasználónál a kártya NEM tűnik el: ajánlat, gomb, figyelmeztetés és újrapróbálás', () => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProTrialView, { status: null, loggedIn: true, pro: false, loadError: 'Hiba (500)', onRetry: () => {} })));
+    expect(html).toContain(TRIAL_TEXT.title);
+    expect(html).toContain(TRIAL_TEXT.button);
+    expect(html).toContain('nem sikerült betölteni');
+    expect(html).toContain('Újrapróbálás');
+  });
+
+  it('betöltés közben a FREE felhasználó látja az ajánlatot (letiltott gombbal); PRO-nál nincs ajánlat', () => {
+    const free = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProTrialView, { status: null, loggedIn: true, pro: false, checking: true })));
+    expect(free).toContain(TRIAL_TEXT.title);
+    expect(free).toContain('Állapot ellenőrzése…');
+    expect(free).toMatch(/<button[^>]*disabled/);
+    expect(renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProTrialView, { status: null, loggedIn: true, pro: true, checking: true })))).toBe('');
+    const proErr = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ProTrialView, { status: null, loggedIn: true, pro: true, loadError: 'x' })));
+    expect(proErr).not.toContain(TRIAL_TEXT.button);
+  });
+
+  it('FREE felhasználó: a PRO oldalon és a nyitóoldalon az első rendereléskor (a szerver válasza előtt) is ott az ajánlat', () => {
+    for (const Page of [Pro, Dashboard]) {
+      const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Page)));
+      expect(html).toContain(TRIAL_TEXT.title);
+      expect(html).toContain(TRIAL_TEXT.description);
+    }
+  });
+
   it('a PRO oldalon és a bejelentkezés utáni nyitóoldalon is megjelenik a „Már PRO tag vagy, köszönjük!” szöveg', () => {
     plan.pro = true; plan.end = new Date(Date.now() + 25 * DAY).toISOString();
     try {
