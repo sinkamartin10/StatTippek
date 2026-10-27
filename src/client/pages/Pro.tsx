@@ -16,6 +16,7 @@ import {
 } from '../components/PlannedPricing';
 import { fmtDateTime, useAsync } from '../lib/format';
 import { ManualPaymentSection } from '../components/ManualPayment';
+import { ProTrialCard } from '../components/ProTrial';
 import { APP_PRO_PRICE } from '@shared/manualPayment';
 import { api } from '../lib/api';
 
@@ -90,6 +91,9 @@ export default function Pro() {
           A FREE csomagban naponta {FREE_DAILY_TIPS} tippet látsz. PRO-val megnyílik minden mérkőzés, minden piac és a modell teljes indoklása.
         </p>
       </div>
+
+      {/* Ingyenes 3 napos próbaidőszak – az állapotot a szerver adja */}
+      <ProTrialCard />
 
       {/* Csomagok */}
       <div className="grid gap-4 md:grid-cols-2">

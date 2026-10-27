@@ -224,10 +224,10 @@ afterEach(async () => { await h.close(); });
 // ===========================================================================
 
 describe('Értesítések – katalógus és tiszta logika', () => {
-  it('N1. Pontosan a 7 V1 típus létezik, mind ikonnal', () => {
+  it('N1. Pontosan a 7 V1 Tippcsata-típus + a PRO próbaidőszak aktiválása létezik, mind ikonnal', () => {
     expect(NOTIFICATION_KINDS.map((k) => k.type).sort()).toEqual([
       'battle_challenge_accepted', 'battle_challenge_declined', 'battle_challenge_expired',
-      'battle_challenge_received', 'battle_draw', 'battle_lost', 'battle_won',
+      'battle_challenge_received', 'battle_draw', 'battle_lost', 'battle_won', 'pro_trial_activated',
     ]);
     for (const k of NOTIFICATION_KINDS) expect(k.icon.length).toBeGreaterThan(0);
     // Szándékosan NINCS „visszavonva" típus

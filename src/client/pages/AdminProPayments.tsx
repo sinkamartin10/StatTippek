@@ -5,6 +5,9 @@
  * lezárásával); az elutasítás csak lezárja a kérelmet. Ugyanazt a kérelmet a
  * szerver nem engedi kétszer feldolgozni. Az admin jogot a szerver dönti el
  * (ADMIN_EMAILS) – ez az oldal nem admin fióknak 403-at kap.
+ *
+ * Ugyanitt: az ingyenes, 3 napos PRO próbaidőszak igénylései (jóváhagyás = PRO pontosan
+ * 3 napra a szerveren; elutasítás = végleges, a fiók többé nem igényelhet).
  */
 import { useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
@@ -16,6 +19,7 @@ import { api } from '../lib/api';
 import { fmtDateTime, useAsync } from '../lib/format';
 import { singleFlight } from '../lib/learningDashboard';
 import { Card, EmptyState, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
+import { TRIAL_STATUS_LABEL, type AdminTrialRequestView, type TrialRequestStatus } from '@shared/proTrial';
 
 type Filter = PaymentRequestStatus | 'all';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -41,6 +45,81 @@ export default function AdminProPayments() {
         : list.error ? <ErrorBox message={list.error} onRetry={list.reload} />
           : !list.data?.length ? <EmptyState emoji="📭" title="Nincs ilyen kérelem" />
             : <div className="space-y-3">{list.data.map((r) => <AdminPaymentCard key={r.id} r={r} onDone={list.reload} />)}</div>}
+
+      <AdminTrialSection />
+    </div>
+  );
+}
+
+/** Ingyenes PRO próbaidőszak igénylések – ugyanazokkal a szűrőkkel, mint a befizetések. */
+function AdminTrialSection() {
+  const [filter, setFilter] = useState<TrialRequestStatus | 'all'>('pending');
+  const list = useAsync(() => api.adminProTrials(filter), [filter]);
+  return (
+    <section className="space-y-3 border-t border-border pt-6" aria-labelledby="pro-trial-requests">
+      <h2 id="pro-trial-requests" className="text-xl font-black tracking-tight">Ingyenes PRO próbaidőszak igénylések</h2>
+      <p className="text-sm font-semibold text-text-muted">A jóváhagyás azonnal, pontosan 3 napra aktiválja a PRO-t (fizetés nélkül); a lejárat után a fiók magától FREE. Az elutasítás végleges – a fiók többé nem igényelhet.</p>
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Próbaidőszak-igénylések szűrése">
+        {FILTERS.map((f) => (
+          <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={`chip ${filter === f.key ? 'chip-active' : ''}`} onClick={() => setFilter(f.key)}>{f.label}</button>
+        ))}
+      </div>
+      {list.loading && !list.data ? <Card><Loading /></Card>
+        : list.error ? <ErrorBox message={list.error} onRetry={list.reload} />
+          : !list.data?.length ? <EmptyState emoji="📭" title="Nincs ilyen igénylés" />
+            : <div className="space-y-3">{list.data.map((r) => <AdminTrialCard key={r.id} r={r} onDone={list.reload} />)}</div>}
+    </section>
+  );
+}
+
+/** Egy próbaidőszak-igénylés kártyája; döntés csak függő igénylésnél. */
+export function AdminTrialCard({ r, onDone }: { r: AdminTrialRequestView; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
+
+  const actRef = useRef<(kind: 'approve' | 'reject') => Promise<void>>(async () => {});
+  actRef.current = async (kind) => {
+    setBusy(true); setMsg(null);
+    try {
+      if (kind === 'approve') {
+        const out = await api.adminApproveProTrial(r.id);
+        setMsg({ tone: 'info', text: `Jóváhagyva – PRO próbaidőszak eddig: ${out.request.trialEnd ? fmtDateTime(out.request.trialEnd) : '–'}.` });
+      } else {
+        await api.adminRejectProTrial(r.id);
+        setMsg({ tone: 'info', text: 'Elutasítva.' });
+      }
+      onDone();
+    } catch (e) {
+      setMsg({ tone: 'warn', text: (e as Error).message });
+    } finally { setBusy(false); }
+  };
+  const approveGate = useRef(singleFlight(() => actRef.current('approve')));
+  const rejectGate = useRef(singleFlight(() => actRef.current('reject')));
+
+  return (
+    <div className="card p-4" data-status={r.status}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-base font-extrabold">{r.displayName ?? 'Nincs felhasználónév'}</div>
+          <div className="truncate text-sm font-semibold text-text-muted">{r.email}</div>
+        </div>
+        <span className={`badge ${STATUS_BADGE[r.status]}`}>{TRIAL_STATUS_LABEL[r.status]}</span>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm font-semibold sm:grid-cols-3">
+        <div><dt className="text-[11px] font-extrabold uppercase text-text-muted">Igényelve</dt><dd>{fmtDateTime(r.createdAt)}</dd></div>
+        {r.decidedAt && <div><dt className="text-[11px] font-extrabold uppercase text-text-muted">Döntés</dt><dd>{fmtDateTime(r.decidedAt)}</dd></div>}
+        {r.trialEnd && <div><dt className="text-[11px] font-extrabold uppercase text-text-muted">Próbaidőszak</dt><dd>{r.trialStart ? fmtDateTime(r.trialStart) : '–'} – {fmtDateTime(r.trialEnd)}</dd></div>}
+      </dl>
+      <p className="mt-2 text-xs font-semibold text-text-muted">
+        Jelenlegi profil: {r.profile ? `${PROFILE_LABEL[r.profile.status] ?? r.profile.status}${r.profile.subscriptionEnd ? ` (lejár: ${fmtDateTime(r.profile.subscriptionEnd)})` : r.profile.status === 'pro' ? ' (lejárat nélkül)' : ''}` : 'nincs profil'}
+      </p>
+      {r.status === 'pending' && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+          <button type="button" className="btn btn-primary" onClick={() => { if (!busy) void approveGate.current(); }} disabled={busy}><Check className="h-4 w-4" /> {busy ? 'Feldolgozás…' : 'Elfogadás'}</button>
+          <button type="button" className="btn" onClick={() => { if (!busy) void rejectGate.current(); }} disabled={busy}><X className="h-4 w-4" /> Elutasítás</button>
+        </div>
+      )}
+      {msg && <div className="mt-2"><Note tone={msg.tone}>{msg.text}</Note></div>}
     </div>
   );
 }

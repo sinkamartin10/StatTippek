@@ -10,6 +10,7 @@ import { Card, Disclaimer, ErrorBox, Loading, Note, PageHeader, StatCard } from 
 import { TipCard } from '../components/TipCard';
 import { CompetitionStatusBadge, remainingText } from './Competitions';
 import { MissionsCard } from '../components/MissionsCard';
+import { ProTrialCard } from '../components/ProTrial';
 import { useAuth } from '../auth/AuthContext';
 import { FREE_DAILY_TIPS, useFreeDay, usePlan } from '../auth/PlanContext';
 
@@ -52,6 +53,9 @@ export default function Dashboard() {
         <StatCard icon="💰" tone="warning" label="Átlag odds" value={avgOdds != null ? avgOdds.toFixed(2).replace('.', ',') : '–'} sub={`${withOdds.length} piac oddsszal`} />
         <StatCard icon="📈" tone={s?.roi != null && s.roi < 0 ? 'danger' : 'success'} label="ROI" value={s?.roi != null ? `${signed(s.roi * 100, 1)}%` : '–'} sub={pro ? '1 egység tét / tipp, utólag mérve' : '🔒 PRO-val látható'} />
       </div>
+
+      {/* Ingyenes 3 napos PRO próbaidőszak – ugyanaz a kártya, mint a PRO oldalon */}
+      <ProTrialCard />
 
       {!pro && (
         <Note tone="warn">

@@ -41,7 +41,8 @@ export type NotificationType =
   | 'battle_challenge_expired'
   | 'battle_won'
   | 'battle_lost'
-  | 'battle_draw';
+  | 'battle_draw'
+  | 'pro_trial_activated';
 
 /** Mire mutat az értesítés – a felület ebből épít linket, típusonkénti ágazás nélkül. */
 export type NotificationEntityType = 'battle';
@@ -54,7 +55,7 @@ export interface NotificationKind {
 }
 
 /**
- * A V1 hét típusa. Szándékosan NINCS „kihívás visszavonva” értesítés: azt a
+ * A V1 hét Tippcsata-típusa + a PRO próbaidőszak aktiválása. Szándékosan NINCS „kihívás visszavonva” értesítés: azt a
  * kihívó maga teszi, az ellenfél pedig olyan kihívásról kapna jelzést, amit
  * talán nem is látott – ez csak zajt termelne.
  */
@@ -66,6 +67,7 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   { type: 'battle_won', icon: '🏆', group: 'Tippcsata' },
   { type: 'battle_lost', icon: '😔', group: 'Tippcsata' },
   { type: 'battle_draw', icon: '🤝', group: 'Tippcsata' },
+  { type: 'pro_trial_activated', icon: '👑', group: 'PRO' },
 ];
 
 export const NOTIFICATION_TYPES = new Set<string>(NOTIFICATION_KINDS.map((k) => k.type));

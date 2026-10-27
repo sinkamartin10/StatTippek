@@ -36,6 +36,7 @@ import { ProgressionService } from './progression/service';
 import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter, proWeeklyEnabled } from './billing/manualPayments';
+import { PostgresProTrialStore, adminProTrialsRouter, proTrialRouter, trialNotificationCandidates } from './billing/proTrial';
 import { proStatsRouters, supabaseActiveProCounter } from './billing/proStats';
 import { EspnProvider } from './data/espnProvider';
 import { createXsModel, scheduleXsRefresh, xsAdminRouter } from './model/xsBootstrap';
@@ -121,8 +122,11 @@ const competitionService = new CompetitionService(
 // A két szolgáltatás kölcsönösen hivatkozik egymásra, de KÉSŐI KÖTÉSSEL: mindkét
 // closure csak kéréskor fut le, ezért futásidőben nincs körkörösség. A típust
 // explicit megadjuk, mert a következtetés egy ilyen körön nem jut át.
+// Ingyenes PRO próbaidőszak (0024): az aktiválási értesítést az újraszármaztató pótolja, ha elmaradt
+const proTrials = supabaseAdmin ? new PostgresProTrialStore(supabaseAdmin) : null;
 const notificationService: NotificationService = new NotificationService(container.notifications, [
   (userId) => battleService.notificationCandidates(userId),
+  trialNotificationCandidates(proTrials),
 ]);
 
 const battleService: BattleService = new BattleService(
@@ -209,6 +213,11 @@ app.use('/api/admin/model-learning', requireAdmin, modelLearningRouter(modelLear
 const manualPayments = supabaseAdmin ? new PostgresManualPaymentStore(supabaseAdmin) : null;
 app.use('/api/pro-payments', proPaymentsRouter(manualPayments, currentProPrice));
 app.use('/api/admin/pro-payments', requireAdmin, adminProPaymentsRouter(manualPayments));
+app.use('/api/pro-trial', proTrialRouter(proTrials));
+app.use('/api/admin/pro-trials', requireAdmin, adminProTrialsRouter(proTrials, {
+  notify: (n) => notificationService.emit(n),
+  displayNames: (ids) => container.displayNames.getMany(ids),
+}));
 console.log(`Heti PRO-csomag: ${proWeeklyEnabled(process.env) ? 'rendelhető' : 'TILTVA (PRO_WEEKLY_ENABLED nincs true-ra állítva)'}`);
 // Nyilvános PRO-felhasználószám: mindig a TÉNYLEGES aktív PRO-k száma; az admin csak a megjelenítést kapcsolja
 const proStats = proStatsRouters(container.db, supabaseAdmin ? supabaseActiveProCounter(supabaseAdmin) : null);
@@ -288,6 +297,9 @@ app.listen(port, async () => {
       // 0020: kézi PRO-befizetések (a tábla nélkül a kérelem 500-at ad – a többi funkció működik)
       const ppr = supabaseAdmin ? await supabaseAdmin.from('pro_payment_requests').select('id').limit(1) : null;
       if (ppr?.error) console.warn('PRO kézi fizetés nem kész (hiányzik: pro_payment_requests). Futtasd le: supabase/migrations/0020_pro_payment_requests.sql');
+      // 0024: ingyenes PRO próbaidőszak (a tábla nélkül az igénylés 500-at ad – a többi funkció működik)
+      const ptr = supabaseAdmin ? await supabaseAdmin.from('pro_trial_requests').select('id').limit(1) : null;
+      if (ptr?.error) console.warn('PRO próbaidőszak nem kész (hiányzik: pro_trial_requests). Futtasd le: supabase/migrations/0024_pro_trial_requests.sql');
       // 0021: a több ligás modell tartós tanítóadata (nélküle memóriából dolgozik, újraindulás után újratölt)
       if (xsModel && supabaseAdmin) {
         const missingXs: string[] = [];

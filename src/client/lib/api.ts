@@ -9,6 +9,7 @@ import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo, ProPlanId,
 } from '@shared/manualPayment';
 import type { AdminProStats, PublicProCount } from '@shared/proStats';
+import type { AdminTrialRequestView, ProTrialStatus, TrialRequestStatus } from '@shared/proTrial';
 import type { EdgeRadarResponse } from '@shared/types';
 import type { SimulationReport } from '@shared/engine/simulator';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
@@ -205,6 +206,16 @@ export const api = {
     request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify(verified) }, '/api/admin/pro-payments'),
   adminRejectProPayment: (id: string, note: string | null) =>
     request<{ request: AdminPaymentRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ note }) }, '/api/admin/pro-payments'),
+  // ---------- Ingyenes PRO próbaidőszak (fiókonként egyszer; a PRO-t csak az admin jóváhagyása aktiválja) ----------
+  proTrial: () => request<ProTrialStatus>('/pro-trial'),
+  /** törzs nélkül: a kérelmezőt a szerver a tokenből azonosítja */
+  requestProTrial: () => request<{ status: ProTrialStatus }>('/pro-trial', { method: 'POST', body: '{}' }),
+  adminProTrials: (status: TrialRequestStatus | 'all' = 'pending') =>
+    request<AdminTrialRequestView[]>(`?status=${encodeURIComponent(status)}`, {}, '/api/admin/pro-trials'),
+  adminApproveProTrial: (id: string) =>
+    request<{ request: AdminTrialRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }, '/api/admin/pro-trials'),
+  adminRejectProTrial: (id: string) =>
+    request<{ request: AdminTrialRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: '{}' }, '/api/admin/pro-trials'),
   // ---------- PRO-felhasználószám (mindig a tényleges aktív PRO-k száma; az admin csak a megjelenítést kapcsolja) ----------
   proStats: () => request<PublicProCount>('/pro-stats'),
   adminProStats: () => request<AdminProStats>('', {}, '/api/admin/pro-stats'),
