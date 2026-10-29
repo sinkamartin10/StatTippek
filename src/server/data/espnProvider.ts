@@ -42,6 +42,7 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'fifa-friendly', name: 'Válogatott barátságos', country: 'Válogatott (nemzetközi)', countryCode: 'INT', tier: 0, international: true },
   { id: 'ger-dfb', name: 'DFB-Pokal', country: 'Németország', countryCode: 'GER', tier: 0, international: false, domesticCup: true },
   { id: 'eng-efl', name: 'EFL Cup (Carabao Cup)', country: 'Anglia', countryCode: 'ENG', tier: 0, international: false, domesticCup: true },
+  { id: 'esp-cdr', name: 'Copa del Rey', country: 'Spanyolország', countryCode: 'ESP', tier: 0, international: false, domesticCup: true },
 ];
 
 export const SLUG: Record<string, string> = {
@@ -52,6 +53,8 @@ export const SLUG: Record<string, string> = {
   'ger-dfb': 'ger.dfb_pokal',
   // ESPN: 3920 „English Carabao Cup” – hosszabbítás nincs, döntetlennél azonnal tizenegyesek (STATUS_FINAL_PEN)
   'eng-efl': 'eng.league_cup',
+  // ESPN: 3951 „Spanish Copa del Rey” – hosszabbítás (STATUS_FINAL_AET) és tizenegyesek (STATUS_FINAL_PEN) is van
+  'esp-cdr': 'esp.copa_del_rey',
 };
 /** Válogatott csapatok előzményei: a Nemzetek Ligája kétévente van, ezért az előző kiírás (év−2), a vb-selejtező (év−1) és a barátságos meccsek (év, év−1) is kellenek. */
 const NATIONAL_SLUG = 'uefa.nations';
