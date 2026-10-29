@@ -69,7 +69,7 @@ describe('Sorozatformátum', () => {
       'eng-ch': 'league', 'esp-l2': 'league', 'ita-sb': 'league', 'ger-b2': 'league', 'fra-l2': 'league',
       'uefa-ucl': 'club_intl_cup', 'uefa-uel': 'club_intl_cup', 'uefa-uecl': 'club_intl_cup',
       'uefa-nl': 'national_team', 'fifa-wcq-uefa': 'national_team', 'fifa-friendly': 'friendly',
-      'ger-dfb': 'domestic_cup',
+      'ger-dfb': 'domestic_cup', 'eng-efl': 'domestic_cup',
     });
     expect(ESPN_LEAGUES.filter(hasLeagueTable).every((l) => !l.international && !l.domesticCup)).toBe(true);
   });

@@ -101,8 +101,9 @@ describe('DFB-Pokal – sorozatlista', () => {
     const leagues = await withProvider((p) => p.getLeagues());
     expect(leagues.find((l) => l.id === 'ger-dfb')).toEqual({ id: 'ger-dfb', name: 'DFB-Pokal', country: 'Németország', countryCode: 'GER', tier: 0, international: false, domesticCup: true });
     expect(SLUG['ger-dfb']).toBe('ger.dfb_pokal');
-    expect(leagues.filter((l) => l.id !== 'ger-dfb').map((l) => [l.id, l.international])).toEqual(EXISTING);
-    expect(leagues.filter((l) => l.domesticCup).map((l) => l.id)).toEqual(['ger-dfb']);
+    expect(leagues.filter((l) => !l.domesticCup).map((l) => [l.id, l.international])).toEqual(EXISTING);
+    // a hazai kupák: DFB-Pokal és (később felvett) EFL Cup – több nincs
+    expect(leagues.filter((l) => l.domesticCup).map((l) => l.id)).toEqual(['ger-dfb', 'eng-efl']);
   });
 
   it('a /api/leagues a szolgáltató listáját adja (így az új sorozatot is)', () => {

@@ -41,6 +41,7 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'fifa-wcq-uefa', name: 'Vb-selejtező (UEFA)', country: 'Válogatott (UEFA)', countryCode: 'UEFA', tier: 0, international: true },
   { id: 'fifa-friendly', name: 'Válogatott barátságos', country: 'Válogatott (nemzetközi)', countryCode: 'INT', tier: 0, international: true },
   { id: 'ger-dfb', name: 'DFB-Pokal', country: 'Németország', countryCode: 'GER', tier: 0, international: false, domesticCup: true },
+  { id: 'eng-efl', name: 'EFL Cup (Carabao Cup)', country: 'Anglia', countryCode: 'ENG', tier: 0, international: false, domesticCup: true },
 ];
 
 export const SLUG: Record<string, string> = {
@@ -49,6 +50,8 @@ export const SLUG: Record<string, string> = {
   'eng-ch': 'eng.2', 'esp-l2': 'esp.2', 'ita-sb': 'ita.2', 'ger-b2': 'ger.2', 'fra-l2': 'fra.2',
   'uefa-nl': 'uefa.nations', 'fifa-wcq-uefa': 'fifa.worldq.uefa', 'fifa-friendly': 'fifa.friendly',
   'ger-dfb': 'ger.dfb_pokal',
+  // ESPN: 3920 „English Carabao Cup” – hosszabbítás nincs, döntetlennél azonnal tizenegyesek (STATUS_FINAL_PEN)
+  'eng-efl': 'eng.league_cup',
 };
 /** Válogatott csapatok előzményei: a Nemzetek Ligája kétévente van, ezért az előző kiírás (év−2), a vb-selejtező (év−1) és a barátságos meccsek (év, év−1) is kellenek. */
 const NATIONAL_SLUG = 'uefa.nations';
@@ -230,10 +233,25 @@ export class EspnProvider implements MatchDataProvider {
     if (list.length) this.teamsLoaded.add(leagueId);
   }
 
-  private async loadAllTeams(): Promise<void> {
-    // előbb a hazai bajnokságok (elsődleges liga), utána a kupák
-    await Promise.all(DOMESTIC.map((id) => this.loadTeams(id)));
-    await Promise.all(ESPN_LEAGUES.filter(isCup).map((l) => this.loadTeams(l.id)));
+  /** a folyamatban lévő teljes csapatlista-betöltés – a párhuzamos hívók ezt várják meg (nincs ismételt lekérés) */
+  private allTeamsLoading: Promise<void> | null = null;
+
+  private loadAllTeams(): Promise<void> {
+    this.allTeamsLoading ??= (async () => {
+      // előbb a hazai bajnokságok (elsődleges liga), utána a kupák
+      await Promise.all(DOMESTIC.map((id) => this.loadTeams(id)));
+      await Promise.all(ESPN_LEAGUES.filter(isCup).map((l) => this.loadTeams(l.id)));
+    })().finally(() => { this.allTeamsLoading = null; });
+    return this.allTeamsLoading;
+  }
+
+  /**
+   * Csak hazai kupából (pl. DFB-Pokal, EFL Cup) ismert csapat: az elsődleges bajnoksága csak a bajnoki
+   * csapatlisták betöltése után derül ki (a betöltés ligánként egyszeri, utána nem kér újra).
+   */
+  private knownOnlyFromDomesticCup(teamId: string): boolean {
+    const known = [...(this.teamSlugs.get(teamId) ?? [])];
+    return known.length > 0 && known.every((s) => ESPN_LEAGUES.find((l) => l.id === LEAGUE_BY_SLUG[s])?.domesticCup);
   }
 
   // ---------- Meccsek ----------
@@ -348,7 +366,8 @@ export class EspnProvider implements MatchDataProvider {
   }
 
   async getTeam(id: string): Promise<Team | null> {
-    if (!this.teams.has(id)) await this.loadAllTeams();
+    // kupameccs elemzése hidegindítás után: a csapat elsődleges sorozata a bajnokság legyen, ne a kupa
+    if (!this.teams.has(id) || this.knownOnlyFromDomesticCup(id)) await this.loadAllTeams();
     return this.teams.get(id) ?? null;
   }
 
@@ -383,7 +402,7 @@ export class EspnProvider implements MatchDataProvider {
 
   async getMatch(id: string): Promise<Match | null> {
     if (this.matches.has(id)) return this.matches.get(id)!;
-    const m = id.match(/^espn-([a-z0-9.]+)-(\d+)$/);
+    const m = id.match(/^espn-([a-z0-9._]+)-(\d+)$/); // a kupák slugjában aláhúzás is van (ger.dfb_pokal, eng.league_cup)
     if (!m) return null;
     const leagueId = LEAGUE_BY_SLUG[m[1]];
     if (!leagueId) return null;
@@ -402,7 +421,7 @@ export class EspnProvider implements MatchDataProvider {
    * közös térképeket nem írja, így más fogyasztók viselkedése nem változik.
    */
   async getMatchFresh(id: string): Promise<Match | null> {
-    const m = id.match(/^espn-([a-z0-9.]+)-(\d+)$/);
+    const m = id.match(/^espn-([a-z0-9._]+)-(\d+)$/);
     if (!m) return null;
     const leagueId = LEAGUE_BY_SLUG[m[1]];
     if (!leagueId) return null;
@@ -454,13 +473,8 @@ export class EspnProvider implements MatchDataProvider {
   }
 
   async getTeamResults(teamId: string): Promise<MatchResult[]> {
-    if (!this.teams.has(teamId)) await this.loadAllTeams();
-    // csak hazai kupából (pl. DFB-Pokal) ismert csapat: a bajnoki csapatlisták betöltése után derül ki az
-    // elsődleges bajnoksága, és így a bajnoki előzménye is bekerül (a betöltés ligánként egyszeri)
-    else {
-      const known = [...(this.teamSlugs.get(teamId) ?? [])];
-      if (known.length > 0 && known.every((s) => ESPN_LEAGUES.find((l) => l.id === LEAGUE_BY_SLUG[s])?.domesticCup)) await this.loadAllTeams();
-    }
+    // csak hazai kupából ismert csapatnál is: így a bajnoki előzménye is bekerül
+    if (!this.teams.has(teamId) || this.knownOnlyFromDomesticCup(teamId)) await this.loadAllTeams();
     const team = this.teams.get(teamId);
     if (!team) return [];
     const slugs = [...(this.teamSlugs.get(teamId) ?? [SLUG[team.leagueId]])];
