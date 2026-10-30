@@ -32,6 +32,7 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'uefa-uel', name: 'Európa-liga', country: 'Európa', countryCode: 'EUR', tier: 0, international: true },
   { id: 'uefa-uecl', name: 'Konferencia-liga', country: 'Európa', countryCode: 'EUR', tier: 0, international: true },
   { id: 'usa-mls', name: 'MLS', country: 'USA', countryCode: 'USA', tier: 1, international: false },
+  { id: 'aus-al', name: 'A-League Men', country: 'Ausztrália', countryCode: 'AUS', tier: 1, international: false },
   { id: 'eng-ch', name: 'Championship', country: 'Anglia', countryCode: 'ENG', tier: 2, international: false },
   { id: 'esp-l2', name: 'LaLiga 2', country: 'Spanyolország', countryCode: 'ESP', tier: 2, international: false },
   { id: 'ita-sb', name: 'Serie B', country: 'Olaszország', countryCode: 'ITA', tier: 2, international: false },
@@ -50,6 +51,8 @@ export const SLUG: Record<string, string> = {
   'uefa-ucl': 'uefa.champions', 'uefa-uel': 'uefa.europa', 'uefa-uecl': 'uefa.europa.conf', 'usa-mls': 'usa.1',
   'eng-ch': 'eng.2', 'esp-l2': 'esp.2', 'ita-sb': 'ita.2', 'ger-b2': 'ger.2', 'fra-l2': 'fra.2',
   'uefa-nl': 'uefa.nations', 'fifa-wcq-uefa': 'fifa.worldq.uefa', 'fifa-friendly': 'fifa.friendly',
+  // ESPN: 3906 „Australian A-League Men” – őszi–tavaszi idény (az ESPN idénye júl. 1-jén kezdődik), májusi rájátszással
+  'aus-al': 'aus.1',
   'ger-dfb': 'ger.dfb_pokal',
   // ESPN: 3920 „English Carabao Cup” – hosszabbítás nincs, döntetlennél azonnal tizenegyesek (STATUS_FINAL_PEN)
   'eng-efl': 'eng.league_cup',

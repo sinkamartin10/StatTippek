@@ -61,13 +61,13 @@ describe('Újraindítás: hány havi ESPN-kérés? (éles méret: minden sorozat
   const total = XS_TRAINING_COMPETITIONS.length * 37;
 
   it('tartós tárral: hideg indulás = minden hónap egyszer; újraindulás = csak a nyitott (folyó) hónapok', async () => {
-    expect(total).toBe(1258); // a korábbi mérés ~1258 havi kérése
+    expect(total).toBe(1295); // 35 sorozat × 37 hónap (a korábbi 34 sorozat ~1258 kérése + az A-League Men)
     const db = new DatabaseSync(':memory:');
     const cold = countingSource();
     const a = new XsModelService(cold.source, new SqliteXsStore(db), svcOpts(NOW));
     await a.refresh();
-    expect(cold.calls.length).toBe(1258);
-    expect(a.status()).toMatchObject({ ready: true, durableStore: true, storeError: null, months: { fetched: 1258, stored: 0, failed: 0 } });
+    expect(cold.calls.length).toBe(1295);
+    expect(a.status()).toMatchObject({ ready: true, durableStore: true, storeError: null, months: { fetched: 1295, stored: 0, failed: 0 } });
 
     // „újraindulás”: új folyamat, ugyanaz a tár
     const warm = countingSource();
@@ -75,7 +75,7 @@ describe('Újraindítás: hány havi ESPN-kérés? (éles méret: minden sorozat
     await b.refresh();
     expect(warm.calls.length).toBe(XS_TRAINING_COMPETITIONS.length); // csak a 2026-10 (nyitott) hónapok
     expect(warm.calls.every((k) => k.endsWith('|202610'))).toBe(true);
-    expect(b.status().months).toMatchObject({ stored: 1224, fetched: 34 });
+    expect(b.status().months).toMatchObject({ stored: 1260, fetched: 35 });
     expect(b.status().datasetSha256).toBe(a.status().datasetSha256); // ugyanaz a tanítóadat
   });
 
@@ -83,17 +83,17 @@ describe('Újraindítás: hány havi ESPN-kérés? (éles méret: minden sorozat
     const src = countingSource();
     const s = new XsModelService(src.source, null, svcOpts(NOW));
     await s.refresh();
-    expect(src.calls.length).toBe(1258);
+    expect(src.calls.length).toBe(1295);
     src.calls.length = 0;
     const later = new XsModelService(src.source, null, svcOpts(NOW)); // tár nélküli újraindulás: a kockázat
     await later.refresh();
-    expect(src.calls.length).toBe(1258);
+    expect(src.calls.length).toBe(1295);
     src.calls.length = 0;
     // ugyanaz a folyamat, 6 órával később
     (s as unknown as { opts: { now: () => Date } }).opts.now = () => new Date(NOW.getTime() + 6 * HOUR);
     await s.refresh();
-    expect(src.calls.length).toBe(34);
-    expect(s.status().months).toMatchObject({ cached: 1224, fetched: 34, stored: 0 });
+    expect(src.calls.length).toBe(35);
+    expect(s.status().months).toMatchObject({ cached: 1260, fetched: 35, stored: 0 });
     expect(s.status()).toMatchObject({ durableStore: false, storeError: 'nincs tartós tár konfigurálva' });
   });
 
@@ -128,7 +128,7 @@ describe('Újraindítás: hány havi ESPN-kérés? (éles méret: minden sorozat
     const s = new XsModelService(countingSource().source, store, svcOpts(NOW));
     await s.refresh();
     expect(s.status().durableStore).toBe(true);
-    expect((await real.months()).size).toBe(1257);
+    expect((await real.months()).size).toBe(1294);
   });
 });
 

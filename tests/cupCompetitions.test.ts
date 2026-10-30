@@ -65,7 +65,7 @@ describe('Sorozatformátum', () => {
   it('csak a valódi bajnokságok kapnak tabellát; a kupák, válogatott sorozatok és barátságos meccsek nem', () => {
     const got = Object.fromEntries(ESPN_LEAGUES.map((l) => [l.id, competitionFormat(l)]));
     expect(got).toEqual({
-      'eng-pl': 'league', 'esp-ll': 'league', 'ita-sa': 'league', 'ger-bl': 'league', 'fra-l1': 'league', 'usa-mls': 'league',
+      'eng-pl': 'league', 'esp-ll': 'league', 'ita-sa': 'league', 'ger-bl': 'league', 'fra-l1': 'league', 'usa-mls': 'league', 'aus-al': 'league',
       'eng-ch': 'league', 'esp-l2': 'league', 'ita-sb': 'league', 'ger-b2': 'league', 'fra-l2': 'league',
       'uefa-ucl': 'club_intl_cup', 'uefa-uel': 'club_intl_cup', 'uefa-uecl': 'club_intl_cup',
       'uefa-nl': 'national_team', 'fifa-wcq-uefa': 'national_team', 'fifa-friendly': 'friendly',
