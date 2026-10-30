@@ -91,6 +91,17 @@ async function withProvider<T>(fn: (p: EspnProvider, log: string[]) => Promise<T
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); for (const k of Object.keys(SCHEDULES)) delete SCHEDULES[k]; });
 
+/**
+ * Minden csapatlista (bajnokságé és kupáé is) pontosan egyszer kérődik le: a bajnoki listákat a közös
+ * csapatbetöltés, a párhuzamos azonos kéréseket (pl. a kupa listáját a sorozat-eredmények is kérik)
+ * a HTTP-réteg osztja meg.
+ */
+const listsOnce = (log: string[]) => {
+  const lists = log.filter((p) => /^[^/]+\/teams$/.test(p));
+  for (const l of ESPN_LEAGUES) expect(lists.filter((p) => p === `${SLUG[l.id]}/teams`), l.id).toHaveLength(1);
+  expect(new Set(lists).size).toBe(lists.length);
+};
+
 const EFL = ESPN_LEAGUES.find((l) => l.id === 'eng-efl')!;
 const PL = ESPN_LEAGUES.find((l) => l.id === 'eng-pl')!;
 
@@ -256,9 +267,7 @@ describe('EFL Cup – elemzés hidegindítás után (első kérés egy kupameccs
     expect(a!.standings).toEqual({ home: null, away: null, total: 0 });
     expect(a!.model?.id).toBe(CUP_ENGINE_VERSION);
     // nincs felesleges ismételt lekérés: minden csapatlista pontosan egyszer
-    const lists = log.filter((l) => /^[^/]+\/teams$/.test(l));
-    expect(lists.length).toBeGreaterThan(0);
-    expect(new Set(lists).size).toBe(lists.length);
+    listsOnce(log);
   });
 
   it('fallback: ha egyik csapat bajnoksága sem állapítható meg, a kupa saját eredményeiből számol (biztonságosan)', async () => {
@@ -273,9 +282,8 @@ describe('EFL Cup – elemzés hidegindítás után (első kérés egy kupameccs
     expect(a!.oneXtwoFactors.join(' ')).not.toMatch(/Premier League/);
     // ennyi adatból nincs megalapozott gólmodell → nincs kitalált tipp sem
     expect(a!.poisson).toBeNull();
-    // a csapatlisták itt is legfeljebb egyszer kérődtek le
-    const lists = log.filter((l) => /^[^/]+\/teams$/.test(l));
-    expect(new Set(lists).size).toBe(lists.length);
+    // minden csapatlista itt is pontosan egyszer kérődött le
+    listsOnce(log);
   });
 
   it('a bajnoki meccs elemzése hidegindításkor változatlanul a saját bajnokságából számol', async () => {

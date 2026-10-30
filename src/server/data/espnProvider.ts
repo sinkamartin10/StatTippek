@@ -173,6 +173,21 @@ export class EspnProvider implements MatchDataProvider {
       if (retain) this.mem.set(url, { at: Date.now(), ttl: ttlMs, data, fetchedAt });
       return { data, fetchedAt };
     }
+    // ugyanarra a címre folyamatban lévő lekérés: azt várjuk meg (pl. hidegindításkor a kupa csapatlistáját a
+    // csapatbetöltés és a sorozat-eredmények egyszerre kérik). A kulcsban a retain is benne van, így egy
+    // retain:false hívó soha nem okoz cache-írást; a bejegyzés a lekérés végén törlődik (a hiba sem ragad be).
+    const key = `${retain ? 'r' : 'n'}|${url}`;
+    const pending = this.pending.get(key);
+    if (pending) return pending;
+    const req = this.fetchMeta(url, path, ttlMs, retain).finally(() => this.pending.delete(key));
+    this.pending.set(key, req);
+    return req;
+  }
+
+  /** a folyamatban lévő hálózati lekérések (retain|URL → válasz) – a párhuzamos azonos kérések ezt osztják meg */
+  private pending = new Map<string, Promise<{ data: Json; fetchedAt: number | null } | null>>();
+
+  private async fetchMeta(url: string, path: string, ttlMs: number, retain: boolean): Promise<{ data: Json; fetchedAt: number | null } | null> {
     await this.slot();
     try {
       const res = await fetch(url, { headers: { 'user-agent': 'TIPPMIX-AI/1.0 (personal research tool)', accept: 'application/json' } });

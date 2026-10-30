@@ -101,6 +101,17 @@ const fin = (id: string, date: string, home: number, away: number, hg: number, a
   }],
 });
 
+/**
+ * Minden csapatlista (bajnokságé és kupáé is) pontosan egyszer kérődik le: a bajnoki listákat a közös
+ * csapatbetöltés, a párhuzamos azonos kéréseket (pl. a kupa listáját a sorozat-eredmények is kérik)
+ * a HTTP-réteg osztja meg.
+ */
+const listsOnce = (log: string[]) => {
+  const lists = log.filter((p) => /^[^/]+\/teams$/.test(p));
+  for (const l of ESPN_LEAGUES) expect(lists.filter((p) => p === `${SLUG[l.id]}/teams`), l.id).toHaveLength(1);
+  expect(new Set(lists).size).toBe(lists.length);
+};
+
 const CDR = ESPN_LEAGUES.find((l) => l.id === 'esp-cdr')!;
 const LL = ESPN_LEAGUES.find((l) => l.id === 'esp-ll')!;
 
@@ -202,7 +213,6 @@ describe('Copa del Rey – elemzés hidegindítás után (első kérés egy kupa
     research: { research: async ({ match }: { match: Match }) => ({ matchId: match.id, origin: 'live', performedAt: '', provider: 'x', news: [], availability: { home: { teamId: 'h', injuries: [], suspensions: [], lineupStatus: 'nincs adat', notes: [] }, away: { teamId: 'a', injuries: [], suspensions: [], lineupStatus: 'nincs adat', notes: [] } }, externalPredictions: [], sources: [], warnings: [] }) },
     db: { getSetting: async () => null, getManualOdds: async () => null, getResearch: () => null, saveResearch: () => undefined },
   } as unknown as Container);
-  const lists = (log: string[]) => log.filter((l) => /^[^/]+\/teams$/.test(l));
 
   it('előbb a bajnoki adatok töltődnek be, és az elemzés a LaLiga statisztikáiból számol (az ismeretlen bajnokságú ellenfél mellett is)', async () => {
     schedules();
@@ -218,7 +228,7 @@ describe('Copa del Rey – elemzés hidegindítás után (első kérés egy kupa
     expect(a!.leagueAverages.avgTotalGoals).toBeCloseTo(18 / 12, 5);
     expect(a!.standings).toEqual({ home: null, away: null, total: 0 });
     expect(a!.model?.id).toBe(CUP_ENGINE_VERSION);
-    expect(new Set(lists(log)).size).toBe(lists(log).length); // minden csapatlista pontosan egyszer
+    listsOnce(log); // minden csapatlista pontosan egyszer
   });
 
   it('fallback: ha egyik csapat bajnoksága sem ismert, a kupa saját rendes játékidős eredményeiből számol, kitalált tipp nélkül', async () => {
@@ -232,6 +242,6 @@ describe('Copa del Rey – elemzés hidegindítás után (első kérés egy kupa
     expect(a!.leagueAverages.avgTotalGoals).toBeCloseTo(6.5, 5);
     expect(a!.oneXtwoFactors.join(' ')).not.toMatch(/LaLiga/);
     expect(a!.poisson).toBeNull();
-    expect(new Set(lists(log)).size).toBe(lists(log).length);
+    listsOnce(log);
   });
 });
