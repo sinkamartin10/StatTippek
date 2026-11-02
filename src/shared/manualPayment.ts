@@ -10,7 +10,7 @@
 /** A kedvezményezett adatai – a felületen megjelenítve, másolható formában. */
 export const PAYEE = {
   bank: {
-    beneficiary: 'Sinka Martin',
+    beneficiary: 'S Martin',
     /** megjelenítés (8-8 jegyű tagolás) */
     accountNumber: '11773384-03115543',
   },

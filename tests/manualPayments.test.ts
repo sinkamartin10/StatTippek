@@ -88,7 +88,7 @@ describe('Kézi PRO-igénylés – felhasználó', () => {
     expect(anon.status).toBe(200);
     expect(anon.body).toMatchObject({ price: APP_PRO_PRICE, requests: [], reference: null });
     expect(anon.body.payee).toEqual({
-      bank: { beneficiary: 'Sinka Martin', accountNumber: '11773384-03115543' },
+      bank: { beneficiary: 'S Martin', accountNumber: '11773384-03115543' },
       revolut: { username: '@martin2pal', accountNumber: '30200014 19913410 31395146', profileUrl: 'https://revolut.me/martin2pal' },
     });
     expect((await call(h, 'GET', '/api/pro-payments', A)).body.reference).toBe('anna@example.com');
@@ -265,7 +265,7 @@ const render = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(cr
 describe('Kézi PRO-igénylés – felület', () => {
   it('megjeleníti a banki és a Revolut-adatokat, az összeget, az időtartamot és a kézi ellenőrzés tényét', () => {
     const html = render(createElement(ManualPaymentSection, { info: info(), loggedIn: true, onRequested: () => {} }));
-    for (const t of ['Banki átutalás', 'Sinka Martin', '11773384-03115543', '30200014 19913410 31395146', 'Számlaszám (Revolut)', 'anna@example.com', 'Revolut', '@martin2pal', 'Fizetési kérelem állapota',
+    for (const t of ['Banki átutalás', 'S Martin', '11773384-03115543', '30200014 19913410 31395146', 'Számlaszám (Revolut)', 'anna@example.com', 'Revolut', '@martin2pal', 'Fizetési kérelem állapota',
       'A fizetés manuális ellenőrzést igényel.', 'nem aktiválódik automatikusan', 'Befizetés elküldve ellenőrzésre', '1 hónap']) {
       expect(html, t).toContain(t);
     }
