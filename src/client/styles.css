@@ -165,6 +165,10 @@ body {
          focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20;
 }
 .input-lg { @apply rounded-2xl px-4 py-3.5 text-base; }
+/* iOS: 16 px alatti űrlapmezőnél a Safari fókuszkor belenagyít az oldalba – csak iOS-en érvényes */
+@supports (-webkit-touch-callout: none) {
+  .input, input, select, textarea { font-size: 16px; }
+}
 /* A .field-label nagybetűsítése ne öröklődjön az űrlapelemekre */
 .input, .chip, .btn { text-transform: none; }
 .field-label { @apply block text-xs font-bold uppercase tracking-wide text-text-muted; }
