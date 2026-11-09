@@ -36,6 +36,11 @@ export interface Team {
   altNames?: string[];
   /** a csapat címere, ahogy az adatforrás (ESPN) közli – csak https://a.espncdn.com/; nincs = semleges ikon */
   logo?: string;
+  /**
+   * Utánpótlás- / akadémiai csapat (pl. „Arsenal U21” az EFL Trophyban), a forrás teljes csapatneve alapján.
+   * Nincs bajnoki adata az ESPN-ben: az elemzés csak kellő számú saját eredménnyel ad tippet.
+   */
+  youth?: true;
 }
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed';
@@ -79,6 +84,13 @@ export interface MatchResult {
   decidedBy?: 'aet' | 'pen';
   /** tizenegyespárbaj eredménye (csak 'pen' esetén, ha a forrás közli) */
   shootout?: { home: number; away: number };
+  /**
+   * A sorozat szakasza, ha a forrás közli és a sorozatnál értelmezett (jelenleg: EFL Trophy – „Csoportkör”,
+   * „Legjobb 32”, …, „Döntő”). Hiányzó mező = nincs szakaszadat (a többi sorozat eredményei változatlanok).
+   */
+  stage?: string;
+  /** csoportköri meccs: a kieséses szakaszban a párharc továbbjutót ad, a csoportkörben nem */
+  groupStage?: boolean;
 }
 
 export interface MatchOdds {

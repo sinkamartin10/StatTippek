@@ -10,6 +10,9 @@ import { generateTips } from './tips';
 import { chooseBaseline } from './baseline';
 import { hasLeagueTable } from '../competitionFormat';
 
+/** Utánpótlás-csapatnál legalább ennyi saját eredmény kell a tipphez (bajnoki adata nincs). */
+export const YOUTH_MIN_MATCHES = 10;
+
 export interface AnalysisInput {
   match: Match;
   league: League;
@@ -63,6 +66,13 @@ export function analyzeMatch(inp: AnalysisInput): MatchAnalysis {
   if (homeAtHome.sampleSize < 3) insufficientReasons.push(`${homeTeam.name}: kevesebb mint 3 hazai meccs – a hazai/idegen modell nem futtatható.`);
   if (awayAtAway.sampleSize < 3) insufficientReasons.push(`${awayTeam.name}: kevesebb mint 3 idegenbeli meccs – a hazai/idegen modell nem futtatható.`);
   if (leagueAverages.matches < 10) insufficientReasons.push(`A(z) ${baseline.label} bajnokságból kevesebb mint 10 lejátszott meccs áll rendelkezésre a liga-átlaghoz.`);
+  // Utánpótlás- (U21-es) csapat (pl. EFL Trophy): bajnoki adata nincs, a kevés saját kupaeredményből nem
+  // becsülhető megbízhatóan a csapaterő – ilyenkor tipp SEM készül (nem csak jelzés).
+  const youthReasons = [homeTeam, awayTeam].filter((t) => t.youth).flatMap((t) => {
+    const n = results.filter((r) => (r.homeTeamId === t.id || r.awayTeamId === t.id) && (!before || r.date < before)).length;
+    return n < YOUTH_MIN_MATCHES ? [`${t.name}: utánpótlás- (U21-es) csapat – bajnoki adata nincs, csak ${n} saját eredménye ismert (legalább ${YOUTH_MIN_MATCHES} kell), ezért nem készül tipp.`] : [];
+  });
+  insufficientReasons.push(...youthReasons);
 
   const xg = xgModel(homeAtHome, awayAtAway, leagueAverages, inp.modelOptions);
   const poisson = xg ? poissonModel(xg.homeExpected, xg.awayExpected) : null;
@@ -100,7 +110,7 @@ export function analyzeMatch(inp: AnalysisInput): MatchAnalysis {
   }
 
   const value = computeValue(poisson, odds);
-  const tips = xg && poisson
+  const tips = xg && poisson && youthReasons.length === 0
     ? generateTips({ homeTeam, awayTeam, poisson, xg, homeLast10, awayLast10, homeAtHome, awayAtAway, h2h, league: leagueAverages, odds, research, standings })
     : [];
 

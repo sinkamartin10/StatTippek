@@ -16,10 +16,13 @@ import { DERBIES, TEAMS as DEMO_TEAMS } from './demo/leagues';
 import type { CornerFetch, CornerRef, MatchDataProvider, MatchQuery } from './provider';
 import { candidateMonths, espnMonthKey, monthEndUtc, parseScoreboardCorners, shiftMonth, type ParsedCorners } from './espnCorners';
 import { espnTeamLogo } from '../../shared/teamLogo';
+import { competitionFormat, type CompetitionGroup, type CompetitionGroupRow } from '../../shared/competitionFormat';
 import { parseScoreboardResults, type ScoreboardResult } from './scoreboardResults';
 import { HISTORY_ONLY_DOMESTIC, closedBefore, dedupeResults, extendedRequests, requestKey, type CoverageReason, type TeamState } from './historyPlan';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+/** a hivatalos (csoport)tabellák végpontja – ugyanaz a nyilvános ESPN API, más útvonalon */
+const STANDINGS_BASE = 'https://site.api.espn.com/apis/v2/sports/soccer';
 
 /** Belső liga-azonosító → ESPN slug */
 export const ESPN_LEAGUES: League[] = [
@@ -34,6 +37,8 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'usa-mls', name: 'MLS', country: 'USA', countryCode: 'USA', tier: 1, international: false },
   { id: 'aus-al', name: 'A-League Men', country: 'Ausztrália', countryCode: 'AUS', tier: 1, international: false },
   { id: 'eng-ch', name: 'Championship', country: 'Anglia', countryCode: 'ENG', tier: 2, international: false },
+  { id: 'eng-l1', name: 'League One', country: 'Anglia', countryCode: 'ENG', tier: 3, international: false },
+  { id: 'eng-l2', name: 'League Two', country: 'Anglia', countryCode: 'ENG', tier: 4, international: false },
   { id: 'esp-l2', name: 'LaLiga 2', country: 'Spanyolország', countryCode: 'ESP', tier: 2, international: false },
   { id: 'ita-sb', name: 'Serie B', country: 'Olaszország', countryCode: 'ITA', tier: 2, international: false },
   { id: 'ger-b2', name: '2. Bundesliga', country: 'Németország', countryCode: 'GER', tier: 2, international: false },
@@ -44,6 +49,7 @@ export const ESPN_LEAGUES: League[] = [
   { id: 'ger-dfb', name: 'DFB-Pokal', country: 'Németország', countryCode: 'GER', tier: 0, international: false, domesticCup: true },
   { id: 'eng-efl', name: 'EFL Cup (Carabao Cup)', country: 'Anglia', countryCode: 'ENG', tier: 0, international: false, domesticCup: true },
   { id: 'esp-cdr', name: 'Copa del Rey', country: 'Spanyolország', countryCode: 'ESP', tier: 0, international: false, domesticCup: true },
+  { id: 'eng-eft', name: "EFL Trophy (Jersey Mike's Trophy)", country: 'Anglia', countryCode: 'ENG', tier: 0, international: false, domesticCup: true },
 ];
 
 export const SLUG: Record<string, string> = {
@@ -58,7 +64,34 @@ export const SLUG: Record<string, string> = {
   'eng-efl': 'eng.league_cup',
   // ESPN: 3951 „Spanish Copa del Rey” – hosszabbítás (STATUS_FINAL_AET) és tizenegyesek (STATUS_FINAL_PEN) is van
   'esp-cdr': 'esp.copa_del_rey',
+  // ESPN: 3915 „English League One”, 3916 „English League Two” – az EFL Trophy csapatainak bajnoksága
+  'eng-l1': 'eng.3', 'eng-l2': 'eng.4',
+  // ESPN: 18481 „English EFL Trophy” (2026-27: Jersey Mike's Trophy) – 16 regionális csoport (4 csapat: League One /
+  // League Two + Premier League-akadémiák U21-es csapatai), csoportonként az első kettő jut tovább, utána egyenes
+  // kiesés (legjobb 32-től). Döntetlennél a csoportkörben is tizenegyespárbaj (STATUS_FINAL_PEN) egy bónuszpontért.
+  'eng-eft': 'eng.trophy',
 };
+/** Sorozatok, amelyeknél az ESPN szakasz- és csoportadatát (csoportkör / kieséses kör) megjelenítjük. */
+const STAGED = new Set(['eng-eft']);
+const STAGE_HU: Record<string, string> = {
+  'group stage': 'Csoportkör', 'round of 32': 'Legjobb 32', 'round of 16': 'Nyolcaddöntő', 'rd of 16': 'Nyolcaddöntő',
+  quarterfinals: 'Negyeddöntő', semifinals: 'Elődöntő', final: 'Döntő',
+};
+/** ESPN szakasznév / slug (pl. „Round of 32”, „round-of-32”) → magyar felirat; ismeretlen név változatlanul. */
+export function stageLabel(raw: unknown): string | undefined {
+  const s = String(raw ?? '').trim();
+  if (!s) return undefined;
+  return STAGE_HU[s.toLowerCase().replace(/-/g, ' ')] ?? s;
+}
+/** „Northern Group A” → „Északi A csoport”; ismeretlen alak változatlanul. */
+export function groupLabel(raw: unknown): string | undefined {
+  const s = String(raw ?? '').trim();
+  if (!s) return undefined;
+  const m = s.match(/^(Northern|Southern)\s+Group\s+([A-Z])$/i);
+  return m ? `${/^n/i.test(m[1]) ? 'Északi' : 'Déli'} ${m[2].toUpperCase()} csoport` : s;
+}
+/** Utánpótlás- / akadémiai csapat a TELJES név alapján („Sunderland U21” – a rövid név csak „Sunderland”). */
+export const isYouthTeamName = (name: string) => /\bU-?(1[6-9]|2[0-3])\b/i.test(name);
 /** Válogatott csapatok előzményei: a Nemzetek Ligája kétévente van, ezért az előző kiírás (év−2), a vb-selejtező (év−1) és a barátságos meccsek (év, év−1) is kellenek. */
 const NATIONAL_SLUG = 'uefa.nations';
 const NATIONAL_HISTORY: [string, number][] = [['uefa.nations', 0], ['uefa.nations', -2], ['fifa.worldq.uefa', -1], ['fifa.worldq.uefa', 0], ['fifa.friendly', 0], ['fifa.friendly', -1]];
@@ -75,7 +108,7 @@ const NATION_HU: Record<string, string> = {
   Estonia: 'Észtország', Latvia: 'Lettország', Lithuania: 'Litvánia', Moldova: 'Moldova', Belarus: 'Fehéroroszország', Russia: 'Oroszország',
 };
 /** első osztály → másodosztály (feljutott csapatok előző idényéhez) */
-const SECOND_TIER: Record<string, string> = { 'eng-pl': 'eng-ch', 'esp-ll': 'esp-l2', 'ita-sa': 'ita-sb', 'ger-bl': 'ger-b2', 'fra-l1': 'fra-l2' };
+const SECOND_TIER: Record<string, string> = { 'eng-pl': 'eng-ch', 'esp-ll': 'esp-l2', 'ita-sa': 'ita-sb', 'ger-bl': 'ger-b2', 'fra-l1': 'fra-l2', 'eng-l1': 'eng-l2' };
 const LEAGUE_BY_SLUG = Object.fromEntries(Object.entries(SLUG).map(([id, slug]) => [slug, id]));
 /**
  * Kupa (nemzetközi vagy hazai): nem elsődleges sorozat – a csapat elsődleges sorozata a bajnoksága, és a kupa
@@ -153,7 +186,7 @@ export class EspnProvider implements MatchDataProvider {
    * tömeges, egyszer feldolgozott lekérésekhez (a több ligás modell ~1250 havi listája
    * feldolgozatlanul ~430 MB heap lenne). A meglévő cache-bejegyzést ilyenkor is használjuk.
    */
-  private async call(path: string, ttlMs: number, opts: { retain?: boolean } = {}): Promise<Json | null> {
+  private async call(path: string, ttlMs: number, opts: { retain?: boolean; base?: string } = {}): Promise<Json | null> {
     return (await this.callMeta(path, ttlMs, opts))?.data ?? null;
   }
 
@@ -163,9 +196,9 @@ export class EspnProvider implements MatchDataProvider {
    * közli). null = sikertelen lekérés (hálózat, HTTP-hiba) – ilyenkor semmit nem szabad
    * „eltűntnek” tekinteni.
    */
-  private async callMeta(path: string, ttlMs: number, opts: { retain?: boolean } = {}): Promise<{ data: Json; fetchedAt: number | null } | null> {
+  private async callMeta(path: string, ttlMs: number, opts: { retain?: boolean; base?: string } = {}): Promise<{ data: Json; fetchedAt: number | null } | null> {
     const retain = opts.retain !== false;
-    const url = `${BASE}/${path}`;
+    const url = `${opts.base ?? BASE}/${path}`;
     const hit = this.mem.get(url);
     if (hit && Date.now() - hit.at < hit.ttl) return { data: hit.data, fetchedAt: hit.fetchedAt };
     const entry = this.cache?.getEntry ? this.cache.getEntry(url, ttlMs) : null;
@@ -223,7 +256,8 @@ export class EspnProvider implements MatchDataProvider {
     const logo = espnTeamLogo(raw);
     if (!existing) {
       const en = String(raw.displayName ?? raw.name);
-      const hu = slug === NATIONAL_SLUG || slug.startsWith('fifa.') ? NATION_HU[en] : undefined;
+      const national = slug === NATIONAL_SLUG || slug.startsWith('fifa.');
+      const hu = national ? NATION_HU[en] : undefined;
       this.teams.set(id, {
         id,
         name: hu ?? en,
@@ -233,6 +267,7 @@ export class EspnProvider implements MatchDataProvider {
         leagueId,
         externalId: Number(raw.id),
         logo,
+        ...(!national && isYouthTeamName(en) ? { youth: true as const } : {}),
       });
     } else if (existing.leagueId !== leagueId && !isCup(league) && ESPN_LEAGUES.some((l) => l.id === existing.leagueId && isCup(l))) {
       // ha először kupából ismertük meg, a hazai bajnokság lesz az elsődleges
@@ -319,7 +354,9 @@ export class EspnProvider implements MatchDataProvider {
       awayTeamId: a.id,
       kickoff: new Date(ev.date ?? comp.date).toISOString(),
       status,
-      round: ev.week?.number ? `${ev.week.number}. forduló` : undefined,
+      round: STAGED.has(leagueId)
+        ? groupLabel(comp.group?.name) ?? stageLabel(ev.season?.slug) // pl. „Déli D csoport”, „Legjobb 32”
+        : ev.week?.number ? `${ev.week.number}. forduló` : undefined,
       importance,
       importanceReasons: reasons,
       homeGoals: status === 'scheduled' ? undefined : score(home),
@@ -487,6 +524,11 @@ export class EspnProvider implements MatchDataProvider {
         r.decidedBy = decided;
         const so = (c: Json) => parseFloat(String(c.score?.shootoutScore ?? c.shootoutScore));
         if (decided === 'pen' && Number.isFinite(so(home)) && Number.isFinite(so(away))) r.shootout = { home: so(home), away: so(away) };
+      }
+      if (STAGED.has(leagueId)) {
+        const raw = ev.seasonType?.name ?? ev.season?.slug;
+        const stage = stageLabel(raw);
+        if (stage) { r.stage = stage; r.groupStage = /group/i.test(String(raw)); }
       }
       out.push(r);
     }
@@ -737,6 +779,41 @@ export class EspnProvider implements MatchDataProvider {
       for (const r of p.results) if (r.date < before && !seen.has(r.matchId)) { seen.add(r.matchId); results.push(r); }
     }
     return { results, missing: [], failedRequests: failed };
+  }
+
+  /**
+   * Csoportkörös kupa (EFL Trophy) HIVATALOS csoporttabellái az ESPN standings végpontjáról – a pontokat és a
+   * sorrendet a forrás adja (a Trophy-ban döntetlennél tizenegyes-bónuszpont is van, ezt nem számoljuk újra).
+   * A meglévő HTTP-cache-sel (30 perc) és a párhuzamos kérések összevonásával. Hiányzó / hibás válasz → null;
+   * hiányos sor kimarad – kitalált érték soha nincs.
+   */
+  async getGroupStandings(leagueId: string): Promise<CompetitionGroup[] | null> {
+    const league = ESPN_LEAGUES.find((l) => l.id === leagueId);
+    const slug = SLUG[leagueId];
+    if (!league || !slug || competitionFormat(league) !== 'domestic_cup_groups') return null;
+    const data = await this.call(`${slug}/standings`, 30 * MIN, { base: STANDINGS_BASE });
+    const children: Json[] = Array.isArray(data?.children) ? data.children : [];
+    const groups: CompetitionGroup[] = [];
+    for (const g of children) {
+      const rows: CompetitionGroupRow[] = [];
+      for (const e of (Array.isArray(g?.standings?.entries) ? g.standings.entries : []) as Json[]) {
+        if (e?.team?.id == null) continue;
+        const stat = (name: string) => {
+          const s = (Array.isArray(e.stats) ? e.stats : []).find((x: Json) => x?.name === name || x?.type === name);
+          const n = parseFloat(String(s?.value ?? s?.displayValue ?? ''));
+          return Number.isFinite(n) ? n : null;
+        };
+        const v = { rank: stat('rank'), played: stat('gamesPlayed'), won: stat('wins'), drawn: stat('ties'), lost: stat('losses'), gf: stat('pointsFor'), ga: stat('pointsAgainst'), points: stat('points') };
+        if (Object.values(v).some((x) => x == null)) continue;
+        const team = this.registerTeam(e.team, leagueId, slug);
+        const n = v as Record<keyof typeof v, number>;
+        rows.push({ teamId: team.id, ...n, gd: n.gf - n.ga });
+      }
+      if (!rows.length) continue;
+      rows.sort((a, b) => a.rank - b.rank);
+      groups.push({ name: groupLabel(g.name) ?? String(g.name ?? ''), rows });
+    }
+    return groups.length ? groups : null;
   }
 
   /** Az aktuális idény kezdete (tabellához) – az ESPN scoreboard válaszából, különben becsült (júl. 1.). */

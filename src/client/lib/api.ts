@@ -4,7 +4,7 @@
 import type { DailyQuota } from '@shared/freeQuota';
 import type { TipArchiveQuery, TipArchiveResponse } from '@shared/tipArchive';
 import type { FeedPost, FeedResponse, FeedView, LikeResponse } from '@shared/community';
-import type { CompetitionFormat, CompetitionResultRow } from '@shared/competitionFormat';
+import type { CompetitionFormat, CompetitionGroup, CompetitionGroupRow, CompetitionResultRow } from '@shared/competitionFormat';
 import type {
   AdminPaymentRequestView, PaymentMethod, PaymentRequestStatus, PaymentRequestView, ProPaymentInfo, ProPlanId,
 } from '@shared/manualPayment';
@@ -55,6 +55,8 @@ export interface StandingsResponse {
   results: CompetitionResultRow[];
   /** a sorozat összes ismert eredménye (FREE-nek is – csak a szám) */
   resultsTotal: number;
+  /** csoportkörös kupa hivatalos csoporttabellái (PRO); null = nincs / nem érhető el */
+  groups?: (Omit<CompetitionGroup, 'rows'> & { rows: (CompetitionGroupRow & { team: Team | null })[] })[] | null;
 }
 
 export interface TeamResponse {

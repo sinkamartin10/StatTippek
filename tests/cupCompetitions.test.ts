@@ -67,9 +67,11 @@ describe('Sorozatformátum', () => {
     expect(got).toEqual({
       'eng-pl': 'league', 'esp-ll': 'league', 'ita-sa': 'league', 'ger-bl': 'league', 'fra-l1': 'league', 'usa-mls': 'league', 'aus-al': 'league',
       'eng-ch': 'league', 'esp-l2': 'league', 'ita-sb': 'league', 'ger-b2': 'league', 'fra-l2': 'league',
+      'eng-l1': 'league', 'eng-l2': 'league',
       'uefa-ucl': 'club_intl_cup', 'uefa-uel': 'club_intl_cup', 'uefa-uecl': 'club_intl_cup',
       'uefa-nl': 'national_team', 'fifa-wcq-uefa': 'national_team', 'fifa-friendly': 'friendly',
       'ger-dfb': 'domestic_cup', 'eng-efl': 'domestic_cup', 'esp-cdr': 'domestic_cup',
+      'eng-eft': 'domestic_cup_groups',
     });
     expect(ESPN_LEAGUES.filter(hasLeagueTable).every((l) => !l.international && !l.domesticCup)).toBe(true);
   });

@@ -6,10 +6,17 @@ import { ESPN_LEAGUES } from '../data/espnProvider';
 import { HISTORY_ONLY_DOMESTIC, NATIONAL_COMPETITIONS } from '../data/historyPlan';
 import type { CompetitionKind } from '../../shared/engine/experimental/crossLeague';
 
+/**
+ * A felületen elérhető, de a tanítóadatba (egyelőre) NEM kerülő bajnokságok: a League One és a League Two az EFL
+ * Trophy liga-alapjához került be – a betanított modell és a tanítóhalmaz ettől nem változik; ezek meccseit az
+ * alap motor szolgálja ki (a kiszolgálás „competition” okkal esik vissza).
+ */
+export const XS_EXCLUDED_LEAGUES = new Set(['eng-l1', 'eng-l2']);
+
 export const XS_KINDS: Record<string, CompetitionKind> = {
   // a hazai kupa (pl. DFB-Pokal) nincs a tanítóadatban: a tanítóhalmaz és a becslés változatlan, a kupameccset
   // az alap motor szolgálja ki (a kiszolgálás „competition” okkal esik vissza)
-  ...Object.fromEntries(ESPN_LEAGUES.filter((l) => !l.domesticCup)
+  ...Object.fromEntries(ESPN_LEAGUES.filter((l) => !l.domesticCup && !XS_EXCLUDED_LEAGUES.has(l.id))
     .map((l) => [l.id, NATIONAL_COMPETITIONS.has(l.id) ? 'national' : l.international ? 'club_intl' : 'domestic'])),
   ...Object.fromEntries(Object.keys(HISTORY_ONLY_DOMESTIC).map((id) => [id, 'domestic' as const])),
 };

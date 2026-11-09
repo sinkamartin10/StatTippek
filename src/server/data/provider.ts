@@ -4,6 +4,7 @@
  * majd regisztráld a src/server/container.ts-ben.
  */
 import type { CornerResult, DataOrigin, League, Match, MatchOdds, MatchResult, Team } from '../../shared/types';
+import type { CompetitionGroup } from '../../shared/competitionFormat';
 
 /** Egy befejezett meccs, amelynek a szögletszáma kell. */
 export interface CornerRef {
@@ -56,6 +57,8 @@ export interface MatchDataProvider {
   getOdds(matchId: string): Promise<MatchOdds | null>;
   /** Az aktuális idény kezdete ISO formában (tabella-szűréshez). Ha nincs, minden eredmény számít. */
   getSeasonStart?(leagueId: string): Promise<string>;
+  /** Csoportkörös kupa hivatalos csoporttabellái (null = a forrás nem érhető el / nem csoportos sorozat). */
+  getGroupStandings?(leagueId: string): Promise<CompetitionGroup[] | null>;
   /**
    * Opcionális: a megadott befejezett meccsek hiteles szögletszáma. Aki nem
    * implementálja, annál szögletelemzés nem készül. Soha nem pótol adatot.

@@ -101,10 +101,10 @@ describe('DFB-Pokal – sorozatlista', () => {
     const leagues = await withProvider((p) => p.getLeagues());
     expect(leagues.find((l) => l.id === 'ger-dfb')).toEqual({ id: 'ger-dfb', name: 'DFB-Pokal', country: 'Németország', countryCode: 'GER', tier: 0, international: false, domesticCup: true });
     expect(SLUG['ger-dfb']).toBe('ger.dfb_pokal');
-    // a meglévő 17 sorozat változatlan (a később felvett bajnokság – A-League Men – nélkül)
-    expect(leagues.filter((l) => !l.domesticCup && l.id !== 'aus-al').map((l) => [l.id, l.international])).toEqual(EXISTING);
-    // a hazai kupák: DFB-Pokal és (később felvett) EFL Cup, Copa del Rey – több nincs
-    expect(leagues.filter((l) => l.domesticCup).map((l) => l.id)).toEqual(['ger-dfb', 'eng-efl', 'esp-cdr']);
+    // a meglévő 17 sorozat változatlan (a később felvett bajnokságok – A-League Men, League One, League Two – nélkül)
+    expect(leagues.filter((l) => !l.domesticCup && !['aus-al', 'eng-l1', 'eng-l2'].includes(l.id)).map((l) => [l.id, l.international])).toEqual(EXISTING);
+    // a hazai kupák: DFB-Pokal és (később felvett) EFL Cup, Copa del Rey, EFL Trophy – több nincs
+    expect(leagues.filter((l) => l.domesticCup).map((l) => l.id)).toEqual(['ger-dfb', 'eng-efl', 'esp-cdr', 'eng-eft']);
   });
 
   it('a /api/leagues a szolgáltató listáját adja (így az új sorozatot is)', () => {
@@ -210,8 +210,10 @@ describe('Meglévő viselkedés változatlan', () => {
       ['uefa-nl', 'fifa-wcq-uefa', 'fifa-friendly'].includes(id) ? 'national' : intl ? 'club_intl' : 'domestic']));
     for (const [id, kind] of Object.entries(expected)) expect(XS_KINDS[id], id).toBe(kind);
     expect(XS_KINDS['ger-dfb']).toBeUndefined();
-    // az ESPN-lista minden nem-hazai-kupa eleme a modellben van (semmi nem esett ki)
-    for (const l of ESPN_LEAGUES.filter((x) => !x.domesticCup)) expect(XS_KINDS[l.id], l.id).toBeDefined();
+    // az ESPN-lista minden nem-hazai-kupa eleme a modellben van (semmi nem esett ki) – kivéve a kifejezetten
+    // kizárt, az EFL Trophy alapjához felvett League One / League Two-t
+    for (const l of ESPN_LEAGUES.filter((x) => !x.domesticCup && !['eng-l1', 'eng-l2'].includes(x.id))) expect(XS_KINDS[l.id], l.id).toBeDefined();
+    for (const id of ['eng-l1', 'eng-l2', 'eng-eft']) expect(XS_KINDS[id], id).toBeUndefined();
   });
 });
 

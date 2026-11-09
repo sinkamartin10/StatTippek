@@ -229,9 +229,12 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const pro = planOf(res).pro;
     const own = table ? [] : results.filter((r) => r.leagueId === league.id).sort((a, b) => b.date.localeCompare(a.date));
+    // csoportkörös kupa (EFL Trophy): a csoportok HIVATALOS tabellái a forrásból – egyetlen közös tabella nincs
+    const format = competitionFormat(league);
+    const groups = format === 'domestic_cup_groups' && pro ? (await c.data.getGroupStandings?.(league.id)) ?? null : null;
     res.json({
       league,
-      format: competitionFormat(league),
+      format,
       averages,
       seasonStart: seasonStart ?? null,
       origin: c.data.origin,
@@ -240,6 +243,8 @@ export function apiRouter(c: Container, svc: AnalysisService, corners: CornerSer
       // nem-bajnoki sorozat: a tabella HELYETT a mérkőzések és eredmények, ugyanazzal a PRO-kapuval
       results: pro ? own.slice(0, COMPETITION_RESULTS_LIMIT).map((r) => ({ ...r, homeTeam: teamById.get(r.homeTeamId) ?? null, awayTeam: teamById.get(r.awayTeamId) ?? null })) : [],
       resultsTotal: own.length,
+      // PRO; null = nem csoportos sorozat, vagy a forrás nem adott használható csoporttabellát (nincs kitalált tabella)
+      groups: groups ? groups.map((g) => ({ ...g, rows: g.rows.map((r) => ({ ...r, team: teamById.get(r.teamId) ?? null })) })) : null,
     });
   });
 

@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { FORMAT_INFO, type CompetitionFormat, type CompetitionResultRow } from '@shared/competitionFormat';
-import { api } from '../lib/api';
+import { api, type StandingsResponse } from '../lib/api';
 import { fmtDateTime, num, pct100, useAsync } from '../lib/format';
 import { Card, Disclaimer, ErrorBox, FormPills, Loading, Note, OriginBadge, Stat, TeamLink } from '../components/ui';
 import { SimpleBarChart } from '../components/charts';
@@ -16,6 +16,52 @@ export function decidedText(r: Pick<CompetitionResultRow, 'decidedBy' | 'shootou
   if (r.decidedBy === 'aet') return 'hosszabbítás után';
   if (r.decidedBy === 'pen') return r.shootout ? `tizenegyesekkel ${r.shootout.home}–${r.shootout.away}` : 'tizenegyesekkel';
   return null;
+}
+
+/**
+ * Kieséses meccs továbbjutója: hosszabbítás után a gólok, tizenegyespárbajnál a párbaj dönt. Csoportköri meccsnél
+ * (és ha a szakasz nem ismert) nincs továbbjutó – null. Döntetlen, párbaj-eredmény nélkül: nem állapítható meg.
+ */
+export function advancedSide(r: Pick<CompetitionResultRow, 'stage' | 'groupStage' | 'homeGoals' | 'awayGoals' | 'decidedBy' | 'shootout'>): 'home' | 'away' | null {
+  if (!r.stage || r.groupStage) return null;
+  if (r.decidedBy === 'pen') return r.shootout && r.shootout.home !== r.shootout.away ? (r.shootout.home > r.shootout.away ? 'home' : 'away') : null;
+  return r.homeGoals === r.awayGoals ? null : r.homeGoals > r.awayGoals ? 'home' : 'away';
+}
+
+type GroupTable = NonNullable<StandingsResponse['groups']>[number];
+
+/** Csoportkörös kupa (EFL Trophy) hivatalos csoporttabellái – csoportonként, közös rangsor nélkül. */
+export function GroupTables({ groups }: { groups: GroupTable[] }) {
+  return (
+    <Card title="Csoporttabellák" right={<span className="badge badge-blue">Hivatalos (ESPN)</span>}>
+      <div className="space-y-3">
+        <Note>Csoportonként az első két helyezett jut tovább. A pontszámot és a sorrendet a sorozat szabálya adja: döntetlennél tizenegyespárbaj dönt egy bónuszpontról.</Note>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {groups.map((g) => (
+            <div key={g.name} className="overflow-x-auto" data-group={g.name}>
+              <div className="mb-1 text-sm font-extrabold">{g.name}</div>
+              <table className="table">
+                <thead><tr><th>#</th><th>Csapat</th><th>M</th><th>Gy</th><th>D</th><th>V</th><th>LG</th><th>KG</th><th>GK</th><th>P</th></tr></thead>
+                <tbody>
+                  {g.rows.map((r) => (
+                    <tr key={r.teamId} className={r.rank <= 2 ? 'font-semibold' : undefined} data-qualifying={r.rank <= 2 ? 'true' : undefined}>
+                      <td className="mono text-muted">{r.rank}</td>
+                      <td>
+                        <TeamLink id={r.teamId} name={r.team?.name ?? r.teamId} />
+                        {r.team?.youth && <span className="badge badge-muted ml-1.5">U21</span>}
+                      </td>
+                      <td className="mono">{r.played}</td><td className="mono">{r.won}</td><td className="mono">{r.drawn}</td><td className="mono">{r.lost}</td>
+                      <td className="mono">{r.gf}</td><td className="mono">{r.ga}</td><td className="mono">{r.gd > 0 ? '+' : ''}{r.gd}</td><td className="mono font-bold">{r.points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 /** A nem-bajnoki sorozat mérkőzései és eredményei – pontozás és rangsor nélkül. */
@@ -39,6 +85,7 @@ export function CompetitionResults({ name, format, results, total }: {
                 const decided = decidedText(r);
                 const homeWon = r.decidedBy === 'pen' && r.shootout ? r.shootout.home > r.shootout.away : r.homeGoals > r.awayGoals;
                 const awayWon = r.decidedBy === 'pen' && r.shootout ? r.shootout.away > r.shootout.home : r.awayGoals > r.homeGoals;
+                const adv = advancedSide(r);
                 return (
                   <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
                     <span className="w-32 shrink-0 text-xs font-semibold text-text-muted">{fmtDateTime(r.date)}</span>
@@ -49,6 +96,8 @@ export function CompetitionResults({ name, format, results, total }: {
                     </span>
                     <span className="mono shrink-0 font-extrabold">{r.homeGoals}–{r.awayGoals}</span>
                     {decided && <span className="badge badge-muted shrink-0">{decided}</span>}
+                    {r.stage && <span className="badge badge-blue shrink-0">{r.stage}</span>}
+                    {adv && <span className="badge badge-green shrink-0">Továbbjutott: {(adv === 'home' ? r.homeTeam?.name ?? r.homeTeamId : r.awayTeam?.name ?? r.awayTeamId)}</span>}
                   </li>
                 );
               })}
@@ -105,7 +154,12 @@ export default function Stats() {
               />
             </Card>
           ) : !isLeague ? (
-            <CompetitionResults name={st.data.league.name} format={format as Exclude<CompetitionFormat, 'league'>} results={st.data.results} total={st.data.resultsTotal} />
+            <>
+              {format === 'domestic_cup_groups' && (st.data.groups?.length
+                ? <GroupTables groups={st.data.groups} />
+                : <Note tone="warn">A csoporttabellák most nem érhetők el az adatforrásból – helyettük nem számolunk saját tabellát.</Note>)}
+              <CompetitionResults name={st.data.league.name} format={format as Exclude<CompetitionFormat, 'league'>} results={st.data.results} total={st.data.resultsTotal} />
+            </>
           ) : <>
           <Card title={`${st.data.league.name} – tabella`} right={<OriginBadge origin={st.data.origin} small />}>
             {st.data.standings.length === 0 ? <div className="mt-1.5 text-sm font-semibold text-text-muted">Nincs lejátszott mérkőzés ebben a bajnokságban.</div> : (
