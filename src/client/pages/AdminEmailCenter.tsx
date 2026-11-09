@@ -12,7 +12,7 @@ import {
   AUDIENCES_FOR, CAMPAIGN_STATUS_LABEL, EMAIL_AUDIENCE_LABEL, EMAIL_KIND_LABEL,
   type CampaignPreview, type CampaignStatus, type CampaignView, type EmailAudience, type EmailKind,
 } from '@shared/email';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { fmtDateTime, useAsync } from '../lib/format';
 import { singleFlight } from '../lib/learningDashboard';
 import { Card, EmptyState, ErrorBox, Loading, Note, PageHeader } from '../components/ui';
@@ -76,6 +76,15 @@ export default function AdminEmailCenter() {
  * Miért nem indítható most a küldés – a felület ezt KIÍRJA, nem rejti el szó nélkül a gombot. Csak tájékoztat:
  * minden feltételt a szerver is ellenőriz a megerősítéskor (piszkozat, tartalom, címzettszám, korlát, beállítás).
  */
+/** a szerver biztonságos hibaüzenete + HTTP-státusz és hibakód (a hibabejelentéshez); stack trace soha */
+export function errorText(e: unknown): string {
+  if (e instanceof ApiError) {
+    const dbCode = typeof e.details?.dbCode === 'string' ? `, adatbázis-kód: ${e.details.dbCode}` : '';
+    return `${e.message} (HTTP ${e.status}${e.code ? `, ${e.code}` : ''}${dbCode})`;
+  }
+  return e instanceof Error && e.message ? e.message : 'Ismeretlen hiba.';
+}
+
 export function sendBlockers(a: { campaign: CampaignView | null; preview: CampaignPreview; kind: EmailKind; sendingConfigured: boolean | null }): string[] {
   const out: string[] = [];
   if (!a.campaign) out.push('Előbb mentsd el a kampányt.');
@@ -103,7 +112,7 @@ function Editor({ campaign, maxRecipients, sendingConfigured, onSaved, onNew }: 
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setMsg(null);
-    try { await fn(); } catch (e) { setMsg({ tone: 'warn', text: (e as Error).message }); } finally { setBusy(false); }
+    try { await fn(); } catch (e) { setMsg({ tone: 'warn', text: errorText(e) }); } finally { setBusy(false); }
   };
   /** mentés (új vagy piszkozat), majd a mentett kampány */
   const save = async (): Promise<CampaignView> => {

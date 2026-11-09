@@ -21,7 +21,7 @@
 import express, { Router, type Request, type Response } from 'express';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { planOf, requireAuthenticated } from '../billing/entitlement';
-import type { Delivery, EmailStore, Recipient } from './store';
+import { EmailStoreError, type Delivery, type EmailStore, type Recipient } from './store';
 import {
   AUDIENCES_FOR, CONSENT_TEXT, CONSENT_TEXT_VERSION, type CampaignPreview, type CampaignStatus, type CampaignView, type DeliveryStats,
   type EmailAudience, type EmailCenterStatus, type EmailKind,
@@ -438,10 +438,53 @@ export function finalStatus(s: DeliveryStats): CampaignStatus {
 // Útvonalak
 // ---------------------------------------------------------------------------
 
+/** a tároló lépéseinek felhasználóbarát neve (a felület ezt látja; a technikai részlet csak a naplóban) */
+const STORE_STEP: Record<string, string> = {
+  'email_recipients olvasás': 'a címzettlista lekérése (email_recipients nézet)',
+  'email_marketing_consents olvasás': 'a marketing-hozzájárulások lekérése',
+  countConsented: 'a hozzájárulók számlálása', consentedAmong: 'a hozzájárulás ellenőrzése',
+  getConsent: 'a hozzájárulás lekérése', setConsent: 'a hozzájárulás mentése',
+  createCampaign: 'a kampány mentése', updateDraft: 'a piszkozat mentése', getCampaign: 'a kampány betöltése',
+  listCampaigns: 'a kampánylista betöltése', claimCampaign: 'a küldés indítása', finishCampaign: 'a kampány lezárása',
+  addDeliveries: 'a küldési napló írása', deliveriesToSend: 'a küldési napló olvasása', updateDeliveries: 'a küldési napló frissítése',
+  deliveryStats: 'a küldési statisztika',
+};
+
+/**
+ * Biztonságos, érthető hibaüzenet egy adatbázis-hibából: a lépés, a hibakód és a teendő – a nyers adatbázis-üzenet,
+ * a részletek és a stack trace NEM (azokban adat, például email-cím is lehet).
+ */
+export function storeErrorResponse(e: EmailStoreError): { status: number; body: Record<string, unknown> } {
+  const step = STORE_STEP[e.op] ?? 'adatbázis-művelet';
+  const c = e.dbCode ?? '';
+  let hint = 'Váratlan adatbázis-hiba – a részletek a szerver naplójában ([email] sor).';
+  let status = 500;
+  if (['42P01', '42703', '42883', 'PGRST200', 'PGRST202', 'PGRST204', 'PGRST205'].includes(c)) {
+    status = 503;
+    hint = 'Az adatbázis-séma nem egyezik a szerver elvárásával: a 0025_email_center.sql nem (vagy nem a jelenlegi változatában) futott le teljesen – például hiányzik az email_recipients nézet vagy egy oszlop. A PostgREST sémagyorsítótárát is frissíteni kell (NOTIFY pgrst, "reload schema").';
+  } else if (c === '42501') {
+    status = 503;
+    hint = 'Hiányzó adatbázis-jogosultság: a 0025 migráció jogosultsági része (grant … to service_role) nem futott le, vagy a nézet tulajdonosa nem olvashatja a mögöttes táblát (auth.users / profiles).';
+  } else if (c === '57014') {
+    status = 503;
+    hint = 'Az adatbázis-lekérdezés időtúllépés miatt megszakadt. Próbáld újra.';
+  } else if (c === 'PGRST301' || c === 'PGRST302' || c === '28000' || c === '28P01') {
+    status = 503;
+    hint = 'A szerver nem tud hitelesen csatlakozni az adatbázishoz (service_role kulcs).';
+  }
+  return { status, body: { error: `Nem sikerült: ${step}. ${hint}`, code: 'EMAIL_DB_ERROR', dbCode: e.dbCode, step: e.op } };
+}
+
 function fail(res: Response, e: unknown, op: string) {
   if (e instanceof EmailCenterError) return res.status(e.status).json({ error: e.message, code: e.code, ...e.extra });
+  if (e instanceof EmailStoreError) {
+    // a teljes adatbázis-üzenet csak a szervernaplóba
+    console.error(`[email] ${op}: ${e.op} (${e.dbCode ?? 'kód nélkül'}): ${e.detail}`);
+    const { status, body } = storeErrorResponse(e);
+    return res.status(status).json(body);
+  }
   console.error(`[email] ${op}:`, (e as Error).message);
-  return res.status(500).json({ error: 'A művelet nem sikerült.', code: 'EMAIL_FAILED' });
+  return res.status(500).json({ error: 'A művelet nem sikerült (váratlan szerverhiba – a részletek a szerver naplójában).', code: 'EMAIL_FAILED' });
 }
 
 /** egyszerű, IP-nkénti korlát a leiratkozó végpontra (a globális /api korláton felül) */

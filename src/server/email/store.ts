@@ -43,6 +43,14 @@ export interface EmailStore {
 }
 
 type Row = Record<string, any>;
+
+/**
+ * Adatbázis-hiba a tárolóból: a lépés neve és a Postgres / PostgREST hibakód (pl. 42501, PGRST205) biztonságosan
+ * továbbadható a felületnek; a nyers üzenet és a részletek (amelyekben adat is lehet) CSAK a szervernaplóba kerülnek.
+ */
+export class EmailStoreError extends Error {
+  constructor(public op: string, public dbCode: string | null, public detail: string) { super(`[email] ${op}: ${detail}`); }
+}
 const iso = (v: unknown) => (v == null ? null : new Date(String(v)).toISOString());
 const NO_CONSENT: MarketingConsentView = { consented: false, consentedAt: null, consentSource: null, revokedAt: null };
 const isPro = (status: unknown, end: unknown, now = Date.now()) => status === 'pro' && (end == null || new Date(String(end)).getTime() > now);
@@ -65,8 +73,10 @@ const PAGE = 1000;
 export class PostgresEmailStore implements EmailStore {
   constructor(private db: SupabaseClient) {}
 
-  private fail(op: string, error: { message: string } | null): void {
-    if (error) throw new Error(`[email] ${op}: ${error.message}`);
+  private fail(op: string, error: { message: string; code?: string; details?: string | null; hint?: string | null } | null): void {
+    if (!error) return;
+    const detail = [error.message, error.details, error.hint].filter(Boolean).join(' | ');
+    throw new EmailStoreError(op, typeof error.code === 'string' && error.code ? error.code : null, detail);
   }
 
   /** lapozott olvasás (a PostgREST soronként legfeljebb ~1000 sort ad egy kérésben) */

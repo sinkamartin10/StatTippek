@@ -12,14 +12,16 @@ import type { Server } from 'node:http';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { MemoryEmailStore } from '../src/server/email/store';
+import { EmailStoreError, MemoryEmailStore, PostgresEmailStore } from '../src/server/email/store';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { ApiError } from '../src/client/lib/api';
 import {
   EmailCenterService, EmailSendError, MAX_ATTEMPTS, ResendSender, adminEmailRouter, contentIssues, emailConfig, emailRouter, finalStatus,
   missingConfig, renderEmail, unsubscribeToken, verifyUnsubscribeToken, type EmailSender, type OutgoingEmail,
 } from '../src/server/email/emailCenter';
 import { requireAdmin } from '../src/server/billing/entitlement';
 import { CONSENT_TEXT_VERSION, type CampaignView } from '../src/shared/email';
-import { CampaignRow, sendBlockers } from '../src/client/pages/AdminEmailCenter';
+import { CampaignRow, errorText, sendBlockers } from '../src/client/pages/AdminEmailCenter';
 
 const ADMIN = { user: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'admin@example.com' };
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -572,6 +574,68 @@ describe('Kampányküldés a felület útján (mentés → előnézet → címze
     expect(sendBlockers({ campaign: draft, preview: { ...p, recipientCount: 6000 }, kind: 'marketing', sendingConfigured: true })[0]).toMatch(/meghaladja/);
     // ismeretlen beállítási állapot (a státusz még tölt) nem tilt – a szerver úgyis ellenőriz
     expect(sendBlockers({ campaign: draft, preview: p, kind: 'marketing', sendingConfigured: null })).toEqual([]);
+  });
+});
+
+describe('Előnézet: adatbázis-hiba a címzettlista lekérésekor („A művelet nem sikerült” helyett pontos, biztonságos hiba)', () => {
+  const RAW = 'permission denied for table users | titkos.cim@example.com | at Object.<anonymous> (store.ts:107)';
+  const breakRecipients = (code: string | null) => {
+    h.store.listRecipients = async () => { throw new EmailStoreError('email_recipients olvasás', code, RAW); };
+  };
+
+  it('jogosultsági hiba (42501): 503, megnevezett lépés és teendő; nyers DB-üzenet, email-cím, stack trace nincs a válaszban, csak a naplóban', async () => {
+    const c = (await create({})).body as CampaignView;
+    breakRecipients('42501');
+    const r = await preview(c.id);
+    expect(r.status).toBe(503);
+    expect(r.body).toMatchObject({ code: 'EMAIL_DB_ERROR', dbCode: '42501', step: 'email_recipients olvasás' });
+    expect(r.body.error).toMatch(/Nem sikerült: a címzettlista lekérése \(email_recipients nézet\)/);
+    expect(r.body.error).toMatch(/jogosultság/);
+    for (const leak of ['permission denied', 'titkos.cim@example.com', 'store.ts', 'at Object']) expect(r.text).not.toContain(leak);
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toContain('permission denied for table users');
+    expect(h.sender.calls).toHaveLength(0);
+  });
+
+  it('hiányzó nézet / sémaeltérés (PGRST205, 42P01): 503 a migrációra utaló üzenettel', async () => {
+    const c = (await create({})).body as CampaignView;
+    for (const code of ['PGRST205', '42P01']) {
+      breakRecipients(code);
+      const r = await preview(c.id);
+      expect(r.status).toBe(503);
+      expect(r.body.dbCode).toBe(code);
+      expect(r.body.error).toMatch(/0025_email_center\.sql/);
+    }
+  });
+
+  it('ismeretlen adatbázis-hiba: 500, de a lépés és a kód ekkor is látszik; a küldés is ugyanígy jelez, és nem indul el', async () => {
+    await consent(1);
+    const c = (await create({})).body as CampaignView;
+    const p = (await preview(c.id)).body;
+    breakRecipients(null);
+    const r = await preview(c.id);
+    expect(r.status).toBe(500);
+    expect(r.body).toMatchObject({ code: 'EMAIL_DB_ERROR', dbCode: null });
+    expect(r.body.error).toMatch(/címzettlista/);
+    const s = await send(c.id, { recipientCount: p.recipientCount });
+    expect(s.body.code).toBe('EMAIL_DB_ERROR');
+    expect((await h.store.getCampaign(c.id))?.status).toBe('draft');
+    expect(h.sender.calls).toHaveLength(0);
+  });
+
+  it('a Postgres-tároló a PostgREST hibakódját továbbadja (a nyers üzenet csak a hiba részleteiben, naplózásra)', async () => {
+    const q: any = { select: () => q, eq: () => q, order: () => q, range: async () => ({ data: null, error: { message: 'permission denied for table users', code: '42501', details: null, hint: null } }) };
+    const store = new PostgresEmailStore({ from: () => q } as unknown as SupabaseClient);
+    const e = await store.listRecipients().catch((x) => x);
+    expect(e).toBeInstanceOf(EmailStoreError);
+    expect(e).toMatchObject({ dbCode: '42501', detail: 'permission denied for table users' });
+    expect(['email_recipients olvasás', 'email_marketing_consents olvasás']).toContain(e.op);
+  });
+
+  it('a felület a szerver biztonságos üzenetét mutatja HTTP-státusszal és kóddal', () => {
+    expect(errorText(new ApiError('Nem sikerült: a címzettlista lekérése.', 503, 'EMAIL_DB_ERROR', { dbCode: '42501' })))
+      .toBe('Nem sikerült: a címzettlista lekérése. (HTTP 503, EMAIL_DB_ERROR, adatbázis-kód: 42501)');
+    expect(errorText(new ApiError('A kampány nem található.', 404, 'NOT_FOUND', {}))).toBe('A kampány nem található. (HTTP 404, NOT_FOUND)');
+    expect(errorText('x')).toBe('Ismeretlen hiba.');
   });
 });
 
