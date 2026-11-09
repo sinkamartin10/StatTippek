@@ -19,7 +19,7 @@ import {
 } from '../src/server/email/emailCenter';
 import { requireAdmin } from '../src/server/billing/entitlement';
 import { CONSENT_TEXT_VERSION, type CampaignView } from '../src/shared/email';
-import { CampaignRow } from '../src/client/pages/AdminEmailCenter';
+import { CampaignRow, sendBlockers } from '../src/client/pages/AdminEmailCenter';
 
 const ADMIN = { user: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'admin@example.com' };
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -518,6 +518,60 @@ describe('Resend-kliens (hamis fetch – nincs valódi hívás)', () => {
       expect(err).toBeInstanceOf(EmailSendError);
       expect([err.retryable, err.retryAfterMs]).toEqual([retryable, after]);
     }
+  });
+});
+
+describe('Kampányküldés a felület útján (mentés → előnézet → címzettszám → kétlépéses megerősítés; hamis Resend-küldő)', () => {
+  const put = (id: string, body: Record<string, unknown>) => call(h, 'PUT', `/api/admin/email/campaigns/${id}`, ADMIN, body);
+
+  it('mentett, érvényes piszkozat: az előnézet címzettszáma alapján a küldés elindul, és csak a hozzájárulók kapják meg', async () => {
+    for (const n of [1, 5]) await consent(n);
+    const c = (await create({ subject: 'Első' })).body as CampaignView;                 // mentés (új)
+    expect(c.status).toBe('draft');
+    expect((await put(c.id, { subject: 'Heti hírek' })).body.subject).toBe('Heti hírek'); // mentés (piszkozat)
+    const p = (await preview(c.id)).body;                                                // előnézet + címzettszám
+    expect(p).toMatchObject({ recipientCount: 2, maxRecipients: 5000, issues: [] });
+    expect(p.html).toContain('Leiratkozás');
+    // a felület ugyanebből számol: nincs akadály → megjelenik a „Küldés N címzettnek” gomb
+    expect(sendBlockers({ campaign: c, preview: p, kind: 'marketing', sendingConfigured: true })).toEqual([]);
+    expect(h.sender.calls).toHaveLength(0);                                               // előnézet / mentés nem küld
+    const r = await send(c.id, { recipientCount: p.recipientCount });                    // „Igen, küldés”
+    expect(r.status).toBe(202);
+    expect(r.body.campaign.status).toBe('sending');
+    expect((await settle(c.id))?.status).toBe('sent');
+    expect(recipientsOf()).toEqual(['u1@example.com', 'u5@example.com']);
+    for (const e of h.sender.sent) expect(e.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+  });
+
+  it('elindított / elküldött kampány nem indítható újra, és már nem szerkeszthető', async () => {
+    await consent(1);
+    const { c, p, done } = await sendAll({});
+    expect(done?.status).toBe('sent');
+    expect((await send(c.id, { recipientCount: p.recipientCount })).body.code).toBe('ALREADY_PROCESSED');
+    expect((await call(h, 'POST', `/api/admin/email/campaigns/${c.id}/retry`, ADMIN, {})).body.code).toBe('NOT_RETRYABLE');
+    expect((await put(c.id, { subject: 'Más' })).body.code).toBe('NOT_DRAFT');
+    expect(sendBlockers({ campaign: done!, preview: p, kind: 'marketing', sendingConfigured: true })[0]).toMatch(/már nem piszkozat/);
+    expect(h.sender.sent).toHaveLength(1);
+  });
+
+  it('nincs hozzájáruló: a felület kiírja az okot (nem rejti el szó nélkül a gombot), a szerver is elutasítja', async () => {
+    const c = (await create({})).body as CampaignView;
+    const p = (await preview(c.id)).body;
+    expect(p.recipientCount).toBe(0);
+    expect(sendBlockers({ campaign: c, preview: p, kind: 'marketing', sendingConfigured: true }).join(' ')).toMatch(/Nincs címzett: marketing csak megerősített email-című, marketinghez hozzájáruló/);
+    expect((await send(c.id, { recipientCount: 0 })).body.code).toBe('NO_RECIPIENTS');
+    expect(h.sender.calls).toHaveLength(0);
+  });
+
+  it('akadályok: mentetlen, tartalmi hiba, beállítás hiánya, korlát – mindegyik megnevezve', () => {
+    const p = { html: '', recipientCount: 3, maxRecipients: 5000, issues: [] as string[] };
+    const draft = { id: 'c1', status: 'draft' } as CampaignView;
+    expect(sendBlockers({ campaign: null, preview: p, kind: 'marketing', sendingConfigured: true })).toEqual(['Előbb mentsd el a kampányt.']);
+    expect(sendBlockers({ campaign: draft, preview: { ...p, issues: ['x'] }, kind: 'system', sendingConfigured: true })[0]).toMatch(/tartalmi hibákat/);
+    expect(sendBlockers({ campaign: draft, preview: p, kind: 'marketing', sendingConfigured: false })[0]).toMatch(/nincs beállítva/);
+    expect(sendBlockers({ campaign: draft, preview: { ...p, recipientCount: 6000 }, kind: 'marketing', sendingConfigured: true })[0]).toMatch(/meghaladja/);
+    // ismeretlen beállítási állapot (a státusz még tölt) nem tilt – a szerver úgyis ellenőriz
+    expect(sendBlockers({ campaign: draft, preview: p, kind: 'marketing', sendingConfigured: null })).toEqual([]);
   });
 });
 

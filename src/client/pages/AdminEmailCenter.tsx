@@ -25,6 +25,11 @@ export default function AdminEmailCenter() {
   const status = useAsync(() => api.adminEmailStatus(), []);
   const list = useAsync(() => api.adminEmailCampaigns(), []);
   const [current, setCurrent] = useState<CampaignView | null>(null);
+  // A szerkesztő példánya CSAK megnyitáskor / új emailnél cserélődik – mentéskor nem. (Korábban a kulcs a kampány
+  // azonosítója volt: egy új email első mentése – amit az Előnézet gomb is elvégez – újraszerkesztette a szerkesztőt,
+  // és a frissen kapott előnézet a küldés gombbal együtt elveszett.)
+  const [editorKey, setEditorKey] = useState(0);
+  const openEditor = (c: CampaignView | null) => { setCurrent(c); setEditorKey((k) => k + 1); };
 
   // küldés közben a lista néhány másodpercenként frissül (a statisztika a szerverről jön)
   const sending = (list.data ?? []).some((c) => c.status === 'sending');
@@ -55,18 +60,38 @@ export default function AdminEmailCenter() {
       {status.data && !status.data.sendingConfigured && (
         <Note tone="warn">Az emailküldés nincs beállítva ezen a szerveren (hiányzik: {status.data.missing.join(', ')}). Piszkozat és előnézet készíthető, küldeni nem lehet.</Note>
       )}
-      <Editor key={current?.id ?? 'new'} campaign={current} maxRecipients={status.data?.maxRecipients ?? null}
-        onSaved={(c) => { setCurrent(c); list.reload(); }} onNew={() => setCurrent(null)} />
+      <Editor key={editorKey} campaign={current} maxRecipients={status.data?.maxRecipients ?? null}
+        sendingConfigured={status.data ? status.data.sendingConfigured : null}
+        onSaved={(c) => { setCurrent(c); list.reload(); }} onNew={() => openEditor(null)} />
       <Card title="Korábbi kampányok">
         {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox message={list.error} onRetry={list.reload} />
           : !list.data?.length ? <EmptyState emoji="📭" title="Még nincs kampány" />
-            : <div className="space-y-2">{list.data.map((c) => <CampaignRow key={c.id} c={c} onOpen={() => setCurrent(c)} onChanged={list.reload} />)}</div>}
+            : <div className="space-y-2">{list.data.map((c) => <CampaignRow key={c.id} c={c} onOpen={() => openEditor(c)} onChanged={list.reload} />)}</div>}
       </Card>
     </div>
   );
 }
 
-function Editor({ campaign, maxRecipients, onSaved, onNew }: { campaign: CampaignView | null; maxRecipients: number | null; onSaved: (c: CampaignView) => void; onNew: () => void }) {
+/**
+ * Miért nem indítható most a küldés – a felület ezt KIÍRJA, nem rejti el szó nélkül a gombot. Csak tájékoztat:
+ * minden feltételt a szerver is ellenőriz a megerősítéskor (piszkozat, tartalom, címzettszám, korlát, beállítás).
+ */
+export function sendBlockers(a: { campaign: CampaignView | null; preview: CampaignPreview; kind: EmailKind; sendingConfigured: boolean | null }): string[] {
+  const out: string[] = [];
+  if (!a.campaign) out.push('Előbb mentsd el a kampányt.');
+  else if (a.campaign.status !== 'draft') out.push(`Ez a kampány már nem piszkozat (${CAMPAIGN_STATUS_LABEL[a.campaign.status].toLowerCase()}), újra nem indítható.`);
+  if (a.sendingConfigured === false) out.push('Az emailküldés nincs beállítva ezen a szerveren.');
+  if (a.preview.issues.length) out.push('Javítsd a fent jelzett tartalmi hibákat, majd kérj új előnézetet.');
+  if (a.preview.recipientCount === 0) {
+    out.push(a.kind === 'marketing'
+      ? 'Nincs címzett: marketing csak megerősített email-című, marketinghez hozzájáruló felhasználónak küldhető, és a kiválasztott szűrőben jelenleg nincs ilyen. (Hozzájárulni a profilban vagy a regisztrációkor lehet.)'
+      : 'Nincs címzett: a kiválasztott szűrőben nincs megerősített email-című felhasználó.');
+  }
+  if (a.preview.recipientCount > a.preview.maxRecipients) out.push(`A címzettek száma (${a.preview.recipientCount}) meghaladja a kampányonkénti korlátot (${a.preview.maxRecipients}).`);
+  return out;
+}
+
+function Editor({ campaign, maxRecipients, sendingConfigured, onSaved, onNew }: { campaign: CampaignView | null; maxRecipients: number | null; sendingConfigured: boolean | null; onSaved: (c: CampaignView) => void; onNew: () => void }) {
   const [d, setD] = useState<Draft>(campaign ? { kind: campaign.kind, audience: campaign.audience, subject: campaign.subject, html: campaign.html } : EMPTY);
   const [preview, setPreview] = useState<CampaignPreview | null>(null);
   const [attest, setAttest] = useState(false);
@@ -95,6 +120,7 @@ function Editor({ campaign, maxRecipients, onSaved, onNew }: { campaign: Campaig
     onSaved({ ...campaign, status: 'sending' });
   });
   const sendGate = useRef(singleFlight(() => sendRef.current()));
+  const blockers = preview ? sendBlockers({ campaign, preview, kind: d.kind, sendingConfigured }) : [];
 
   return (
     <Card title={campaign ? (locked ? 'Kampány (elküldve – csak olvasható)' : 'Piszkozat szerkesztése') : 'Új email'}
@@ -137,7 +163,7 @@ function Editor({ campaign, maxRecipients, onSaved, onNew }: { campaign: Campaig
           <button type="button" className="btn" disabled={busy || !d.subject.trim() || !d.html.trim()} onClick={() => run(async () => {
             const c = locked ? campaign! : await save();
             setPreview(await api.adminEmailPreview(c.id));
-          })}><Eye className="h-4 w-4" /> Előnézet</button>
+          })}><Eye className="h-4 w-4" /> {locked ? 'Előnézet' : 'Előnézet és küldés'}</button>
           {campaign && !locked && <button type="button" className="btn" disabled={busy} onClick={() => run(async () => {
             const c = await save();
             const r = await api.adminEmailTest(c.id);
@@ -145,6 +171,9 @@ function Editor({ campaign, maxRecipients, onSaved, onNew }: { campaign: Campaig
           })}><TestTube2 className="h-4 w-4" /> Teszt email a saját címemre</button>}
         </div>
         {msg && <Note tone={msg.tone}>{msg.text}</Note>}
+        {!locked && !preview && d.subject.trim() && d.html.trim() && (
+          <p className="text-xs font-semibold text-text-muted">A küldés az előnézetből indítható: a szerver ekkor számolja meg a címzetteket.</p>
+        )}
 
         {preview && (
           <div className="space-y-3 border-t border-border pt-4">
@@ -152,7 +181,13 @@ function Editor({ campaign, maxRecipients, onSaved, onNew }: { campaign: Campaig
             {preview.issues.length > 0 && <Note tone="warn">{preview.issues.map((i) => <span key={i} className="block">{i}</span>)}</Note>}
             {/* a sandbox miatt a levélben szkript nem futhat, és a felület nem érhető el belőle */}
             <iframe title="Email előnézet" sandbox="" srcDoc={preview.html} className="h-[520px] w-full rounded-xl border border-border bg-white" />
-            {campaign && !locked && preview.issues.length === 0 && preview.recipientCount > 0 && (
+            {!locked && blockers.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-border bg-card-2 p-3" data-testid="send-blocked">
+                <button type="button" className="btn btn-primary" disabled><Send className="h-4 w-4" /> Küldés</button>
+                <Note tone="warn">{blockers.map((b) => <span key={b} className="block">{b}</span>)}</Note>
+              </div>
+            )}
+            {campaign && !locked && blockers.length === 0 && (
               <div className="space-y-2 rounded-xl border border-border bg-card-2 p-3">
                 {d.kind === 'system' && (
                   <label className="flex items-start gap-2 text-sm font-semibold">
