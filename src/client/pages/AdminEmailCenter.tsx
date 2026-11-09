@@ -76,6 +76,18 @@ export default function AdminEmailCenter() {
  * Miért nem indítható most a küldés – a felület ezt KIÍRJA, nem rejti el szó nélkül a gombot. Csak tájékoztat:
  * minden feltételt a szerver is ellenőriz a megerősítéskor (piszkozat, tartalom, címzettszám, korlát, beállítás).
  */
+/**
+ * A levél előnézete. A levél HTML-jét NEM vizsgáljuk és NEM írjuk át – a biztonságot a megjelenítés adja:
+ * a `sandbox=""` (egyetlen engedély nélkül) miatt a keretben szkript nem fut, a dokumentum egyedi, átlátszatlan
+ * eredetű (nem éri el a felület DOM-ját, cookie-jait, localStorage-ban tárolt munkamenet-tokenjét és állapotát, és
+ * nem indíthat hitelesített API-kérést – az admin API Bearer tokent kér, cookie-t nem), űrlap nem küldhető, felugró
+ * ablak nem nyitható, a felső ablak nem navigálható. Képek és stíluslapok betöltődnek, ahogy egy levelezőben.
+ * SOHA ne kerüljön ide `allow-scripts` / `allow-same-origin` (a kettő együtt a sandbox teljes feloldása).
+ */
+export function EmailPreviewFrame({ html }: { html: string }) {
+  return <iframe title="Email előnézet" sandbox="" srcDoc={html} className="h-[520px] w-full rounded-xl border border-border bg-white" />;
+}
+
 /** a szerver biztonságos hibaüzenete + HTTP-státusz és hibakód (a hibabejelentéshez); stack trace soha */
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
@@ -90,7 +102,7 @@ export function sendBlockers(a: { campaign: CampaignView | null; preview: Campai
   if (!a.campaign) out.push('Előbb mentsd el a kampányt.');
   else if (a.campaign.status !== 'draft') out.push(`Ez a kampány már nem piszkozat (${CAMPAIGN_STATUS_LABEL[a.campaign.status].toLowerCase()}), újra nem indítható.`);
   if (a.sendingConfigured === false) out.push('Az emailküldés nincs beállítva ezen a szerveren.');
-  if (a.preview.issues.length) out.push('Javítsd a fent jelzett tartalmi hibákat, majd kérj új előnézetet.');
+  if (a.preview.issues.length) out.push('Javítsd a fent jelzett beállítási hibát, majd kérj új előnézetet.');
   if (a.preview.recipientCount === 0) {
     out.push(a.kind === 'marketing'
       ? 'Nincs címzett: marketing csak megerősített email-című, marketinghez hozzájáruló felhasználónak küldhető, és a kiválasztott szűrőben jelenleg nincs ilyen. (Hozzájárulni a profilban vagy a regisztrációkor lehet.)'
@@ -155,7 +167,7 @@ function Editor({ campaign, maxRecipients, sendingConfigured, onSaved, onNew }: 
         <Note tone={d.kind === 'marketing' ? 'info' : 'warn'}>
           {d.kind === 'marketing'
             ? 'Marketing: kizárólag a marketinghez hozzájáruló felhasználók kapják meg (a szűrőtől függetlenül), minden levél alján leiratkozó linkkel.'
-            : 'Rendszerüzenet: minden érintett felhasználónak kimegy a marketing-hozzájárulástól függetlenül, mert a szolgáltatás nyújtásához szükséges tájékoztatás (pl. üzemszünet, fiókbiztonság, feltételek változása). Ajánlat, akció, kupon nem lehet benne – a szerver ellenőrzi.'}
+            : 'Rendszerüzenet: minden érintett felhasználónak kimegy a marketing-hozzájárulástól függetlenül, mert a szolgáltatás nyújtásához szükséges tájékoztatás (pl. üzemszünet, fiókbiztonság, feltételek változása). Ajánlat, akció, kupon nem lehet benne – ezt a küldés előtti nyilatkozattal te igazolod.'}
         </Note>
         <label className="block">
           <span className="field-label">Tárgy</span>
@@ -188,8 +200,7 @@ function Editor({ campaign, maxRecipients, sendingConfigured, onSaved, onNew }: 
           <div className="space-y-3 border-t border-border pt-4">
             <p className="text-sm font-bold">Címzettek most: {preview.recipientCount}{maxRecipients ? ` (korlát: ${maxRecipients})` : ''}</p>
             {preview.issues.length > 0 && <Note tone="warn">{preview.issues.map((i) => <span key={i} className="block">{i}</span>)}</Note>}
-            {/* a sandbox miatt a levélben szkript nem futhat, és a felület nem érhető el belőle */}
-            <iframe title="Email előnézet" sandbox="" srcDoc={preview.html} className="h-[520px] w-full rounded-xl border border-border bg-white" />
+            <EmailPreviewFrame html={preview.html} />
             {!locked && blockers.length > 0 && (
               <div className="space-y-2 rounded-xl border border-border bg-card-2 p-3" data-testid="send-blocked">
                 <button type="button" className="btn btn-primary" disabled><Send className="h-4 w-4" /> Küldés</button>

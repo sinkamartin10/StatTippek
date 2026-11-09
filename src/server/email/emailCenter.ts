@@ -12,8 +12,9 @@
  *  - a címzetteket és címeiket KIZÁRÓLAG a szerver olvassa (service_role); a kliens soha nem kap címlistát,
  *  - marketing: csak a küldés pillanatában is hozzájárulóknak (kötegenként újraellenőrizve), minden levélben
  *    leiratkozó link + List-Unsubscribe fejléc; a hozzájárulás feltétele szűrőtől függetlenül mindig érvényes,
- *  - rendszerüzenet: nem célozhatja a marketing-hozzájárulókat, nem tartalmazhat marketingelemet (szerveroldali
- *    tartalomellenőrzés), és csak az admin kifejezett nyilatkozatával küldhető,
+ *  - rendszerüzenet: nem célozhatja a marketing-hozzájárulókat, és csak az admin kifejezett nyilatkozatával küldhető;
+ *    a levél tárgyát és HTML-tartalmát a szerver NEM vizsgálja automatikusan – a besorolás (marketing / rendszerüzenet)
+ *    az admin által választott kampánytípus, a tartalomért az admin felel,
  *  - minden levél egyetlen címzettnek megy (nincs közös CC/BCC); egy kampányban egy fiók egyszer (DB-egyediség),
  *  - a küldés megerősítése: a szerver által számolt címzettszámot kell visszaküldeni; kampányonkénti küldési korlát,
  *  - a leiratkozó link HMAC-kel aláírt (nem találgatható, nem árul el címet), a végpont IP-nként korlátozott.
@@ -97,28 +98,12 @@ export function verifyUnsubscribeToken(secret: string, token: unknown): string |
 // Tartalom: ellenőrzés és a végleges levél
 // ---------------------------------------------------------------------------
 
-const FORBIDDEN: [RegExp, string][] = [
-  [/<\s*script\b/i, 'script elem nem lehet a levélben'],
-  [/<\s*(iframe|object|embed|form)\b/i, 'iframe / object / embed / form elem nem lehet a levélben'],
-  [/\son[a-z]+\s*=/i, 'eseménykezelő attribútum (on…=) nem lehet a levélben'],
-  [/javascript\s*:/i, 'javascript: hivatkozás nem lehet a levélben'],
-];
-/** marketingelemek, amelyek rendszerüzenetben nem lehetnek (szóeleji illeszkedés: a „tranzakció” nem „akció”) */
-const PROMO_TERMS = ['kedvezmény', 'akció', 'kupon', 'promóció', 'leárazás', 'black friday', 'ajándék', 'ajánlat', 'vásárolj', 'rendeld meg', 'limitált', 'hírlevél'];
-const promoRe = (t: string) => new RegExp(`(?<!\\p{L})${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'iu');
-const textOf = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-
-export function contentIssues(kind: EmailKind, audience: EmailAudience, subject: string, html: string): string[] {
-  const issues: string[] = [];
-  if (!AUDIENCES_FOR[kind].includes(audience)) issues.push('Rendszerüzenet nem célozhatja a marketing-hozzájárulókat – az marketingnek minősül.');
-  if (!subject.trim()) issues.push('A tárgy nem lehet üres.');
-  if (!textOf(html).trim()) issues.push('A levél tartalma nem lehet üres.');
-  for (const [re, msg] of FORBIDDEN) if (re.test(html)) issues.push(msg[0].toUpperCase() + msg.slice(1) + '.');
-  if (kind === 'system') {
-    const found = PROMO_TERMS.filter((t) => promoRe(t).test(`${subject} ${textOf(html)}`));
-    if (found.length) issues.push(`Rendszerüzenetben nem lehet marketingelem (${found.join(', ')}). Ilyen tartalmat marketingkampányként küldj.`);
-  }
-  return issues;
+/**
+ * A kampány beállításainak hibái (NEM tartalomvizsgálat: a tárgyat és a HTML-t a szerver nem elemzi). Egyetlen szabály:
+ * rendszerüzenet nem célozhatja a marketing-hozzájárulókat – ez címzettszabály, a kampánytípusból és a szűrőből adódik.
+ */
+export function campaignIssues(kind: EmailKind, audience: EmailAudience): string[] {
+  return AUDIENCES_FOR[kind].includes(audience) ? [] : ['Rendszerüzenet nem célozhatja a marketing-hozzájárulókat – az marketingnek minősül.'];
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -306,7 +291,7 @@ export class EmailCenterService {
       html: renderEmail(c.kind, c.subject, c.html, c.kind === 'marketing' ? sample : null),
       recipientCount: (await this.recipientsFor(c.kind, c.audience)).length,
       maxRecipients: this.d.config.maxRecipients,
-      issues: contentIssues(c.kind, c.audience, c.subject, c.html),
+      issues: campaignIssues(c.kind, c.audience),
     };
   }
 
@@ -315,8 +300,8 @@ export class EmailCenterService {
     const { sender } = this.requireSending();
     if (!adminEmail || !EMAIL_RE.test(adminEmail)) throw new EmailCenterError('Az admin fiókhoz nem tartozik érvényes email-cím.', 400, 'NO_ADMIN_EMAIL');
     const c = await this.campaign(id);
-    const issues = contentIssues(c.kind, c.audience, c.subject, c.html);
-    if (issues.length) throw new EmailCenterError(issues.join(' '), 422, 'CONTENT_ISSUES', { issues });
+    const issues = campaignIssues(c.kind, c.audience);
+    if (issues.length) throw new EmailCenterError(issues.join(' '), 422, 'BAD_AUDIENCE', { issues });
     const last = this.lastTest.get(id) ?? 0;
     if (Date.now() - last < 10_000) throw new EmailCenterError('Várj néhány másodpercet a következő teszt email előtt.', 429, 'TEST_COOLDOWN');
     this.lastTest.set(id, Date.now());
@@ -335,8 +320,8 @@ export class EmailCenterService {
     const { store } = this.requireSending();
     const c = await this.campaign(id);
     if (c.status !== 'draft') throw new EmailCenterError('Ezt a kampányt már elküldték.', 409, 'ALREADY_PROCESSED');
-    const issues = contentIssues(c.kind, c.audience, c.subject, c.html);
-    if (issues.length) throw new EmailCenterError(issues.join(' '), 422, 'CONTENT_ISSUES', { issues });
+    const issues = campaignIssues(c.kind, c.audience);
+    if (issues.length) throw new EmailCenterError(issues.join(' '), 422, 'BAD_AUDIENCE', { issues });
     if (c.kind === 'system' && body?.attestSystem !== true) {
       throw new EmailCenterError('Rendszerüzenethez nyilatkoznod kell, hogy szolgáltatási vagy biztonsági célú, és nincs benne marketing.', 400, 'ATTESTATION_REQUIRED');
     }
