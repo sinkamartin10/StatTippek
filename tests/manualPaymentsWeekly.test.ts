@@ -60,7 +60,7 @@ beforeEach(async () => { vi.spyOn(console, 'log').mockImplementation(() => {}); 
 afterEach(async () => { vi.restoreAllMocks(); await h.close(); });
 
 describe('Csomagok a szervertől', () => {
-  it('havi (ajánlott, az érvényes szerverár: 2 990 Ft/hó) és heti (1 490 Ft / 7 nap); a havi az első és ajánlott', async () => {
+  it('havi (ajánlott, az érvényes szerverár: 1 490 Ft/hó) és heti (1 490 Ft / 7 nap); a havi az első és ajánlott', async () => {
     const info = (await call('GET', '/api/pro-payments')).body as ProPaymentInfo;
     expect(info.plans).toEqual([
       { id: 'month', price: APP_PRO_PRICE, recommended: true },
@@ -68,7 +68,7 @@ describe('Csomagok a szervertől', () => {
     ]);
     expect(info.price).toEqual(APP_PRO_PRICE); // visszafelé kompatibilis mező
     expect(APP_WEEKLY_PRO_PRICE).toMatchObject({ amount: 1490, currency: 'HUF', interval: 'week' });
-    expect(APP_PRO_PRICE).toMatchObject({ amount: 2990, currency: 'HUF', interval: 'month' });
+    expect(APP_PRO_PRICE).toMatchObject({ amount: 1490, currency: 'HUF', interval: 'month' });
     expect(info.payee).toEqual(PAYEE);
   });
   it('a havi ár a meglévő árforrásból jön (pl. Stripe-ár), a heti fix szerverkonfiguráció', async () => {
@@ -86,9 +86,9 @@ describe('Rendelés (függő kérelem)', () => {
     expect(h.store.requests.get(r.body.request.id)!.userId).toBe(A.user);
     expect(h.profiles.get(A.user)!.status).toBe('free'); // a rendelés NEM aktivál
   });
-  it('havi: a jóváhagyott szerverár (2 990 Ft, „month”); banki átutalással is ugyanaz a kézi folyamat', async () => {
+  it('havi: a jóváhagyott szerverár (1 490 Ft, „month”); banki átutalással is ugyanaz a kézi folyamat', async () => {
     const r = await order(A, { method: 'bank_transfer', plan: 'month', amount: 10 });
-    expect(r.body.request).toMatchObject({ method: 'bank_transfer', amount: 2990, currency: 'HUF', interval: 'month', status: 'pending' });
+    expect(r.body.request).toMatchObject({ method: 'bank_transfer', amount: 1490, currency: 'HUF', interval: 'month', status: 'pending' });
     expect(h.profiles.get(A.user)!.status).toBe('free');
   });
   it('régi kliens (csomag nélkül) → havi; érvénytelen csomag → 400 INVALID_PLAN, kérelem nélkül', async () => {
@@ -297,10 +297,10 @@ describe('Heti csomag kapcsolója (PRO_WEEKLY_ENABLED)', () => {
     expect(r.status).toBe(201);
     expect(r.body.request).toMatchObject({ amount: 1490, currency: 'HUF', interval: 'week', status: 'pending' });
   });
-  it('4. tiltva is: csomag nélküli (régi) kliens → havi, 2 990 Ft; a kifejezett havi is változatlan', async () => {
+  it('4. tiltva is: csomag nélküli (régi) kliens → havi, 1 490 Ft; a kifejezett havi is változatlan', async () => {
     const r = await order(A, { method: 'bank_transfer' });
     expect(r.status).toBe(201);
-    expect(r.body.request).toMatchObject({ amount: 2990, currency: 'HUF', interval: 'month', status: 'pending' });
+    expect(r.body.request).toMatchObject({ amount: 1490, currency: 'HUF', interval: 'month', status: 'pending' });
     const again = await order(A, { method: 'bank_transfer', plan: 'month' });
     expect(again.status).toBe(200);
     expect(again.body.created).toBe(false);
@@ -357,7 +357,7 @@ describe('Heti csomag kapcsolója (PRO_WEEKLY_ENABLED)', () => {
     expect(info.plans!.map((p) => p.id)).toEqual(['month']);
     // a havi rendelésbe a kliens által küldött „heti” időtartam / ár nem szivárog át
     const m = await order(A, { method: 'revolut', interval: 'week', amount: 1490, weeklyEnabled: true });
-    expect(m.body.request).toMatchObject({ interval: 'month', amount: 2990 });
+    expect(m.body.request).toMatchObject({ interval: 'month', amount: 1490 });
     expect(h.store.requests.size).toBe(1);
     // engedélyezve sem kerülhető meg a validáció (érvénytelen mód / csomag), és az ár a szerveré
     weekly = true;
@@ -377,10 +377,10 @@ describe('Felület: csomagválasztó', () => {
     expect(out).not.toMatch(/data-plan="week"[^>]*disabled/);
     expect(out).toContain('data-plan-recommended');
     expect((out.match(/data-plan-recommended/g) ?? []).length).toBe(1);
-    for (const s of ['Havi PRO', 'Heti PRO', formatAmount(2990, 'HUF'), formatAmount(1490, 'HUF'), '1 hónap', '7 nap', 'nem újul meg automatikusan']) expect(out, s).toContain(s);
+    for (const s of ['Havi PRO', 'Heti PRO', formatAmount(1490, 'HUF'), formatAmount(1490, 'HUF'), '1 hónap', '7 nap', 'nem újul meg automatikusan']) expect(out, s).toContain(s);
     expect(out).toContain('data-selected-plan="month"');
     expect(out).toContain('data-send-plan="month"');
-    expect(out).toContain(`Befizetés elküldve ellenőrzésre (${formatAmount(2990, 'HUF')} · 1 hónap)`);
+    expect(out).toContain(`Befizetés elküldve ellenőrzésre (${formatAmount(1490, 'HUF')} · 1 hónap)`);
   });
 
   it('a heti kiválasztása a fizetendő összeget és a küldött csomagot is a hetire állítja (a PlanPicker vezérelt)', () => {
@@ -392,14 +392,14 @@ describe('Felület: csomagválasztó', () => {
 
   it('napi összehasonlító költség a szerver árából: heti ár/7, havi ár/31–ár/28, éves nincs; mindig a „teljes ár” megjegyzéssel', () => {
     expect(dailyCostLabel(APP_WEEKLY_PRO_PRICE)).toBe(`Kb. ${formatAmount(213, 'HUF')}/nap`); // 1490 / 7 = 212,86
-    expect(dailyCostLabel(APP_PRO_PRICE)).toBe(`Kb. 96–${formatAmount(107, 'HUF')}/nap, a hónap hosszától függően`); // 2990/31 = 96,45; 2990/28 = 106,79
+    expect(dailyCostLabel(APP_PRO_PRICE)).toBe(`Kb. 48–${formatAmount(53, 'HUF')}/nap, a hónap hosszától függően`); // 1490/31 = 48,06; 1490/28 = 53,21
     expect(dailyCostLabel({ ...APP_PRO_PRICE, amount: 3490 })).toBe(`Kb. 113–${formatAmount(125, 'HUF')}/nap, a hónap hosszától függően`); // a szerver árát követi
     expect(dailyCostLabel({ amount: 29900, currency: 'HUF', interval: 'year', label: '29 900 Ft/év', source: 'stripe' })).toBeNull();
     const out = render();
     expect((out.match(/data-plan-daily/g) ?? []).length).toBe(2);
     expect((out.match(/Összehasonlításként; a fizetendő összeg a teljes ár\./g) ?? []).length).toBe(2);
     // a fizetendő összeg továbbra is a teljes ár
-    expect(out).toContain(`Befizetés elküldve ellenőrzésre (${formatAmount(2990, 'HUF')} · 1 hónap)`);
+    expect(out).toContain(`Befizetés elküldve ellenőrzésre (${formatAmount(1490, 'HUF')} · 1 hónap)`);
     const yearly = renderToStaticMarkup(createElement(PlanPicker, { plans: [{ id: 'month', price: { amount: 29900, currency: 'HUF', interval: 'year', label: '29 900 Ft/év', source: 'stripe' }, recommended: true }], selected: 'month', onSelect: () => {} }));
     expect(yearly).not.toContain('data-plan-daily');
     expect(yearly).not.toContain('/nap');

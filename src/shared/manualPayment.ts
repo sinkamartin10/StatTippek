@@ -61,12 +61,11 @@ export interface ProPrice {
 }
 
 /**
- * Az alkalmazás eddigi, a felületen „jelenlegi ár”-ként mutatott tartalék ára
- * (korábban `Pro.tsx`: PRO_PRICE = '2 990 Ft/hó'). Akkor érvényes, ha a Stripe
- * ár nincs beállítva – élesben jelenleg ez a helyzet. Nem új összeg: ugyanaz
- * az érték került egyetlen, szerver és kliens által közösen használt helyre.
+ * Az alkalmazás havi PRO-ára, a felületen „jelenlegi ár”-ként mutatva – a szerver ezt írja a kézi befizetési
+ * kérelembe is. Akkor érvényes, ha a Stripe ár nincs beállítva – élesben jelenleg ez a helyzet.
+ * Akciós ár: 1 490 Ft/hó (korábban 2 990 Ft/hó).
  */
-export const APP_PRO_PRICE: ProPrice = { amount: 2990, currency: 'HUF', interval: 'month', label: '2 990 Ft/hó', source: 'app' };
+export const APP_PRO_PRICE: ProPrice = { amount: 1490, currency: 'HUF', interval: 'month', label: '1 490 Ft/hó', source: 'app' };
 
 /**
  * Heti PRO – csak kézi fizetéssel (banki átutalás / Revolut), 7 napra. Szerveroldali

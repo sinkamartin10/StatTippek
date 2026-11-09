@@ -111,7 +111,7 @@ describe('Kézi PRO-igénylés – felhasználó', () => {
     const r = await request(A, { method: 'revolut', userId: B.user, amount: 1, currency: 'EUR', status: 'approved', pro: true, email: 'hamis@example.com' });
     expect(r.status).toBe(201);
     expect(r.body.created).toBe(true);
-    expect(r.body.request).toMatchObject({ method: 'revolut', amount: 2990, currency: 'HUF', interval: 'month', reference: 'anna@example.com', status: 'pending', activatedUntil: null });
+    expect(r.body.request).toMatchObject({ method: 'revolut', amount: 1490, currency: 'HUF', interval: 'month', reference: 'anna@example.com', status: 'pending', activatedUntil: null });
     expect(r.body.request.userId).toBeUndefined(); // a felhasználói nézet nem ad ki admin-mezőket
     const stored = [...h.store.requests.values()][0];
     expect(stored).toMatchObject({ userId: A.user, email: 'anna@example.com' });
@@ -158,7 +158,7 @@ describe('Kézi PRO-igénylés – admin', () => {
     const r = await call(h, 'GET', '/api/admin/pro-payments', ADMIN);
     expect(r.status).toBe(200);
     expect(r.body).toHaveLength(1);
-    expect(r.body[0]).toMatchObject({ userId: A.user, email: 'anna@example.com', method: 'bank_transfer', amount: 2990, currency: 'HUF', interval: 'month', status: 'pending', profile: { status: 'free', stripeManaged: false } });
+    expect(r.body[0]).toMatchObject({ userId: A.user, email: 'anna@example.com', method: 'bank_transfer', amount: 1490, currency: 'HUF', interval: 'month', status: 'pending', profile: { status: 'free', stripeManaged: false } });
     expect(typeof r.body[0].createdAt).toBe('string');
     expect((await call(h, 'GET', '/api/admin/pro-payments?status=approved', ADMIN)).body).toEqual([]);
     expect((await call(h, 'GET', '/api/admin/pro-payments?status=bármi', ADMIN)).status).toBe(400);
@@ -248,10 +248,10 @@ describe('Kézi PRO-igénylés – admin', () => {
 });
 
 describe('Ár és Stripe', () => {
-  it.skipIf(!!process.env.STRIPE_SECRET_KEY || !!process.env.STRIPE_PRICE_ID_PRO)('Stripe-konfiguráció nélkül az alkalmazás eddigi ára érvényes (2 990 Ft/hó) – a kliens tartalék felirata ugyanaz', async () => {
+  it.skipIf(!!process.env.STRIPE_SECRET_KEY || !!process.env.STRIPE_PRICE_ID_PRO)('Stripe-konfiguráció nélkül az alkalmazás eddigi ára érvényes (akciós ár: 1 490 Ft/hó) – a kliens tartalék felirata ugyanaz', async () => {
     expect(await currentProPrice()).toEqual(APP_PRO_PRICE);
-    expect(PRO_PRICE).toBe('2 990 Ft/hó');
-    expect(APP_PRO_PRICE).toMatchObject({ amount: 2990, currency: 'HUF', interval: 'month' });
+    expect(PRO_PRICE).toBe('1 490 Ft/hó');
+    expect(APP_PRO_PRICE).toMatchObject({ amount: 1490, currency: 'HUF', interval: 'month' });
   });
 });
 
@@ -269,7 +269,7 @@ describe('Kézi PRO-igénylés – felület', () => {
       'A fizetés manuális ellenőrzést igényel.', 'nem aktiválódik automatikusan', 'Befizetés elküldve ellenőrzésre', '1 hónap']) {
       expect(html, t).toContain(t);
     }
-    expect(html).toMatch(/2.990 Ft/);
+    expect(html).toMatch(/1.490 Ft/);
     expect(html).toContain('href="https://revolut.me/martin2pal"');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).not.toMatch(/revolut\.me\/martin2pal\/\d|amount=/); // nincs előtöltött összegű fizetési link
@@ -285,7 +285,7 @@ describe('Kézi PRO-igénylés – felület', () => {
   it('az összeg nincs beégetve: a szerver ára jelenik meg', () => {
     const html = render(createElement(ManualPaymentSection, { info: info({ price: { amount: 4990, currency: 'HUF', interval: 'month', label: '4 990 Ft/hó', source: 'stripe' } }), loggedIn: true, onRequested: () => {} }));
     expect(html).toMatch(/4.990 Ft/);
-    expect(html).not.toMatch(/2.990 Ft/);
+    expect(html).not.toMatch(/1.490 Ft/);
   });
 
   it('kijelentkezve bejelentkezést kér a jelzéshez; függő kérelemnél nincs új küldés gomb', () => {

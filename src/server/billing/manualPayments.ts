@@ -276,7 +276,7 @@ export function proWeeklyEnabled(env: { PRO_WEEKLY_ENABLED?: string }): boolean 
 
 /**
  * A választható csomagok – KIZÁRÓLAG szerveroldali konfigurációból: havi = a meglévő érvényes ár
- * (currentProPrice; élesben az alkalmazás 2 990 Ft/hó ára), heti = APP_WEEKLY_PRO_PRICE (1 490 Ft / 7 nap),
+ * (currentProPrice; élesben az alkalmazás 1 490 Ft/hó akciós ára), heti = APP_WEEKLY_PRO_PRICE (1 490 Ft / 7 nap),
  * de csak ha a heti csomag engedélyezett. A havi az ajánlott és alapértelmezett csomag.
  */
 export async function proPlans(price: () => Promise<ProPrice>, weeklyEnabled: boolean): Promise<ProPlanOption[]> {
