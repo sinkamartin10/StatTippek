@@ -97,7 +97,7 @@ const PRIVATE: Record<string, string> = {
   '/kovetes': 'Követés', '/statisztikaim': 'Statisztikáim', '/ertesitesek': 'Értesítések', '/shop': 'Shop',
   '/battles': 'Párbajok', '/szelvenyek': 'Szelvények', '/edge-radar': 'Edge Radar', '/felfedezes': 'Felfedezés',
   '/elozmenyek': 'Előzmények', '/beallitasok': 'Beállítások', '/kereses': 'Keresés',
-  '/admin/tippverseny': 'Admin', '/admin/modell-tanulas': 'Admin', '/admin/pro-befizetesek': 'Admin', '/admin/pro-statisztika': 'Admin',
+  '/admin/tippverseny': 'Admin', '/admin/modell-tanulas': 'Admin', '/admin/pro-befizetesek': 'Admin', '/admin/pro-statisztika': 'Admin', '/admin/email-kozpont': 'Admin',
 };
 
 /** érvényes dinamikus útvonalak – a létezést a kliens (API) dönti el; itt csak a formátumot ellenőrizzük */

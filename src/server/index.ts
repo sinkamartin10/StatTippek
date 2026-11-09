@@ -37,6 +37,8 @@ import { getProfile, profileIsPro, proUserIds } from './billing/supabaseAdmin';
 import { billingRouter, currentProPrice, stripeConfigured, stripeWebhook } from './billing/stripeRoutes';
 import { PostgresManualPaymentStore, adminProPaymentsRouter, proPaymentsRouter, proWeeklyEnabled } from './billing/manualPayments';
 import { PostgresProTrialStore, adminProTrialsRouter, proTrialRouter, trialNotificationCandidates } from './billing/proTrial';
+import { EmailCenterService, ResendSender, adminEmailRouter, emailConfig, emailRouter, missingConfig } from './email/emailCenter';
+import { PostgresEmailStore } from './email/store';
 import { proStatsRouters, supabaseActiveProCounter } from './billing/proStats';
 import { EspnProvider } from './data/espnProvider';
 import { createXsModel, scheduleXsRefresh, xsAdminRouter } from './model/xsBootstrap';
@@ -189,6 +191,9 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (now >
 
 // A Stripe webhooknak NYERS body kell az aláírás-ellenőrzéshez – ezért a JSON-parser ELŐTT regisztráljuk
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req, res) => void stripeWebhook(container.db, req, res));
+// Email Center: a kampány HTML-je nagyobb lehet a globális 100 kb-os korlátnál – a nagyobb törzset CSAK admin
+// küldheti (a jogosultság-ellenőrzés a feldolgozás ELŐTT fut); a globális parser a már feldolgozott törzset kihagyja
+app.use('/api/admin/email', attachPlan, requireAdmin, express.json({ limit: '400kb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use('/api/billing', billingRouter(container.db));
 
@@ -218,6 +223,17 @@ app.use('/api/admin/pro-trials', requireAdmin, adminProTrialsRouter(proTrials, {
   notify: (n) => notificationService.emit(n),
   displayNames: (ids) => container.displayNames.getMany(ids),
 }));
+// Email Center (0025): marketing csak hozzájárulóknak, leiratkozással; rendszerüzenet külön kategória.
+// A Resend-kulcs és a leiratkozási titok kizárólag szerveroldali környezeti változó.
+const emailCfg = emailConfig(process.env);
+const emailCenter = new EmailCenterService({
+  store: supabaseAdmin ? new PostgresEmailStore(supabaseAdmin) : null,
+  sender: emailCfg.apiKey && emailCfg.from ? new ResendSender(emailCfg.apiKey, emailCfg.from, emailCfg.replyTo) : null,
+  config: emailCfg,
+});
+app.use('/api/email', emailRouter(emailCenter));
+app.use('/api/admin/email', requireAdmin, adminEmailRouter(emailCenter));
+console.log(`Email Center: ${missingConfig(emailCfg).length ? `küldés KIKAPCSOLVA (hiányzik: ${missingConfig(emailCfg).join(', ')})` : 'küldés beállítva'}`);
 console.log(`Heti PRO-csomag: ${proWeeklyEnabled(process.env) ? 'rendelhető' : 'TILTVA (PRO_WEEKLY_ENABLED nincs true-ra állítva)'}`);
 // Nyilvános PRO-felhasználószám: mindig a TÉNYLEGES aktív PRO-k száma; az admin csak a megjelenítést kapcsolja
 const proStats = proStatsRouters(container.db, supabaseAdmin ? supabaseActiveProCounter(supabaseAdmin) : null);
@@ -297,6 +313,9 @@ app.listen(port, async () => {
       // 0020: kézi PRO-befizetések (a tábla nélkül a kérelem 500-at ad – a többi funkció működik)
       const ppr = supabaseAdmin ? await supabaseAdmin.from('pro_payment_requests').select('id').limit(1) : null;
       if (ppr?.error) console.warn('PRO kézi fizetés nem kész (hiányzik: pro_payment_requests). Futtasd le: supabase/migrations/0020_pro_payment_requests.sql');
+      // 0025: Email Center (a táblák nélkül a kampányok és a hozzájárulás 500-at adnak – a többi funkció működik)
+      const ec = supabaseAdmin ? await supabaseAdmin.from('email_campaigns').select('id').limit(1) : null;
+      if (ec?.error) console.warn('Email Center nem kész (hiányzik: email_campaigns). Futtasd le: supabase/migrations/0025_email_center.sql');
       // 0024: ingyenes PRO próbaidőszak (a tábla nélkül az igénylés 500-at ad – a többi funkció működik)
       const ptr = supabaseAdmin ? await supabaseAdmin.from('pro_trial_requests').select('id').limit(1) : null;
       if (ptr?.error) console.warn('PRO próbaidőszak nem kész (hiányzik: pro_trial_requests). Futtasd le: supabase/migrations/0024_pro_trial_requests.sql');

@@ -13,6 +13,7 @@ import { useAsync } from '../lib/format';
 import { DisplayNameEditor } from '../components/DisplayNameEditor';
 import { ProgressionCard } from '../components/ProgressionCard';
 import { ShopCosmeticsCard } from '../components/ShopCosmeticsCard';
+import { MarketingConsentCard } from '../components/MarketingConsent';
 
 export default function Profile() {
   const auth = useAuth();
@@ -69,6 +70,9 @@ export default function Profile() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader emoji="👤" title="Profil" text="A fiókod, az előfizetésed és a Tipster profilod." right={<PlanBadge pro={pro} />} />
+
+      {/* jól látható, egy kattintással fel- és leiratkozás */}
+      <MarketingConsentCard />
 
       <Card title="Fiók">
         {loading && !profile ? <Loading text="Profil betöltése…" /> : error ? <ErrorBox message={error} onRetry={reload} /> : (

@@ -10,6 +10,7 @@
  * 3 napra a szerveren; elutasítás = végleges, a fiók többé nem igényelhet).
  */
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, X } from 'lucide-react';
 import {
   INTERVAL_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_STATUS_LABEL, formatAmount,
@@ -34,7 +35,8 @@ export default function AdminProPayments() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader emoji="💳" title="PRO befizetések" text="Kézi (banki átutalás / Revolut) befizetések ellenőrzése, jóváhagyása vagy elutasítása." />
+      <PageHeader emoji="💳" title="PRO befizetések" text="Kézi (banki átutalás / Revolut) befizetések ellenőrzése, jóváhagyása vagy elutasítása."
+        right={<Link to="/admin/email-kozpont" className="btn btn-sm">Email Center</Link>} />
       <Note tone="warn">Jóváhagyás előtt ellenőrizd a bankszámlán vagy a Revolutban, hogy az összeg a megadott közleménnyel (a fiók e-mail-címével) valóban beérkezett. A jóváhagyás azonnal aktiválja vagy meghosszabbítja a PRO-t.</Note>
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Állapot szerinti szűrés">
         {FILTERS.map((f) => (

@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Card, Loading, Note } from '../components/ui';
 import { useAuth } from './AuthContext';
+import { CONSENT_TEXT } from '@shared/email';
 
 function AuthShell({ title, emoji, text, children }: { title: string; emoji: string; text?: string; children: ReactNode }) {
   return (
@@ -69,6 +70,8 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // marketing-hozzájárulás: alapból NEM bejelölt, a regisztráció nélküle is működik
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -83,7 +86,7 @@ export function RegisterPage() {
     if (password.length < 6) { setError('A jelszó legalább 6 karakter legyen.'); return; }
     setBusy(true);
     try {
-      const r = await auth.signUp(email.trim(), password);
+      const r = await auth.signUp(email.trim(), password, { marketingOptIn });
       setDone(r.needsConfirmation ? 'Sikeres regisztráció! Küldtünk egy megerősítő e-mailt – kattints a benne lévő linkre, utána be tudsz jelentkezni.' : 'Sikeres regisztráció, be vagy jelentkezve.');
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
@@ -98,6 +101,10 @@ export function RegisterPage() {
             <label className="field-label">E-mail-cím<input type="email" required autoComplete="email" className="input input-lg mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
             <label className="field-label">Jelszó (legalább 6 karakter)<input type="password" required minLength={6} autoComplete="new-password" className="input input-lg mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
             <label className="field-label">Jelszó újra<input type="password" required autoComplete="new-password" className="input input-lg mt-1.5" value={password2} onChange={(e) => setPassword2(e.target.value)} /></label>
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm font-semibold normal-case tracking-normal text-text-muted">
+              <input type="checkbox" name="marketingOptIn" className="mt-0.5 h-4 w-4 shrink-0" checked={marketingOptIn} onChange={(e) => setMarketingOptIn(e.target.checked)} />
+              <span>{CONSENT_TEXT} <span className="text-xs">(Nem kötelező.)</span></span>
+            </label>
             {error && <div className="rounded-xl border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-sm font-bold text-danger">{error}</div>}
             <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>{busy ? 'Regisztráció…' : 'Fiók létrehozása'}</button>
           </form>

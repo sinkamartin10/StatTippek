@@ -5,6 +5,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { authConfigured, supabase } from '../lib/supabase';
+import { CONSENT_TEXT_VERSION, REGISTRATION_OPT_IN_META, REGISTRATION_OPT_IN_VERSION_META } from '@shared/email';
 
 interface AuthState {
   configured: boolean;
@@ -13,7 +14,7 @@ interface AuthState {
   session: Session | null;
   /** true, ha jelszó-visszaállító linkről érkezett a felhasználó (új jelszót kell adnia) */
   passwordRecovery: boolean;
-  signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
+  signUp(email: string, password: string, opts?: { marketingOptIn?: boolean }): Promise<{ needsConfirmation: boolean }>;
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   resetPassword(email: string): Promise<void>;
@@ -21,6 +22,15 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * A regisztráció felhasználói metaadatai: a marketing-hozzájárulás CSAK bejelölt négyzetnél kerül bele
+ * (bejelöletlennél semmi), időbélyeg nélkül. A hozzájárulást a 0025 adatbázis-triggere rögzíti a regisztrációval
+ * egy tranzakcióban, a Supabase által írt regisztrációs időponttal.
+ */
+export function signUpMetadata(marketingOptIn: boolean): Record<string, unknown> | undefined {
+  return marketingOptIn === true ? { [REGISTRATION_OPT_IN_META]: true, [REGISTRATION_OPT_IN_VERSION_META]: CONSENT_TEXT_VERSION } : undefined;
+}
 
 /** Supabase hibaüzenetek magyarul */
 function hu(message: string): string {
@@ -70,8 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     session,
     passwordRecovery,
-    async signUp(email, password) {
-      const { data, error } = await ensure().auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/bejelentkezes` } });
+    async signUp(email, password, opts) {
+      const data_ = signUpMetadata(opts?.marketingOptIn === true);
+      const { data, error } = await ensure().auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/bejelentkezes`, ...(data_ ? { data: data_ } : {}) } });
       if (error) throw new Error(hu(error.message));
       // Ha az e-mail-megerősítés be van kapcsolva, nincs azonnali munkamenet
       return { needsConfirmation: !data.session };

@@ -10,6 +10,7 @@ import type {
 } from '@shared/manualPayment';
 import type { AdminProStats, PublicProCount } from '@shared/proStats';
 import type { AdminTrialRequestView, ProTrialStatus, TrialRequestStatus } from '@shared/proTrial';
+import type { CampaignPreview, CampaignView, DeliveryStats, EmailAudience, EmailCenterStatus, EmailKind, MarketingConsentView } from '@shared/email';
 import type { EdgeRadarResponse } from '@shared/types';
 import type { SimulationReport } from '@shared/engine/simulator';
 import type { DiagnosticHistoryResponse, DiagnosticSnapshotResponse, DiagnosticsReport, LearningStatus } from '@shared/modelLearning';
@@ -216,6 +217,24 @@ export const api = {
     request<{ request: AdminTrialRequestView }>(`/${encodeURIComponent(id)}/approve`, { method: 'POST', body: '{}' }, '/api/admin/pro-trials'),
   adminRejectProTrial: (id: string) =>
     request<{ request: AdminTrialRequestView }>(`/${encodeURIComponent(id)}/reject`, { method: 'POST', body: '{}' }, '/api/admin/pro-trials'),
+  // ---------- Email: saját marketing-hozzájárulás (a felhasználót a szerver a tokenből azonosítja) ----------
+  emailConsent: () => request<MarketingConsentView & { text: string; textVersion: string }>('/email/consent'),
+  setEmailConsent: (consented: boolean) =>
+    request<MarketingConsentView & { changed: boolean; text: string; textVersion: string }>('/email/consent', { method: 'PUT', body: JSON.stringify({ consented }) }),
+  // ---------- Email Center (admin) – címlistát a szerver soha nem ad ki, csak darabszámot ----------
+  adminEmailStatus: () => request<EmailCenterStatus>('/status', {}, '/api/admin/email'),
+  adminEmailCampaigns: () => request<CampaignView[]>('/campaigns', {}, '/api/admin/email'),
+  adminEmailCampaign: (id: string) => request<{ campaign: CampaignView; stats: DeliveryStats }>(`/campaigns/${encodeURIComponent(id)}`, {}, '/api/admin/email'),
+  adminCreateEmailCampaign: (body: { kind: EmailKind; audience: EmailAudience; subject: string; html: string }) =>
+    request<CampaignView>('/campaigns', { method: 'POST', body: JSON.stringify(body) }, '/api/admin/email'),
+  adminUpdateEmailCampaign: (id: string, body: { kind: EmailKind; audience: EmailAudience; subject: string; html: string }) =>
+    request<CampaignView>(`/campaigns/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }, '/api/admin/email'),
+  adminEmailPreview: (id: string) => request<CampaignPreview>(`/campaigns/${encodeURIComponent(id)}/preview`, { method: 'POST', body: '{}' }, '/api/admin/email'),
+  adminEmailTest: (id: string) => request<{ to: string }>(`/campaigns/${encodeURIComponent(id)}/test`, { method: 'POST', body: '{}' }, '/api/admin/email'),
+  /** a megerősítés: a szerver által az előnézetben adott címzettszám (és rendszerüzenetnél a nyilatkozat) */
+  adminEmailSend: (id: string, confirm: { recipientCount: number; attestSystem: boolean }) =>
+    request<{ campaign: CampaignView }>(`/campaigns/${encodeURIComponent(id)}/send`, { method: 'POST', body: JSON.stringify(confirm) }, '/api/admin/email'),
+  adminEmailRetry: (id: string) => request<{ campaign: CampaignView }>(`/campaigns/${encodeURIComponent(id)}/retry`, { method: 'POST', body: '{}' }, '/api/admin/email'),
   // ---------- PRO-felhasználószám (mindig a tényleges aktív PRO-k száma; az admin csak a megjelenítést kapcsolja) ----------
   proStats: () => request<PublicProCount>('/pro-stats'),
   adminProStats: () => request<AdminProStats>('', {}, '/api/admin/pro-stats'),
